@@ -1,0 +1,10 @@
+build*/
+out/
+stage/
+artifacts/
+.cache/
+*.user
+*.autosave
+*.swp
+*.log
+

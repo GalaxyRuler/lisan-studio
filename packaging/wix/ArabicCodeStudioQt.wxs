@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package
+    Name="Arabic Code Studio Qt"
+    Manufacturer="Arabic Code Studio"
+    Version="$(var.ProductVersion)"
+    UpgradeCode="b45833fc-87f8-4656-8cc4-dc87769ea386"
+    Scope="perUser">
+    <MajorUpgrade DowngradeErrorMessage="A newer Arabic Code Studio Qt is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <Feature Id="MainFeature" Title="Arabic Code Studio Qt" Level="1">
+      <ComponentGroupRef Id="ApplicationFiles" />
+      <ComponentRef Id="StartMenuShortcut" />
+      <ComponentRef Id="DesktopShortcut" />
+    </Feature>
+
+    <StandardDirectory Id="LocalAppDataFolder">
+      <Directory Id="INSTALLFOLDER" Name="ArabicCodeStudioQt" />
+    </StandardDirectory>
+
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="ApplicationProgramsFolder" Name="Arabic Code Studio Qt" />
+    </StandardDirectory>
+
+    <StandardDirectory Id="DesktopFolder" />
+
+    <DirectoryRef Id="ApplicationProgramsFolder">
+      <Component Id="StartMenuShortcut" Guid="4ce472e6-0d64-4894-95e0-f3908d47699a">
+        <Shortcut Id="ArabicCodeStudioQtStartMenuShortcut"
+                  Name="Arabic Code Studio Qt"
+                  Target="[INSTALLFOLDER]ArabicCodeStudioQt.exe"
+                  WorkingDirectory="INSTALLFOLDER" />
+        <RemoveFolder Id="RemoveApplicationProgramsFolder" On="uninstall" />
+        <RegistryValue Root="HKCU" Key="Software\ArabicCodeStudioQt" Name="installed" Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+    </DirectoryRef>
+
+    <DirectoryRef Id="DesktopFolder">
+      <Component Id="DesktopShortcut" Guid="b712f1d2-ec92-4eef-9b3a-859f07ed967b">
+        <Shortcut Id="ArabicCodeStudioQtDesktopShortcut"
+                  Name="Arabic Code Studio Qt"
+                  Target="[INSTALLFOLDER]ArabicCodeStudioQt.exe"
+                  WorkingDirectory="INSTALLFOLDER" />
+        <RegistryValue Root="HKCU" Key="Software\ArabicCodeStudioQt" Name="desktopShortcut" Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+    </DirectoryRef>
+
+    <ComponentGroup Id="ApplicationFiles" Directory="INSTALLFOLDER">
+      <Files Include="$(var.SourceDir)\**" />
+    </ComponentGroup>
+  </Package>
+</Wix>
+
