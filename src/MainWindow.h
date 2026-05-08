@@ -21,6 +21,9 @@ class MainWindow final : public QMainWindow
 
 public:
     explicit MainWindow(QWidget *parent = nullptr);
+    bool openPath(const QString &path);
+    QString currentProjectRoot() const;
+    QString currentEditorPath() const;
 
 private slots:
     void newFile();
@@ -49,8 +52,8 @@ private:
 
     void buildUi();
     void setStatus(const QString &text);
-    void loadProject(const QString &path);
-    void openEditorFile(const QString &path);
+    bool loadProject(const QString &path);
+    bool openEditorFile(const QString &path);
     void writeOutput(const QString &title, const QString &text);
     bool confirmSaveIfDirty();
     bool ensureCurrentFileSaved();

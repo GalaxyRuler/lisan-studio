@@ -52,6 +52,17 @@ The packager stages:
 - license and release docs
 - WiX MSI output under `artifacts\`
 
+## Installed Smoke
+
+After installing the MSI, run:
+
+```powershell
+.\scripts\installed-smoke.ps1
+```
+
+This validates the installed executable, bundled Python runtime, Arabic `.apy`
+execution, command-line project/file launch, and non-editable runtime packaging.
+
 ## Beta Boundaries
 
 Included in v0.1.0 beta:
@@ -74,4 +85,3 @@ Deferred:
 - auto-update
 - plugin system
 - Emacs/JetBrains/Electron/web shells
-

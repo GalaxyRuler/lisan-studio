@@ -22,6 +22,31 @@ MainWindow::MainWindow(QWidget *parent)
     setWindowTitle(QString::fromUtf8("استوديو البرمجة"));
 }
 
+bool MainWindow::openPath(const QString &path)
+{
+    const QFileInfo info(path);
+    if (!info.exists()) {
+        return false;
+    }
+    if (info.isDir()) {
+        return loadProject(info.absoluteFilePath());
+    }
+    if (info.isFile()) {
+        return openEditorFile(info.absoluteFilePath());
+    }
+    return false;
+}
+
+QString MainWindow::currentProjectRoot() const
+{
+    return projectRoot;
+}
+
+QString MainWindow::currentEditorPath() const
+{
+    return editor->currentFilePath();
+}
+
 void MainWindow::buildUi()
 {
     setLayoutDirection(Qt::RightToLeft);
@@ -64,12 +89,14 @@ void MainWindow::buildUi()
     fileSystemModel->setNameFilterDisables(false);
 
     projectTree = new QTreeView(splitter);
+    projectTree->setObjectName(QStringLiteral("projectTree"));
     projectTree->setHeaderHidden(true);
     projectTree->setModel(fileSystemModel);
     projectTree->setMinimumWidth(240);
     connect(projectTree, &QTreeView::doubleClicked, this, &MainWindow::openSelectedProjectFile);
 
     editor = new EditorSurface(splitter);
+    editor->setObjectName(QStringLiteral("editorSurface"));
     connect(editor, &EditorSurface::filePathChanged, this, [this](const QString &path) {
         setWindowTitle(path.isEmpty()
             ? QString::fromUtf8("استوديو البرمجة")
@@ -83,6 +110,7 @@ void MainWindow::buildUi()
     setCentralWidget(splitter);
 
     outputPanel = new QPlainTextEdit(this);
+    outputPanel->setObjectName(QStringLiteral("outputPanel"));
     outputPanel->setReadOnly(true);
     outputPanel->setLayoutDirection(Qt::LeftToRight);
     outputPanel->setPlaceholderText(QString::fromUtf8("المخرجات ستظهر هنا"));
@@ -227,26 +255,32 @@ void MainWindow::setStatus(const QString &text)
     statusLabel->setText(text);
 }
 
-void MainWindow::loadProject(const QString &path)
+bool MainWindow::loadProject(const QString &path)
 {
+    const QFileInfo info(path);
+    if (!info.exists() || !info.isDir()) {
+        return false;
+    }
     projectRoot = QDir(path).absolutePath();
     fileSystemModel->setRootPath(projectRoot);
     projectTree->setRootIndex(fileSystemModel->index(projectRoot));
     settings.addRecentProject(projectRoot);
     setStatus(QString::fromUtf8("المشروع: %1").arg(projectRoot));
+    return true;
 }
 
-void MainWindow::openEditorFile(const QString &path)
+bool MainWindow::openEditorFile(const QString &path)
 {
     QString error;
     if (!editor->openFile(path, &error)) {
         QMessageBox::warning(this, QString::fromUtf8("تعذر فتح الملف"), error);
-        return;
+        return false;
     }
     if (projectRoot.isEmpty()) {
         loadProject(QFileInfo(path).absolutePath());
     }
     setStatus(QString::fromUtf8("فتح: %1").arg(QFileInfo(path).fileName()));
+    return true;
 }
 
 void MainWindow::writeOutput(const QString &title, const QString &text)

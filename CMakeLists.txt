@@ -60,5 +60,14 @@ qt_add_executable(acs_project_runtime_tests
 
 target_link_libraries(acs_project_runtime_tests PRIVATE acs_core Qt6::Test)
 
+qt_add_executable(acs_main_window_tests
+    src/MainWindow.h
+    src/MainWindow.cpp
+    tests/TestMainWindow.cpp
+)
+
+target_link_libraries(acs_main_window_tests PRIVATE acs_core Qt6::Test)
+
 add_test(NAME acs_editor_tests COMMAND acs_editor_tests)
 add_test(NAME acs_project_runtime_tests COMMAND acs_project_runtime_tests)
+add_test(NAME acs_main_window_tests COMMAND acs_main_window_tests)
