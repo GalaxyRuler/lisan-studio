@@ -66,6 +66,10 @@ void TestMainWindow::usesSingleRtlTopCommandBarWithMenuButtons()
 {
     MainWindow window;
     QVERIFY(window.windowTitle().contains(QString::fromUtf8("استوديو لسان")));
+    QVERIFY(window.styleSheet().contains(QStringLiteral("QToolButton[role=\"topMenu\"]::menu-indicator")));
+    QVERIFY(window.styleSheet().contains(QStringLiteral("image: none")));
+    QVERIFY(window.styleSheet().contains(QStringLiteral("QToolButton[role=\"topMenu\"]:hover")));
+    QVERIFY(window.styleSheet().contains(QStringLiteral("border-bottom: 2px solid #4C8DFF")));
 
     QVERIFY(window.findChild<QMenuBar *>(QStringLiteral("mainMenuBar")) == nullptr);
     QVERIFY(window.findChild<QToolBar *>() == nullptr);
@@ -112,6 +116,7 @@ void TestMainWindow::usesSingleRtlTopCommandBarWithMenuButtons()
         QVERIFY(button != nullptr);
         QCOMPARE(button->layoutDirection(), Qt::RightToLeft);
         QCOMPARE(button->text(), menuButtonTexts.at(i));
+        QCOMPARE(button->cursor().shape(), Qt::PointingHandCursor);
         QVERIFY(button->menu() != nullptr);
         QVERIFY(!button->menu()->actions().isEmpty());
     }

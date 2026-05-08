@@ -154,9 +154,11 @@ void MainWindow::buildUi()
         "QWidget#topMenuRow { background: #111318; border-bottom: 1px solid #303746; }"
         "QWidget#brandBlock { background: transparent; }"
         "QLabel#brandTextLabel { color: #AEC6FF; font-weight: 600; font-size: 18px; }"
-        "QToolButton[role=\"topMenu\"] { background: transparent; border: 0; color: #C8D0DD; font-weight: 600; padding: 7px 10px; }"
-        "QToolButton[role=\"topMenu\"]:hover { color: #A7C4FF; background: #171B22; }"
+        "QToolButton[role=\"topMenu\"] { background: transparent; border: 1px solid transparent; border-radius: 4px; color: #C8D0DD; font-weight: 600; padding: 7px 10px; }"
+        "QToolButton[role=\"topMenu\"]:hover { color: #E8ECF2; background: #202633; border-color: #303746; border-bottom: 2px solid #4C8DFF; }"
+        "QToolButton[role=\"topMenu\"]:pressed, QToolButton[role=\"topMenu\"]:checked { color: #A7C4FF; background: #13233A; border-color: #4C8DFF; }"
         "QToolButton[role=\"topMenu\"][active=\"true\"] { color: #A7C4FF; border-bottom: 2px solid #4C8DFF; }"
+        "QToolButton[role=\"topMenu\"]::menu-indicator { image: none; width: 0px; }"
         "QToolButton[role=\"primaryAction\"] { background: transparent; border: 1px solid #4C8DFF; border-radius: 12px; padding: 4px 12px; color: #7BDFF2; font-weight: 700; }"
         "QToolButton[role=\"primaryAction\"]:hover { background: #13233A; border-color: #7BDFF2; }"
         "QToolButton { background: #202633; border: 1px solid #303746; border-radius: 4px; padding: 6px 10px; color: #E8ECF2; }"
@@ -230,6 +232,7 @@ void MainWindow::buildUi()
         button->setPopupMode(QToolButton::InstantPopup);
         button->setToolButtonStyle(Qt::ToolButtonTextOnly);
         button->setLayoutDirection(Qt::RightToLeft);
+        button->setCursor(Qt::PointingHandCursor);
         menuLayout->addWidget(button);
         return button;
     };
