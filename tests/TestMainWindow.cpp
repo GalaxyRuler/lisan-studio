@@ -12,6 +12,8 @@ private slots:
     void projectTreeShowsOnlyFileNames();
     void outputPanelIsVisibleForRunFeedback();
     void outputPlaceholderPaintsFromRight();
+    void untitledEditorBufferMaterializesForRunWithoutSaveDialog();
+    void runUsesUntitledBufferWithoutOpeningSaveDialog();
 };
 
 static QString writeFile(const QDir &root, const QString &relative, const QString &text)
@@ -126,6 +128,57 @@ void TestMainWindow::outputPlaceholderPaintsFromRight()
         qPrintable(QStringLiteral("Arabic output placeholder should be painted near the right writing edge. left=%1 right=%2")
             .arg(leftPixels)
             .arg(rightPixels)));
+}
+
+void TestMainWindow::untitledEditorBufferMaterializesForRunWithoutSaveDialog()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+
+    MainWindow window;
+    QVERIFY(window.openPath(temp.path()));
+    QVERIFY(QMetaObject::invokeMethod(&window, "newFile", Qt::DirectConnection));
+
+    auto *editor = window.findChild<EditorSurface *>(QStringLiteral("editorSurface"));
+    QVERIFY(editor != nullptr);
+    editor->setPlainText(QString::fromUtf8("اطبع(\"من المحرر\")\n"));
+
+    QString error;
+    const QString materializedPath = window.materializeRunnableBuffer(&error);
+
+    QVERIFY2(error.isEmpty(), qPrintable(error));
+    QVERIFY(!materializedPath.isEmpty());
+    QVERIFY(QFileInfo(materializedPath).exists());
+    QVERIFY(materializedPath.startsWith(temp.path()));
+    QCOMPARE(window.currentEditorPath(), QString());
+
+    QFile materialized(materializedPath);
+    QVERIFY(materialized.open(QIODevice::ReadOnly | QIODevice::Text));
+    QCOMPARE(QString::fromUtf8(materialized.readAll()), editor->toPlainText());
+}
+
+void TestMainWindow::runUsesUntitledBufferWithoutOpeningSaveDialog()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+
+    MainWindow window;
+    QVERIFY(window.openPath(temp.path()));
+    QVERIFY(QMetaObject::invokeMethod(&window, "newFile", Qt::DirectConnection));
+
+    auto *editor = window.findChild<EditorSurface *>(QStringLiteral("editorSurface"));
+    QVERIFY(editor != nullptr);
+    editor->setPlainText(QString::fromUtf8("اطبع(\"من زر التشغيل\")\n"));
+
+    QVERIFY(QMetaObject::invokeMethod(&window, "runCurrentFile", Qt::DirectConnection));
+
+    QVERIFY(QApplication::activeModalWidget() == nullptr);
+    QCOMPARE(window.currentEditorPath(), QString());
+    QVERIFY(QFileInfo(temp.filePath(QStringLiteral(".arabic-code-studio/current-buffer.apy"))).exists());
+
+    auto *outputPanel = window.findChild<QPlainTextEdit *>(QStringLiteral("outputPanel"));
+    QVERIFY(outputPanel != nullptr);
+    QVERIFY(!outputPanel->toPlainText().isEmpty());
 }
 
 QTEST_MAIN(TestMainWindow)

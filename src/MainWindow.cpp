@@ -2,6 +2,7 @@
 
 #include <QApplication>
 #include <QDir>
+#include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QFormLayout>
@@ -15,6 +16,7 @@
 #include <QStyle>
 #include <QTextStream>
 #include <QToolBar>
+#include <QStandardPaths>
 #include <QVBoxLayout>
 
 class ArabicPlaceholderPlainTextEdit final : public QPlainTextEdit
@@ -85,6 +87,54 @@ QString MainWindow::currentProjectRoot() const
 QString MainWindow::currentEditorPath() const
 {
     return editor->currentFilePath();
+}
+
+QString MainWindow::materializeRunnableBuffer(QString *error)
+{
+    if (error) {
+        error->clear();
+    }
+
+    if (!editor->currentFilePath().isEmpty()) {
+        if (editor->isDirty()) {
+            QString saveError;
+            if (!editor->saveFile(&saveError)) {
+                if (error) {
+                    *error = saveError;
+                }
+                return QString();
+            }
+        }
+        return editor->currentFilePath();
+    }
+
+    const QString baseDirectory = runtimeWorkingDirectory();
+    if (baseDirectory.isEmpty()) {
+        if (error) {
+            *error = QString::fromUtf8("تعذر تحديد مجلد التشغيل.");
+        }
+        return QString();
+    }
+
+    QDir runDirectory(baseDirectory);
+    if (!runDirectory.mkpath(QStringLiteral(".arabic-code-studio"))) {
+        if (error) {
+            *error = QString::fromUtf8("تعذر إنشاء مجلد التشغيل المؤقت.");
+        }
+        return QString();
+    }
+
+    const QString runFilePath = runDirectory.filePath(QStringLiteral(".arabic-code-studio/current-buffer.apy"));
+    QFile file(runFilePath);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate)) {
+        if (error) {
+            *error = file.errorString();
+        }
+        return QString();
+    }
+
+    file.write(editor->toPlainText().toUtf8());
+    return runFilePath;
 }
 
 void MainWindow::buildUi()
@@ -383,23 +433,23 @@ bool MainWindow::confirmSaveIfDirty()
     return true;
 }
 
-bool MainWindow::ensureCurrentFileSaved()
+QString MainWindow::runtimeWorkingDirectory() const
 {
-    if (editor->currentFilePath().isEmpty()) {
-        saveFileAs();
+    if (!projectRoot.isEmpty()) {
+        return projectRoot;
     }
-    if (editor->currentFilePath().isEmpty()) {
-        return false;
+    if (!editor->currentFilePath().isEmpty()) {
+        return QFileInfo(editor->currentFilePath()).absolutePath();
     }
-    if (editor->isDirty()) {
-        saveFile();
-    }
-    return !editor->isDirty();
+    return QStandardPaths::writableLocation(QStandardPaths::TempLocation);
 }
 
 void MainWindow::runRuntimeAction(RuntimeAction action, const QString &title, bool reloadAfterSuccess)
 {
-    if (!ensureCurrentFileSaved()) {
+    QString materializeError;
+    const QString runFilePath = materializeRunnableBuffer(&materializeError);
+    if (runFilePath.isEmpty()) {
+        writeOutput(title, materializeError);
         return;
     }
 
@@ -407,7 +457,7 @@ void MainWindow::runRuntimeAction(RuntimeAction action, const QString &title, bo
     setStatus(QString::fromUtf8("%1...").arg(title));
     QApplication::processEvents();
 
-    const RuntimeResult result = runtime.runBlocking(action, editor->currentFilePath(), 30000);
+    const RuntimeResult result = runtime.runBlocking(action, runFilePath, runtimeWorkingDirectory(), 30000);
     const QString output = QString::fromUtf8("exit=%1\n\n%2\n%3")
         .arg(result.exitCode)
         .arg(result.standardOutput)
@@ -416,6 +466,6 @@ void MainWindow::runRuntimeAction(RuntimeAction action, const QString &title, bo
 
     if (reloadAfterSuccess && result.exitCode == 0) {
         QString error;
-        editor->openFile(editor->currentFilePath(), &error);
+        editor->openFile(runFilePath, &error);
     }
 }

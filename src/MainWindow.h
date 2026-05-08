@@ -25,6 +25,7 @@ public:
     bool openPath(const QString &path);
     QString currentProjectRoot() const;
     QString currentEditorPath() const;
+    QString materializeRunnableBuffer(QString *error = nullptr);
 
 private slots:
     void newFile();
@@ -58,7 +59,7 @@ private:
     bool openEditorFile(const QString &path);
     void writeOutput(const QString &title, const QString &text);
     void showOutputPanel();
+    QString runtimeWorkingDirectory() const;
     bool confirmSaveIfDirty();
-    bool ensureCurrentFileSaved();
     void runRuntimeAction(RuntimeAction action, const QString &title, bool reloadAfterSuccess = false);
 };

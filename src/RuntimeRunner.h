@@ -37,8 +37,10 @@ public:
     QString runtimeRoot() const;
 
     RuntimeCommand buildCommand(RuntimeAction action, const QString &filePath) const;
+    RuntimeCommand buildCommand(RuntimeAction action, const QString &filePath, const QString &workingDirectory) const;
     QProcessEnvironment processEnvironment() const;
     RuntimeResult runBlocking(RuntimeAction action, const QString &filePath, int timeoutMs = 30000) const;
+    RuntimeResult runBlocking(RuntimeAction action, const QString &filePath, const QString &workingDirectory, int timeoutMs = 30000) const;
 
 private:
     QString root;

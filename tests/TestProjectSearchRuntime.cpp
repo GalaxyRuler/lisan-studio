@@ -13,6 +13,7 @@ private slots:
     void projectModelIgnoresBuildAndCacheDirectories();
     void searchServiceFindsUtf8ArabicMatches();
     void runtimeRunnerBuildsExplicitArgumentList();
+    void runtimeRunnerCanUseExplicitProjectWorkingDirectory();
     void runtimeRunnerUsesIsolatedUtf8PythonEnvironment();
     void settingsStorePersistsArabicFontAndRecentProject();
 };
@@ -78,6 +79,20 @@ void TestProjectSearchRuntime::runtimeRunnerBuildsExplicitArgumentList()
     QCOMPARE(lint.arguments.at(1), QStringLiteral("arabicpython.linter"));
     QCOMPARE(format.arguments.at(1), QStringLiteral("arabicpython.formatter"));
     QVERIFY(!command.program.contains(QStringLiteral(" ")));
+}
+
+void TestProjectSearchRuntime::runtimeRunnerCanUseExplicitProjectWorkingDirectory()
+{
+    RuntimeRunner runner;
+    runner.setRuntimeRoot(QStringLiteral("C:/app/runtime"));
+
+    const auto command = runner.buildCommand(
+        RuntimeAction::Run,
+        QStringLiteral("C:/project/.arabic-code-studio/run-buffer.apy"),
+        QStringLiteral("C:/project"));
+
+    QCOMPARE(command.workingDirectory, QStringLiteral("C:/project"));
+    QCOMPARE(command.arguments.last(), QStringLiteral("C:/project/.arabic-code-studio/run-buffer.apy"));
 }
 
 void TestProjectSearchRuntime::runtimeRunnerUsesIsolatedUtf8PythonEnvironment()

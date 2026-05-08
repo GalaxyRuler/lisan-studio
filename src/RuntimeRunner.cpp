@@ -21,9 +21,14 @@ QString RuntimeRunner::runtimeRoot() const
 
 RuntimeCommand RuntimeRunner::buildCommand(RuntimeAction action, const QString &filePath) const
 {
+    return buildCommand(action, filePath, QFileInfo(filePath).absolutePath());
+}
+
+RuntimeCommand RuntimeRunner::buildCommand(RuntimeAction action, const QString &filePath, const QString &workingDirectory) const
+{
     RuntimeCommand command;
     command.program = pythonExecutable();
-    command.workingDirectory = QFileInfo(filePath).absolutePath();
+    command.workingDirectory = workingDirectory.isEmpty() ? QFileInfo(filePath).absolutePath() : workingDirectory;
 
     switch (action) {
     case RuntimeAction::Run:
@@ -53,7 +58,12 @@ QProcessEnvironment RuntimeRunner::processEnvironment() const
 
 RuntimeResult RuntimeRunner::runBlocking(RuntimeAction action, const QString &filePath, int timeoutMs) const
 {
-    const RuntimeCommand command = buildCommand(action, filePath);
+    return runBlocking(action, filePath, QFileInfo(filePath).absolutePath(), timeoutMs);
+}
+
+RuntimeResult RuntimeRunner::runBlocking(RuntimeAction action, const QString &filePath, const QString &workingDirectory, int timeoutMs) const
+{
+    const RuntimeCommand command = buildCommand(action, filePath, workingDirectory);
     QProcess process;
     process.setProgram(command.program);
     process.setArguments(command.arguments);
