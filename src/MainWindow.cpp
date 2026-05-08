@@ -8,12 +8,51 @@
 #include <QHBoxLayout>
 #include <QInputDialog>
 #include <QMessageBox>
+#include <QPainter>
+#include <QPaintEvent>
 #include <QSplitter>
 #include <QStatusBar>
 #include <QStyle>
 #include <QTextStream>
 #include <QToolBar>
 #include <QVBoxLayout>
+
+class ArabicPlaceholderPlainTextEdit final : public QPlainTextEdit
+{
+public:
+    explicit ArabicPlaceholderPlainTextEdit(QWidget *parent = nullptr)
+        : QPlainTextEdit(parent)
+    {
+    }
+
+    void setArabicPlaceholderText(const QString &text)
+    {
+        placeholder = text;
+        setPlaceholderText(QString());
+        viewport()->update();
+    }
+
+protected:
+    void paintEvent(QPaintEvent *event) override
+    {
+        QPlainTextEdit::paintEvent(event);
+
+        if (!toPlainText().isEmpty() || placeholder.isEmpty()) {
+            return;
+        }
+
+        QPainter painter(viewport());
+        painter.setPen(QColor(145, 155, 160));
+        const QRect textRect = viewport()->rect().adjusted(12, 10, -12, 0);
+        const int textWidth = fontMetrics().horizontalAdvance(placeholder);
+        const int x = qMax(textRect.left(), textRect.right() - textWidth + 1);
+        const int y = textRect.top() + fontMetrics().ascent();
+        painter.drawText(x, y, placeholder);
+    }
+
+private:
+    QString placeholder;
+};
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -124,12 +163,17 @@ void MainWindow::buildUi()
     splitter->setStretchFactor(1, 1);
     setCentralWidget(splitter);
 
-    outputPanel = new QPlainTextEdit(this);
+    auto *arabicOutputPanel = new ArabicPlaceholderPlainTextEdit(this);
+    outputPanel = arabicOutputPanel;
     outputPanel->setObjectName(QStringLiteral("outputPanel"));
     outputPanel->setReadOnly(true);
-    outputPanel->setLayoutDirection(Qt::LeftToRight);
+    outputPanel->setLayoutDirection(Qt::RightToLeft);
+    QTextOption outputOption = outputPanel->document()->defaultTextOption();
+    outputOption.setTextDirection(Qt::RightToLeft);
+    outputOption.setAlignment(Qt::AlignRight);
+    outputPanel->document()->setDefaultTextOption(outputOption);
     outputPanel->setMinimumHeight(160);
-    outputPanel->setPlaceholderText(QString::fromUtf8("المخرجات ستظهر هنا"));
+    arabicOutputPanel->setArabicPlaceholderText(QString::fromUtf8("المخرجات ستظهر هنا"));
 
     outputDock = new QDockWidget(QString::fromUtf8("المخرجات"), this);
     outputDock->setObjectName(QStringLiteral("outputDock"));

@@ -40,7 +40,8 @@ EditorSurface::EditorSurface(QWidget *parent)
     setLineWrapMode(QPlainTextEdit::NoWrap);
     setUndoRedoEnabled(true);
     setTabStopDistance(fontMetrics().horizontalAdvance(' ') * 4);
-    setPlaceholderText(QString::fromUtf8("اكتب كود لغة الثعبان هنا"));
+    emptyPlaceholderText = QString::fromUtf8("اكتب كود لغة الثعبان هنا");
+    setPlaceholderText(QString());
 
     QTextOption option = document()->defaultTextOption();
     option.setTextDirection(Qt::RightToLeft);
@@ -228,6 +229,23 @@ void EditorSurface::updateLineNumberArea(const QRect &rect, int dy)
     if (rect.contains(viewport()->rect())) {
         updateLineNumberAreaWidth(blockCount());
     }
+}
+
+void EditorSurface::paintEvent(QPaintEvent *event)
+{
+    QPlainTextEdit::paintEvent(event);
+
+    if (!toPlainText().isEmpty() || emptyPlaceholderText.isEmpty()) {
+        return;
+    }
+
+    QPainter painter(viewport());
+    painter.setPen(QColor(145, 155, 160));
+    const QRect textRect = viewport()->rect().adjusted(12, 8, -12, 0);
+    const int textWidth = fontMetrics().horizontalAdvance(emptyPlaceholderText);
+    const int x = qMax(textRect.left(), textRect.right() - textWidth + 1);
+    const int y = textRect.top() + fontMetrics().ascent();
+    painter.drawText(x, y, emptyPlaceholderText);
 }
 
 void EditorSurface::resizeEvent(QResizeEvent *event)

@@ -38,6 +38,7 @@ signals:
 
 private:
     QString filePath;
+    QString emptyPlaceholderText;
     ApyHighlighter *highlighter = nullptr;
     LineNumberArea *lineNumberArea = nullptr;
 
@@ -45,5 +46,6 @@ private:
     void setCurrentFilePath(const QString &path);
     void updateLineNumberAreaWidth(int blockCount);
     void updateLineNumberArea(const QRect &rect, int dy);
+    void paintEvent(QPaintEvent *event) override;
     void resizeEvent(QResizeEvent *event) override;
 };

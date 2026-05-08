@@ -18,6 +18,7 @@ private slots:
     void cursorCanVisitEveryLogicalPositionInMixedDirectionLongLine();
     void lineNumberAreaScalesAndStaysVisibleForLongFiles();
     void lineNumbersStayOnRightEdgeForArabicEditing();
+    void emptyEditorPlaceholderPaintsFromRight();
 };
 
 static QString tortureText()
@@ -223,6 +224,42 @@ void TestEditorSurface::lineNumbersStayOnRightEdgeForArabicEditing()
     const QTextOption option = editor.document()->defaultTextOption();
     QCOMPARE(option.textDirection(), Qt::RightToLeft);
     QCOMPARE(option.alignment() & Qt::AlignHorizontal_Mask, Qt::AlignRight);
+}
+
+void TestEditorSurface::emptyEditorPlaceholderPaintsFromRight()
+{
+    EditorSurface editor;
+    editor.resize(800, 360);
+    editor.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&editor));
+
+    QImage image(editor.size(), QImage::Format_ARGB32);
+    image.fill(Qt::transparent);
+    editor.render(&image);
+
+    auto countVisibleTextPixels = [&image](const QRect &rect) {
+        int count = 0;
+        for (int y = rect.top(); y <= rect.bottom(); ++y) {
+            for (int x = rect.left(); x <= rect.right(); ++x) {
+                const QColor color = image.pixelColor(x, y);
+                if (color.lightness() > 110 && color.alpha() > 0) {
+                    ++count;
+                }
+            }
+        }
+        return count;
+    };
+
+    const QRect content = editor.viewport()->geometry();
+    const QRect leftBand(content.left() + 12, content.top() + 8, 240, 40);
+    const QRect rightBand(content.right() - 300, content.top() + 8, 240, 40);
+    const int leftPixels = countVisibleTextPixels(leftBand);
+    const int rightPixels = countVisibleTextPixels(rightBand);
+
+    QVERIFY2(rightPixels > leftPixels * 2,
+        qPrintable(QStringLiteral("Empty Arabic placeholder should be painted near the right writing edge. left=%1 right=%2")
+            .arg(leftPixels)
+            .arg(rightPixels)));
 }
 
 QTEST_MAIN(TestEditorSurface)
