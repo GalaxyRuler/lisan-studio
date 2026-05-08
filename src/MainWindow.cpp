@@ -1,6 +1,7 @@
 #include "MainWindow.h"
 
 #include <QApplication>
+#include <QDialog>
 #include <QDir>
 #include <QFile>
 #include <QFileDialog>
@@ -8,14 +9,17 @@
 #include <QFormLayout>
 #include <QHBoxLayout>
 #include <QInputDialog>
+#include <QListWidget>
+#include <QMenu>
 #include <QMessageBox>
 #include <QPainter>
 #include <QPaintEvent>
+#include <QPixmap>
 #include <QSplitter>
 #include <QStatusBar>
 #include <QStyle>
 #include <QTextStream>
-#include <QToolBar>
+#include <QToolButton>
 #include <QStandardPaths>
 #include <QVBoxLayout>
 
@@ -61,7 +65,7 @@ MainWindow::MainWindow(QWidget *parent)
 {
     buildUi();
     resize(1280, 820);
-    setWindowTitle(QString::fromUtf8("استوديو البرمجة"));
+    setWindowTitle(QString::fromUtf8("استوديو لسان"));
 }
 
 bool MainWindow::openPath(const QString &path)
@@ -142,45 +146,185 @@ void MainWindow::buildUi()
     setLayoutDirection(Qt::RightToLeft);
 
     setStyleSheet(QStringLiteral(
-        "QMainWindow, QWidget { background: #202124; color: #e8eaed; }"
-        "QToolBar { background: #181a1b; border: 0; spacing: 6px; padding: 6px; }"
-        "QToolButton { background: #2b2f31; border: 1px solid #3d4347; border-radius: 4px; padding: 5px 8px; }"
-        "QToolButton:hover { background: #343a3f; }"
-        "QLineEdit { background: #111315; border: 1px solid #3d4347; border-radius: 4px; padding: 5px 8px; }"
-        "QTreeView, QPlainTextEdit { background: #25282a; border: 1px solid #343a3f; selection-background-color: #365b6d; }"
-        "QDockWidget::title { background: #181a1b; padding: 5px; text-align: right; }"
-        "QStatusBar { background: #181a1b; }"));
+        "QMainWindow, QWidget { background: #0f141a; color: #E8ECF2; font-family: 'IBM Plex Sans Arabic', 'Segoe UI'; }"
+        "QMenu { background: #171B22; color: #E8ECF2; border: 1px solid #303746; }"
+        "QMenu::item { padding: 6px 24px; }"
+        "QMenu::item:selected { background: #264F78; }"
+        "QWidget#topShell { background: #111318; border-bottom: 1px solid #303746; }"
+        "QWidget#topMenuRow { background: #111318; border-bottom: 1px solid #303746; }"
+        "QWidget#brandBlock { background: transparent; }"
+        "QLabel#brandTextLabel { color: #AEC6FF; font-weight: 600; font-size: 18px; }"
+        "QToolButton[role=\"topMenu\"] { background: transparent; border: 0; color: #C8D0DD; font-weight: 600; padding: 7px 10px; }"
+        "QToolButton[role=\"topMenu\"]:hover { color: #A7C4FF; background: #171B22; }"
+        "QToolButton[role=\"topMenu\"][active=\"true\"] { color: #A7C4FF; border-bottom: 2px solid #4C8DFF; }"
+        "QToolButton[role=\"primaryAction\"] { background: transparent; border: 1px solid #4C8DFF; border-radius: 12px; padding: 4px 12px; color: #7BDFF2; font-weight: 700; }"
+        "QToolButton[role=\"primaryAction\"]:hover { background: #13233A; border-color: #7BDFF2; }"
+        "QToolButton { background: #202633; border: 1px solid #303746; border-radius: 4px; padding: 6px 10px; color: #E8ECF2; }"
+        "QToolButton:hover { border-color: #4C8DFF; background: #262d3b; }"
+        "QToolButton:disabled { color: #6F7A8A; background: #171B22; }"
+        "QLineEdit { background: #1B2230; border: 1px solid #303746; border-radius: 12px; padding: 5px 12px; color: #E8ECF2; selection-background-color: #264F78; }"
+        "QLineEdit:focus { border-color: #4C8DFF; }"
+        "QTreeView, QPlainTextEdit, QListWidget { background: #0D1117; border: 1px solid #303746; selection-background-color: #264F78; color: #E8ECF2; }"
+        "QTabWidget::pane { border: 1px solid #303746; background: #0D1117; }"
+        "QTabBar::tab { background: #171B22; color: #A7B0BE; border: 1px solid #303746; padding: 7px 12px; }"
+        "QTabBar::tab:selected { background: #202633; color: #E8ECF2; border-top: 2px solid #4C8DFF; }"
+        "QDockWidget::title { background: #111318; padding: 6px; text-align: right; color: #E8ECF2; }"
+        "QStatusBar { background: #111318; color: #A7B0BE; border-top: 1px solid #303746; }"));
 
-    auto *toolbar = addToolBar(QString::fromUtf8("الأوامر"));
-    toolbar->setMovable(false);
-    toolbar->setLayoutDirection(Qt::RightToLeft);
-    toolbar->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    auto *topShell = new QWidget(this);
+    topShell->setObjectName(QStringLiteral("topShell"));
+    topShell->setLayoutDirection(Qt::RightToLeft);
+    topShell->setFixedHeight(44);
 
-    auto addActionButton = [&](const QIcon &icon, const QString &label, auto slot) {
-        QAction *action = toolbar->addAction(icon, label);
-        connect(action, &QAction::triggered, this, slot);
+    auto *topMenuRow = new QWidget(topShell);
+    topMenuRow->setObjectName(QStringLiteral("topMenuRow"));
+    topMenuRow->setLayoutDirection(Qt::RightToLeft);
+    topMenuRow->setFixedHeight(44);
+    auto *topShellLayout = new QHBoxLayout(topShell);
+    topShellLayout->setContentsMargins(0, 0, 0, 0);
+    topShellLayout->setSpacing(0);
+    topShellLayout->addWidget(topMenuRow);
+    auto *menuLayout = new QHBoxLayout(topMenuRow);
+    menuLayout->setContentsMargins(12, 4, 12, 4);
+    menuLayout->setSpacing(10);
+    setMenuWidget(topShell);
+
+    auto *brandBlock = new QWidget(topMenuRow);
+    brandBlock->setObjectName(QStringLiteral("brandBlock"));
+    brandBlock->setLayoutDirection(Qt::LeftToRight);
+    auto *brandLayout = new QHBoxLayout(brandBlock);
+    brandLayout->setContentsMargins(0, 0, 0, 0);
+    brandLayout->setSpacing(8);
+
+    brandLogoLabel = new QLabel(brandBlock);
+    brandLogoLabel->setObjectName(QStringLiteral("brandLogoLabel"));
+    brandLogoLabel->setPixmap(QPixmap(QStringLiteral(":/branding/lisan-logo.png")).scaled(
+        30,
+        30,
+        Qt::KeepAspectRatio,
+        Qt::SmoothTransformation));
+    brandLogoLabel->setToolTip(QString::fromUtf8("استوديو لسان"));
+    auto *brandTextLabel = new QLabel(QStringLiteral("Lisan Studio"), brandBlock);
+    brandTextLabel->setObjectName(QStringLiteral("brandTextLabel"));
+    brandTextLabel->setToolTip(QString::fromUtf8("استوديو لسان"));
+    brandLayout->addWidget(brandLogoLabel);
+    brandLayout->addWidget(brandTextLabel);
+
+    auto *fileMenu = new QMenu(QString::fromUtf8("ملف"), this);
+    auto *editMenu = new QMenu(QString::fromUtf8("تحرير"), this);
+    auto *viewMenu = new QMenu(QString::fromUtf8("عرض"), this);
+    auto *runMenu = new QMenu(QString::fromUtf8("تشغيل"), this);
+    auto *searchMenu = new QMenu(QString::fromUtf8("بحث"), this);
+    auto *toolsMenu = new QMenu(QString::fromUtf8("أدوات"), this);
+    auto *helpMenu = new QMenu(QString::fromUtf8("مساعدة"), this);
+    for (auto *menu : {fileMenu, editMenu, viewMenu, runMenu, searchMenu, toolsMenu, helpMenu}) {
+        menu->setLayoutDirection(Qt::RightToLeft);
+    }
+
+    auto addMenuButton = [&](const QString &objectName, const QString &label, QMenu *menu) {
+        auto *button = new QToolButton(topMenuRow);
+        button->setObjectName(objectName);
+        button->setProperty("role", "topMenu");
+        button->setText(label);
+        button->setMenu(menu);
+        button->setPopupMode(QToolButton::InstantPopup);
+        button->setToolButtonStyle(Qt::ToolButtonTextOnly);
+        button->setLayoutDirection(Qt::RightToLeft);
+        menuLayout->addWidget(button);
+        return button;
     };
 
-    addActionButton(style()->standardIcon(QStyle::SP_FileIcon), QString::fromUtf8("جديد"), &MainWindow::newFile);
-    addActionButton(style()->standardIcon(QStyle::SP_DialogOpenButton), QString::fromUtf8("فتح ملف"), &MainWindow::openFile);
-    addActionButton(style()->standardIcon(QStyle::SP_DialogSaveButton), QString::fromUtf8("حفظ"), &MainWindow::saveFile);
-    addActionButton(style()->standardIcon(QStyle::SP_DriveFDIcon), QString::fromUtf8("حفظ باسم"), &MainWindow::saveFileAs);
-    addActionButton(style()->standardIcon(QStyle::SP_DirOpenIcon), QString::fromUtf8("فتح مشروع"), &MainWindow::openFolder);
-    addActionButton(style()->standardIcon(QStyle::SP_MediaPlay), QString::fromUtf8("تشغيل"), &MainWindow::runCurrentFile);
-    addActionButton(style()->standardIcon(QStyle::SP_MessageBoxInformation), QString::fromUtf8("فحص"), &MainWindow::lintCurrentFile);
-    addActionButton(style()->standardIcon(QStyle::SP_BrowserReload), QString::fromUtf8("تنسيق"), &MainWindow::formatCurrentFile);
-    addActionButton(style()->standardIcon(QStyle::SP_FileDialogDetailedView), QString::fromUtf8("الإعدادات"), &MainWindow::openSettings);
+    addMenuButton(QStringLiteral("topMenuFileButton"), QString::fromUtf8("ملف"), fileMenu);
+    addMenuButton(QStringLiteral("topMenuEditButton"), QString::fromUtf8("تحرير"), editMenu);
+    addMenuButton(QStringLiteral("topMenuViewButton"), QString::fromUtf8("عرض"), viewMenu);
+    addMenuButton(QStringLiteral("topMenuRunButton"), QString::fromUtf8("تشغيل"), runMenu);
+    addMenuButton(QStringLiteral("topMenuSearchButton"), QString::fromUtf8("بحث"), searchMenu);
+    addMenuButton(QStringLiteral("topMenuToolsButton"), QString::fromUtf8("أدوات"), toolsMenu);
+    addMenuButton(QStringLiteral("topMenuHelpButton"), QString::fromUtf8("مساعدة"), helpMenu);
+
+    auto makeAction = [&](const QIcon &icon, const QString &label, auto slot) {
+        auto *action = new QAction(icon, label, this);
+        action->setToolTip(label);
+        connect(action, &QAction::triggered, this, slot);
+        addAction(action);
+        return action;
+    };
+
+    auto addTopButton = [&](const QString &objectName, QAction *action, const char *role, Qt::ToolButtonStyle buttonStyle) {
+        auto *button = new QToolButton(topMenuRow);
+        button->setObjectName(objectName);
+        button->setProperty("role", role);
+        button->setDefaultAction(action);
+        button->setToolButtonStyle(buttonStyle);
+        button->setLayoutDirection(Qt::RightToLeft);
+        if (buttonStyle == Qt::ToolButtonIconOnly) {
+            button->setToolTip(action->text());
+        }
+        menuLayout->addWidget(button);
+        return button;
+    };
+
+    auto *saveAction = makeAction(style()->standardIcon(QStyle::SP_DialogSaveButton), QString::fromUtf8("حفظ"), &MainWindow::saveFile);
+    auto *openProjectAction = makeAction(style()->standardIcon(QStyle::SP_DirOpenIcon), QString::fromUtf8("فتح مشروع"), &MainWindow::openFolder);
+    runAction = makeAction(style()->standardIcon(QStyle::SP_MediaPlay), QString::fromUtf8("تشغيل"), &MainWindow::runCurrentFile);
+    runAction->setObjectName(QStringLiteral("runAction"));
+    cancelRunAction = makeAction(style()->standardIcon(QStyle::SP_MediaStop), QString::fromUtf8("إيقاف"), &MainWindow::cancelRuntimeProcess);
+    cancelRunAction->setObjectName(QStringLiteral("cancelRunAction"));
+    cancelRunAction->setEnabled(false);
+    lintAction = makeAction(style()->standardIcon(QStyle::SP_MessageBoxInformation), QString::fromUtf8("فحص"), &MainWindow::lintCurrentFile);
+    lintAction->setObjectName(QStringLiteral("lintAction"));
+    formatAction = makeAction(style()->standardIcon(QStyle::SP_BrowserReload), QString::fromUtf8("تنسيق"), &MainWindow::formatCurrentFile);
+    formatAction->setObjectName(QStringLiteral("formatAction"));
+    commandPaletteAction = makeAction(style()->standardIcon(QStyle::SP_FileDialogListView), QString::fromUtf8("لوحة الأوامر"), &MainWindow::openCommandPalette);
+    commandPaletteAction->setObjectName(QStringLiteral("commandPaletteAction"));
+    commandPaletteAction->setShortcuts({QKeySequence(QStringLiteral("Ctrl+Shift+P"))});
+    auto *settingsAction = makeAction(style()->standardIcon(QStyle::SP_FileDialogDetailedView), QString::fromUtf8("الإعدادات"), &MainWindow::openSettings);
+    auto *searchAction = makeAction(style()->standardIcon(QStyle::SP_FileDialogContentsView), QString::fromUtf8("بحث"), &MainWindow::findInProject);
+
+    addTopButton(QStringLiteral("topRunButton"), runAction, "primaryAction", Qt::ToolButtonTextBesideIcon);
+
+    fileMenu->addAction(QString::fromUtf8("ملف جديد"), QKeySequence::New, this, &MainWindow::newFile);
+    fileMenu->addAction(QString::fromUtf8("فتح ملف"), QKeySequence::Open, this, &MainWindow::openFile);
+    fileMenu->addAction(QString::fromUtf8("فتح مشروع"), this, &MainWindow::openFolder);
+    fileMenu->addAction(QString::fromUtf8("حفظ"), QKeySequence::Save, this, &MainWindow::saveFile);
+    fileMenu->addAction(QString::fromUtf8("حفظ باسم"), QKeySequence::SaveAs, this, &MainWindow::saveFileAs);
+    editMenu->addAction(QString::fromUtf8("تراجع"), QKeySequence::Undo, this, [this]() {
+        if (editor) {
+            editor->undo();
+        }
+    });
+    editMenu->addAction(QString::fromUtf8("إعادة"), QKeySequence::Redo, this, [this]() {
+        if (editor) {
+            editor->redo();
+        }
+    });
+    viewMenu->addAction(commandPaletteAction);
+    searchMenu->addAction(QString::fromUtf8("بحث في المشروع"), this, &MainWindow::findInProject);
+    toolsMenu->addAction(QString::fromUtf8("فحص"), this, &MainWindow::lintCurrentFile);
+    toolsMenu->addAction(QString::fromUtf8("تنسيق"), this, &MainWindow::formatCurrentFile);
+    toolsMenu->addAction(settingsAction);
+    runMenu->addAction(QString::fromUtf8("تشغيل الملف الحالي"), QKeySequence(QStringLiteral("F5")), this, &MainWindow::runCurrentFile);
+    runMenu->addAction(QString::fromUtf8("إيقاف التشغيل"), QKeySequence(QStringLiteral("Shift+F5")), this, &MainWindow::cancelRuntimeProcess);
+    helpMenu->addAction(QString::fromUtf8("عن استوديو لسان"), this, [this]() {
+        QMessageBox::information(this, QString::fromUtf8("عن استوديو لسان"), QString::fromUtf8("استوديو لسان\nبيئة عربية أصلية لملفات .apy"));
+    });
+
+    runtimeTimeoutTimer = new QTimer(this);
+    runtimeTimeoutTimer->setObjectName(QStringLiteral("runtimeTimeoutTimer"));
+    runtimeTimeoutTimer->setSingleShot(true);
+    runtimeTimeoutTimer->setInterval(30000);
+    connect(runtimeTimeoutTimer, &QTimer::timeout, this, &MainWindow::handleRuntimeTimeout);
 
     commandBox = new QLineEdit(this);
-    commandBox->setPlaceholderText(QString::fromUtf8("ابحث أو اكتب أمرا"));
+    commandBox->setObjectName(QStringLiteral("commandBox"));
+    commandBox->setPlaceholderText(QString::fromUtf8("ابحث في الأوامر والملفات..."));
     commandBox->setLayoutDirection(Qt::RightToLeft);
-    toolbar->addWidget(commandBox);
-
-    searchBox = new QLineEdit(this);
-    searchBox->setPlaceholderText(QString::fromUtf8("بحث في المشروع"));
-    searchBox->setLayoutDirection(Qt::RightToLeft);
-    toolbar->addWidget(searchBox);
-    connect(searchBox, &QLineEdit::returnPressed, this, &MainWindow::findInProject);
+    commandBox->setFixedWidth(440);
+    connect(commandBox, &QLineEdit::returnPressed, this, &MainWindow::findInProject);
+    menuLayout->addStretch(1);
+    menuLayout->addWidget(commandBox);
+    menuLayout->addStretch(1);
+    menuLayout->addWidget(brandBlock);
 
     auto *splitter = new QSplitter(Qt::Horizontal, this);
     splitter->setLayoutDirection(Qt::RightToLeft);
@@ -199,21 +343,28 @@ void MainWindow::buildUi()
     projectTree->setMinimumWidth(240);
     connect(projectTree, &QTreeView::doubleClicked, this, &MainWindow::openSelectedProjectFile);
 
-    editor = new EditorSurface(splitter);
-    editor->setObjectName(QStringLiteral("editorSurface"));
-    connect(editor, &EditorSurface::filePathChanged, this, [this](const QString &path) {
-        setWindowTitle(path.isEmpty()
-            ? QString::fromUtf8("استوديو البرمجة")
-            : QString::fromUtf8("استوديو البرمجة - %1").arg(QFileInfo(path).fileName()));
+    editorTabs = new QTabWidget(splitter);
+    editorTabs->setObjectName(QStringLiteral("editorTabs"));
+    editorTabs->setDocumentMode(true);
+    editorTabs->setTabsClosable(true);
+    editorTabs->setLayoutDirection(Qt::RightToLeft);
+    connect(editorTabs, &QTabWidget::currentChanged, this, [this](int index) {
+        setCurrentEditor(qobject_cast<EditorSurface *>(editorTabs->widget(index)));
     });
+    connect(editorTabs, &QTabWidget::tabCloseRequested, this, &MainWindow::closeEditorTab);
+    createEditorTab(QString::fromUtf8("ملف جديد"));
 
     splitter->addWidget(projectTree);
-    splitter->addWidget(editor);
+    splitter->addWidget(editorTabs);
     splitter->setStretchFactor(0, 0);
     splitter->setStretchFactor(1, 1);
     setCentralWidget(splitter);
 
-    auto *arabicOutputPanel = new ArabicPlaceholderPlainTextEdit(this);
+    bottomPanelTabs = new QTabWidget(this);
+    bottomPanelTabs->setObjectName(QStringLiteral("bottomPanelTabs"));
+    bottomPanelTabs->setLayoutDirection(Qt::RightToLeft);
+
+    auto *arabicOutputPanel = new ArabicPlaceholderPlainTextEdit(bottomPanelTabs);
     outputPanel = arabicOutputPanel;
     outputPanel->setObjectName(QStringLiteral("outputPanel"));
     outputPanel->setReadOnly(true);
@@ -225,9 +376,35 @@ void MainWindow::buildUi()
     outputPanel->setMinimumHeight(160);
     arabicOutputPanel->setArabicPlaceholderText(QString::fromUtf8("المخرجات ستظهر هنا"));
 
-    outputDock = new QDockWidget(QString::fromUtf8("المخرجات"), this);
+    auto *arabicTerminalPanel = new ArabicPlaceholderPlainTextEdit(bottomPanelTabs);
+    terminalPanel = arabicTerminalPanel;
+    terminalPanel->setObjectName(QStringLiteral("terminalPanel"));
+    terminalPanel->setReadOnly(true);
+    terminalPanel->setLayoutDirection(Qt::RightToLeft);
+    arabicTerminalPanel->setArabicPlaceholderText(QString::fromUtf8("الطرفية ستظهر هنا"));
+
+    auto *arabicProblemsPanel = new ArabicPlaceholderPlainTextEdit(bottomPanelTabs);
+    problemsPanel = arabicProblemsPanel;
+    problemsPanel->setObjectName(QStringLiteral("problemsPanel"));
+    problemsPanel->setReadOnly(true);
+    problemsPanel->setLayoutDirection(Qt::RightToLeft);
+    arabicProblemsPanel->setArabicPlaceholderText(QString::fromUtf8("لا توجد مشاكل حاليا"));
+
+    auto *arabicDebugPanel = new ArabicPlaceholderPlainTextEdit(bottomPanelTabs);
+    debugPanel = arabicDebugPanel;
+    debugPanel->setObjectName(QStringLiteral("debugPanel"));
+    debugPanel->setReadOnly(true);
+    debugPanel->setLayoutDirection(Qt::RightToLeft);
+    arabicDebugPanel->setArabicPlaceholderText(QString::fromUtf8("بيانات التصحيح ستظهر هنا"));
+
+    bottomPanelTabs->addTab(terminalPanel, QString::fromUtf8("الطرفية"));
+    bottomPanelTabs->addTab(outputPanel, QString::fromUtf8("الإخراج"));
+    bottomPanelTabs->addTab(problemsPanel, QString::fromUtf8("المشاكل"));
+    bottomPanelTabs->addTab(debugPanel, QString::fromUtf8("التصحيح"));
+
+    outputDock = new QDockWidget(QString::fromUtf8("اللوحة السفلية"), this);
     outputDock->setObjectName(QStringLiteral("outputDock"));
-    outputDock->setWidget(outputPanel);
+    outputDock->setWidget(bottomPanelTabs);
     outputDock->setMinimumHeight(180);
     outputDock->setFeatures(QDockWidget::DockWidgetMovable | QDockWidget::DockWidgetFloatable);
     addDockWidget(Qt::BottomDockWidgetArea, outputDock);
@@ -242,7 +419,7 @@ void MainWindow::newFile()
     if (!confirmSaveIfDirty()) {
         return;
     }
-    editor->resetForNewFile();
+    createEditorTab(QString::fromUtf8("ملف جديد"));
     outputPanel->clear();
     setStatus(QString::fromUtf8("ملف جديد"));
 }
@@ -314,6 +491,105 @@ void MainWindow::formatCurrentFile()
     runRuntimeAction(RuntimeAction::Format, QString::fromUtf8("تنسيق"), true);
 }
 
+void MainWindow::cancelRuntimeProcess()
+{
+    if (!activeRuntimeProcess || activeRuntimeProcess->state() == QProcess::NotRunning) {
+        return;
+    }
+
+    appendRuntimeOutput(QString::fromUtf8("النظام"), QString::fromUtf8("تم طلب إيقاف العملية."));
+    activeRuntimeProcess->kill();
+    setStatus(QString::fromUtf8("تم إيقاف التشغيل"));
+}
+
+void MainWindow::appendRuntimeStdout()
+{
+    if (!activeRuntimeProcess) {
+        return;
+    }
+    appendRuntimeOutput(QString::fromUtf8("stdout"), QString::fromUtf8(activeRuntimeProcess->readAllStandardOutput()));
+}
+
+void MainWindow::appendRuntimeStderr()
+{
+    if (!activeRuntimeProcess) {
+        return;
+    }
+    appendRuntimeOutput(QString::fromUtf8("stderr"), QString::fromUtf8(activeRuntimeProcess->readAllStandardError()));
+}
+
+void MainWindow::finishRuntimeProcess(int exitCode, QProcess::ExitStatus exitStatus)
+{
+    Q_UNUSED(exitStatus);
+    if (!activeRuntimeProcess) {
+        return;
+    }
+
+    appendRuntimeStdout();
+    appendRuntimeStderr();
+    const QString finalText = QString::fromUtf8("رمز الخروج: %1\nالمدة: %2 ms")
+        .arg(exitCode)
+        .arg(activeRuntimeTimer.isValid() ? activeRuntimeTimer.elapsed() : 0);
+    appendRuntimeOutput(QString::fromUtf8("النظام"), finalText);
+    completeRuntimeProcess(QString::fromUtf8("%1 انتهى: %2").arg(activeRuntimeTitle).arg(exitCode));
+}
+
+void MainWindow::handleRuntimeProcessError(QProcess::ProcessError error)
+{
+    if (!activeRuntimeProcess || activeRuntimeHandledError) {
+        return;
+    }
+
+    if (error != QProcess::FailedToStart) {
+        return;
+    }
+
+    activeRuntimeHandledError = true;
+    appendRuntimeOutput(
+        QString::fromUtf8("النظام"),
+        QString::fromUtf8("تعذر بدء العملية: %1\nرمز الخروج: -1").arg(activeRuntimeProcess->errorString()));
+    completeRuntimeProcess(QString::fromUtf8("تعذر بدء %1").arg(activeRuntimeTitle));
+}
+
+void MainWindow::handleRuntimeTimeout()
+{
+    if (!activeRuntimeProcess || activeRuntimeProcess->state() == QProcess::NotRunning) {
+        return;
+    }
+
+    appendRuntimeOutput(QString::fromUtf8("النظام"), QString::fromUtf8("انتهت مهلة التشغيل."));
+    activeRuntimeProcess->kill();
+    setStatus(QString::fromUtf8("انتهت مهلة التشغيل"));
+}
+
+void MainWindow::openCommandPalette()
+{
+    QDialog dialog(this);
+    dialog.setObjectName(QStringLiteral("commandPaletteDialog"));
+    dialog.setWindowTitle(QString::fromUtf8("لوحة الأوامر"));
+    dialog.setLayoutDirection(Qt::RightToLeft);
+    dialog.resize(560, 360);
+
+    auto *layout = new QVBoxLayout(&dialog);
+    auto *input = new QLineEdit(&dialog);
+    input->setObjectName(QStringLiteral("commandPaletteInput"));
+    input->setPlaceholderText(QString::fromUtf8("اكتب اسم الأمر..."));
+    input->setLayoutDirection(Qt::RightToLeft);
+
+    auto *commands = new QListWidget(&dialog);
+    commands->setObjectName(QStringLiteral("commandPaletteResults"));
+    commands->setLayoutDirection(Qt::RightToLeft);
+    commands->addItem(QString::fromUtf8("ملف جديد                    Ctrl+N"));
+    commands->addItem(QString::fromUtf8("فتح ملف                     Ctrl+O"));
+    commands->addItem(QString::fromUtf8("تشغيل الملف الحالي           F5"));
+    commands->addItem(QString::fromUtf8("بحث في المشروع               Ctrl+Shift+F"));
+    commands->addItem(QString::fromUtf8("فتح الإعدادات                Ctrl+,"));
+
+    layout->addWidget(input);
+    layout->addWidget(commands);
+    dialog.exec();
+}
+
 void MainWindow::findInProject()
 {
     if (projectRoot.isEmpty()) {
@@ -321,7 +597,7 @@ void MainWindow::findInProject()
         return;
     }
 
-    const QString query = searchBox->text().trimmed();
+    const QString query = commandBox ? commandBox->text().trimmed() : QString();
     if (query.isEmpty()) {
         return;
     }
@@ -385,16 +661,118 @@ bool MainWindow::loadProject(const QString &path)
 
 bool MainWindow::openEditorFile(const QString &path)
 {
+    const QString normalizedPath = QFileInfo(path).absoluteFilePath();
+    for (int i = 0; editorTabs && i < editorTabs->count(); ++i) {
+        auto *surface = qobject_cast<EditorSurface *>(editorTabs->widget(i));
+        if (surface && QFileInfo(surface->currentFilePath()).absoluteFilePath() == normalizedPath) {
+            editorTabs->setCurrentIndex(i);
+            return true;
+        }
+    }
+
+    EditorSurface *target = editor;
+    if (!target || !target->currentFilePath().isEmpty() || target->isDirty() || editorTabs->count() > 1) {
+        target = createEditorTab(QFileInfo(normalizedPath).fileName());
+    }
+
     QString error;
-    if (!editor->openFile(path, &error)) {
+    if (!target->openFile(normalizedPath, &error)) {
         QMessageBox::warning(this, QString::fromUtf8("تعذر فتح الملف"), error);
         return false;
     }
+    setCurrentEditor(target);
+    updateEditorTabTitle(target);
     if (projectRoot.isEmpty()) {
-        loadProject(QFileInfo(path).absolutePath());
+        loadProject(QFileInfo(normalizedPath).absolutePath());
     }
-    setStatus(QString::fromUtf8("فتح: %1").arg(QFileInfo(path).fileName()));
+    setStatus(QString::fromUtf8("فتح: %1").arg(QFileInfo(normalizedPath).fileName()));
     return true;
+}
+
+EditorSurface *MainWindow::createEditorTab(const QString &title)
+{
+    auto *surface = new EditorSurface(editorTabs);
+    const int index = editorTabs->addTab(surface, title);
+    editorTabs->setCurrentIndex(index);
+    setCurrentEditor(surface);
+
+    connect(surface, &EditorSurface::filePathChanged, this, [this, surface](const QString &) {
+        updateEditorTabTitle(surface);
+        if (surface == editor) {
+            setWindowTitle(surface->currentFilePath().isEmpty()
+                ? QString::fromUtf8("استوديو لسان")
+                : QString::fromUtf8("استوديو لسان - %1").arg(QFileInfo(surface->currentFilePath()).fileName()));
+        }
+    });
+    connect(surface, &EditorSurface::dirtyStateChanged, this, [this, surface](bool) {
+        updateEditorTabTitle(surface);
+    });
+
+    updateEditorTabTitle(surface);
+    return surface;
+}
+
+void MainWindow::setCurrentEditor(EditorSurface *surface)
+{
+    if (!surface) {
+        return;
+    }
+
+    for (int i = 0; editorTabs && i < editorTabs->count(); ++i) {
+        if (auto *tabEditor = qobject_cast<EditorSurface *>(editorTabs->widget(i))) {
+            tabEditor->setObjectName(tabEditor == surface ? QStringLiteral("editorSurface") : QStringLiteral("editorSurfaceInactive"));
+        }
+    }
+
+    editor = surface;
+    setWindowTitle(editor->currentFilePath().isEmpty()
+        ? QString::fromUtf8("استوديو لسان")
+        : QString::fromUtf8("استوديو لسان - %1").arg(QFileInfo(editor->currentFilePath()).fileName()));
+}
+
+void MainWindow::updateEditorTabTitle(EditorSurface *surface)
+{
+    if (!surface || !editorTabs) {
+        return;
+    }
+
+    const int index = editorTabs->indexOf(surface);
+    if (index < 0) {
+        return;
+    }
+
+    QString title = surface->currentFilePath().isEmpty()
+        ? QString::fromUtf8("ملف جديد")
+        : QFileInfo(surface->currentFilePath()).fileName();
+    if (surface->isDirty()) {
+        title.prepend(QLatin1Char('*'));
+    }
+    editorTabs->setTabText(index, title);
+}
+
+void MainWindow::closeEditorTab(int index)
+{
+    auto *surface = qobject_cast<EditorSurface *>(editorTabs->widget(index));
+    if (!surface) {
+        return;
+    }
+
+    EditorSurface *previousEditor = editor;
+    setCurrentEditor(surface);
+    if (!confirmSaveIfDirty()) {
+        setCurrentEditor(previousEditor);
+        return;
+    }
+
+    if (editorTabs->count() == 1) {
+        surface->resetForNewFile();
+        updateEditorTabTitle(surface);
+        return;
+    }
+
+    editorTabs->removeTab(index);
+    surface->deleteLater();
+    setCurrentEditor(qobject_cast<EditorSurface *>(editorTabs->currentWidget()));
 }
 
 void MainWindow::writeOutput(const QString &title, const QString &text)
@@ -407,6 +785,9 @@ void MainWindow::showOutputPanel()
 {
     if (!outputDock->isVisible()) {
         outputDock->show();
+    }
+    if (bottomPanelTabs) {
+        bottomPanelTabs->setCurrentWidget(outputPanel);
     }
     outputDock->raise();
     resizeDocks({outputDock}, {190}, Qt::Vertical);
@@ -446,6 +827,12 @@ QString MainWindow::runtimeWorkingDirectory() const
 
 void MainWindow::runRuntimeAction(RuntimeAction action, const QString &title, bool reloadAfterSuccess)
 {
+    if (activeRuntimeProcess && activeRuntimeProcess->state() != QProcess::NotRunning) {
+        showOutputPanel();
+        setStatus(QString::fromUtf8("هناك عملية قيد التشغيل"));
+        return;
+    }
+
     QString materializeError;
     const QString runFilePath = materializeRunnableBuffer(&materializeError);
     if (runFilePath.isEmpty()) {
@@ -453,19 +840,87 @@ void MainWindow::runRuntimeAction(RuntimeAction action, const QString &title, bo
         return;
     }
 
-    writeOutput(title, QString::fromUtf8("جار التنفيذ..."));
+    const QString workingDirectory = runtimeWorkingDirectory();
+    const RuntimeCommand command = runtime.buildCommand(action, runFilePath, workingDirectory);
+    activeRuntimeTitle = title;
+    activeRuntimeHandledError = false;
+    showOutputPanel();
+    outputPanel->setPlainText(QStringLiteral("[%1]\n%2\n%3\n%4\n\n%5\n")
+        .arg(title)
+        .arg(QString::fromUtf8("الأمر: %1").arg(title))
+        .arg(QString::fromUtf8("ملف: %1").arg(QDir::toNativeSeparators(runFilePath)))
+        .arg(QString::fromUtf8("مجلد العمل: %1").arg(QDir::toNativeSeparators(command.workingDirectory)))
+        .arg(QString::fromUtf8("جار التنفيذ...")));
     setStatus(QString::fromUtf8("%1...").arg(title));
-    QApplication::processEvents();
+    setRuntimeActionsRunning(true);
 
-    const RuntimeResult result = runtime.runBlocking(action, runFilePath, runtimeWorkingDirectory(), 30000);
-    const QString output = QString::fromUtf8("exit=%1\n\n%2\n%3")
-        .arg(result.exitCode)
-        .arg(result.standardOutput)
-        .arg(result.standardError);
-    writeOutput(title, output);
+    activeRuntimeProcess = new QProcess(this);
+    activeRuntimeProcess->setProgram(command.program);
+    activeRuntimeProcess->setArguments(command.arguments);
+    activeRuntimeProcess->setWorkingDirectory(command.workingDirectory);
+    activeRuntimeProcess->setProcessEnvironment(runtime.processEnvironment());
+    activeRuntimeProcess->setProperty("reloadAfterSuccess", reloadAfterSuccess);
+    activeRuntimeProcess->setProperty("runFilePath", runFilePath);
+    connect(activeRuntimeProcess, &QProcess::readyReadStandardOutput, this, &MainWindow::appendRuntimeStdout);
+    connect(activeRuntimeProcess, &QProcess::readyReadStandardError, this, &MainWindow::appendRuntimeStderr);
+    connect(activeRuntimeProcess, &QProcess::finished, this, &MainWindow::finishRuntimeProcess);
+    connect(activeRuntimeProcess, &QProcess::errorOccurred, this, &MainWindow::handleRuntimeProcessError);
 
-    if (reloadAfterSuccess && result.exitCode == 0) {
+    activeRuntimeTimer.start();
+    runtimeTimeoutTimer->start();
+    activeRuntimeProcess->start();
+}
+
+void MainWindow::appendRuntimeOutput(const QString &label, const QString &text)
+{
+    if (text.isEmpty()) {
+        return;
+    }
+
+    showOutputPanel();
+    QTextCursor cursor = outputPanel->textCursor();
+    cursor.movePosition(QTextCursor::End);
+    outputPanel->setTextCursor(cursor);
+    outputPanel->appendPlainText(QStringLiteral("[%1]").arg(label));
+    outputPanel->appendPlainText(text.trimmed());
+}
+
+void MainWindow::completeRuntimeProcess(const QString &statusText)
+{
+    if (!activeRuntimeProcess) {
+        return;
+    }
+
+    const bool reloadAfterSuccess = activeRuntimeProcess->property("reloadAfterSuccess").toBool();
+    const QString runFilePath = activeRuntimeProcess->property("runFilePath").toString();
+    const int exitCode = activeRuntimeProcess->exitCode();
+    QProcess *finishedProcess = activeRuntimeProcess;
+    activeRuntimeProcess = nullptr;
+    if (runtimeTimeoutTimer) {
+        runtimeTimeoutTimer->stop();
+    }
+    setRuntimeActionsRunning(false);
+    setStatus(statusText);
+    finishedProcess->deleteLater();
+
+    if (reloadAfterSuccess && exitCode == 0) {
         QString error;
         editor->openFile(runFilePath, &error);
+    }
+}
+
+void MainWindow::setRuntimeActionsRunning(bool running)
+{
+    if (runAction) {
+        runAction->setEnabled(!running);
+    }
+    if (lintAction) {
+        lintAction->setEnabled(!running);
+    }
+    if (formatAction) {
+        formatAction->setEnabled(!running);
+    }
+    if (cancelRunAction) {
+        cancelRunAction->setEnabled(running);
     }
 }

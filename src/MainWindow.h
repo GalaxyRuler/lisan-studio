@@ -7,13 +7,17 @@
 #include "SettingsStore.h"
 
 #include <QFileSystemModel>
+#include <QAction>
 #include <QDockWidget>
+#include <QElapsedTimer>
 #include <QLabel>
 #include <QLineEdit>
 #include <QMainWindow>
 #include <QPlainTextEdit>
+#include <QProcess>
 #include <QPushButton>
 #include <QTabWidget>
+#include <QTimer>
 #include <QTreeView>
 
 class MainWindow final : public QMainWindow
@@ -36,19 +40,41 @@ private slots:
     void runCurrentFile();
     void lintCurrentFile();
     void formatCurrentFile();
+    void cancelRuntimeProcess();
+    void appendRuntimeStdout();
+    void appendRuntimeStderr();
+    void finishRuntimeProcess(int exitCode, QProcess::ExitStatus exitStatus);
+    void handleRuntimeProcessError(QProcess::ProcessError error);
+    void handleRuntimeTimeout();
+    void openCommandPalette();
     void findInProject();
     void openSelectedProjectFile(const QModelIndex &index);
     void openSettings();
 
 private:
     EditorSurface *editor = nullptr;
+    QTabWidget *editorTabs = nullptr;
     QTreeView *projectTree = nullptr;
     QFileSystemModel *fileSystemModel = nullptr;
     QLineEdit *commandBox = nullptr;
-    QLineEdit *searchBox = nullptr;
     QPlainTextEdit *outputPanel = nullptr;
+    QPlainTextEdit *terminalPanel = nullptr;
+    QPlainTextEdit *problemsPanel = nullptr;
+    QPlainTextEdit *debugPanel = nullptr;
+    QTabWidget *bottomPanelTabs = nullptr;
     QDockWidget *outputDock = nullptr;
     QLabel *statusLabel = nullptr;
+    QLabel *brandLogoLabel = nullptr;
+    QAction *commandPaletteAction = nullptr;
+    QAction *runAction = nullptr;
+    QAction *lintAction = nullptr;
+    QAction *formatAction = nullptr;
+    QAction *cancelRunAction = nullptr;
+    QProcess *activeRuntimeProcess = nullptr;
+    QTimer *runtimeTimeoutTimer = nullptr;
+    QElapsedTimer activeRuntimeTimer;
+    QString activeRuntimeTitle;
+    bool activeRuntimeHandledError = false;
     SettingsStore settings;
     RuntimeRunner runtime;
     QString projectRoot;
@@ -57,9 +83,16 @@ private:
     void setStatus(const QString &text);
     bool loadProject(const QString &path);
     bool openEditorFile(const QString &path);
+    EditorSurface *createEditorTab(const QString &title);
+    void setCurrentEditor(EditorSurface *surface);
+    void updateEditorTabTitle(EditorSurface *surface);
+    void closeEditorTab(int index);
     void writeOutput(const QString &title, const QString &text);
     void showOutputPanel();
     QString runtimeWorkingDirectory() const;
     bool confirmSaveIfDirty();
     void runRuntimeAction(RuntimeAction action, const QString &title, bool reloadAfterSuccess = false);
+    void appendRuntimeOutput(const QString &label, const QString &text);
+    void completeRuntimeProcess(const QString &statusText);
+    void setRuntimeActionsRunning(bool running);
 };

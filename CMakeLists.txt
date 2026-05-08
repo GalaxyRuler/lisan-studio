@@ -39,6 +39,7 @@ qt_add_executable(ArabicCodeStudioQt
     src/main.cpp
     src/MainWindow.h
     src/MainWindow.cpp
+    resources/resources.qrc
 )
 
 target_link_libraries(ArabicCodeStudioQt PRIVATE acs_core)
@@ -63,6 +64,7 @@ target_link_libraries(acs_project_runtime_tests PRIVATE acs_core Qt6::Test)
 qt_add_executable(acs_main_window_tests
     src/MainWindow.h
     src/MainWindow.cpp
+    resources/resources.qrc
     tests/TestMainWindow.cpp
 )
 

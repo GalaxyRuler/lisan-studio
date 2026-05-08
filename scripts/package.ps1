@@ -95,7 +95,7 @@ if (-not $SkipMsi) {
         $wxs `
         -define "ProductVersion=$ProductVersion" `
         -define "SourceDir=$stage" `
-        -out (Join-Path $artifacts "ArabicCodeStudioQt-0.1.0-beta.msi")
+        -out (Join-Path $artifacts "LisanStudio-0.1.0-beta.msi")
 }
 
 Get-ChildItem $artifacts -File -ErrorAction SilentlyContinue | Get-FileHash -Algorithm SHA256 |

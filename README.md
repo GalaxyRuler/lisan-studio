@@ -1,14 +1,15 @@
-# Arabic Code Studio Qt
+# Lisan Studio
 
-Arabic Code Studio Qt is a clean-room native Windows desktop rebuild for editing
-and running `.apy` files. It is not based on the earlier WPF/Emacs-host
+Lisan Studio is a clean-room native Windows desktop IDE for editing and running
+Arabic-first `.apy` files. It is not based on the earlier WPF/Emacs-host
 prototype, not a browser shell, and not an Electron app.
 
 ## Product Direction
 
 - Native C++17 / Qt 6 desktop application.
 - `QPlainTextEdit` is the first editor core candidate.
-- Arabic-first UI with LTR islands for code, paths, commands, and output.
+- RTL-native Arabic-first UI with LTR islands for code, paths, commands, and output.
+- Lisan Studio branding, logo resources, and premium dark visual system.
 - Bundled Python runtime plus `lughat-althuban` for private beta packaging.
 - WiX MSI is the first installer target.
 
@@ -36,6 +37,7 @@ The current gate builds the Qt app and runs:
 
 - `acs_editor_tests`
 - `acs_project_runtime_tests`
+- `acs_main_window_tests`
 
 ## Packaging
 
@@ -50,7 +52,7 @@ The packager stages:
 - Python runtime under `runtime\python`
 - `lughat-althuban` installed into the staged runtime
 - license and release docs
-- WiX MSI output under `artifacts\`
+- `LisanStudio-0.1.0-beta.msi` under `artifacts\`
 
 ## Installed Smoke
 
@@ -71,9 +73,13 @@ Included in v0.1.0 beta:
 - minimal `.apy` syntax highlighting
 - hidden BiDi control detection
 - project tree
+- custom RTL Stitch-style single top shell with integrated menus, primary run action, and unified command/search field
+- no inherited `QMenuBar` or `QToolBar` shell surface
+- RTL editor tabs, project sidebar, bottom panel, and status bar
+- tabbed bottom panel for terminal, output, problems, and debug
 - project search
 - run current `.apy`
-- output panel
+- structured runtime output with exit code, elapsed time, and cancel action
 - basic settings
 - MSI packaging
 

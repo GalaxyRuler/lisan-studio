@@ -1,15 +1,23 @@
-# Arabic Code Studio Qt 0.1.0 Beta Notes
+# Lisan Studio 0.1.0 Beta Notes
 
 ## Included
 
 - Native Qt 6 desktop shell.
+- Lisan Studio app branding and bundled logo resource.
+- Premium dark visual system based on the Stitch design export.
+- Custom RTL Stitch-style single top shell with integrated menus, primary run action, and unified command/search field.
+- Integrated dropdown menus for file, edit, view, run, search, tools, and help.
+- No inherited `QMenuBar` or `QToolBar` shell surface.
+- RTL editor tabs, project sidebar, bottom panel tabs, and status bar.
 - Arabic-first editor surface based on `QPlainTextEdit`.
 - Minimal `.apy` syntax highlighting.
 - Hidden Unicode BiDi control detection.
 - Project folder tree.
+- Editor tabs for multiple open documents.
+- Bottom panel tabs for terminal, output, problems, and debug.
 - Project text search.
-- Run current `.apy` through bundled runtime.
-- WiX MSI packaging path.
+- Run current `.apy` through bundled runtime with live output, exit code, elapsed time, and cancel action.
+- WiX MSI packaging path for `LisanStudio-0.1.0-beta.msi`.
 
 ## Deferred
 
@@ -26,4 +34,5 @@
 - Save/open data loss.
 - Installer requiring manual PATH or Python setup.
 - Hidden BiDi controls inserted by the editor.
-
+- Any return of a native `QMenuBar` or `QToolBar` shell surface.
+- Left-to-right shell regression in top command bar menus, project/sidebar, tabs, status bar, or bottom panel.
