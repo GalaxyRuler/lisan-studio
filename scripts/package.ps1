@@ -82,7 +82,9 @@ if ($editableMarkers) {
 
 Copy-Item -LiteralPath (Join-Path $repo "README.md") -Destination (Join-Path $stage "README.md") -Force
 Copy-Item -LiteralPath (Join-Path $repo "docs\RELEASE_NOTES.md") -Destination (Join-Path $stage "RELEASE_NOTES.md") -Force
+Copy-Item -LiteralPath (Join-Path $repo "docs\BETA_VALIDATION.md") -Destination (Join-Path $stage "BETA_VALIDATION.md") -Force
 Copy-Item -LiteralPath (Join-Path $repo "licenses\LICENSES.md") -Destination (Join-Path $stage "LICENSES.md") -Force
+Copy-Item -LiteralPath (Join-Path $repo "samples") -Destination (Join-Path $stage "samples") -Recurse -Force
 
 if (-not $SkipMsi) {
     if (-not (Test-Path $wix)) {

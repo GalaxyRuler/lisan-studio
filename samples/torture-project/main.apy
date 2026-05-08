@@ -1,0 +1,10 @@
+# apython: dict=ar-v2
+اسم = "سارة user-42"
+path = "C:/Users/Admin/مشروع طويل/src/main.apy"
+english_name = اسم
+
+اطبع("مرحبا hello 123")
+اطبع(اسم)
+اطبع(path)
+اطبع(english_name)
+اطبع("long-line: مرحبا hello 123 C:/Users/Admin/مشروع طويل/src/main.apy english_identifier اسم_عربي نهاية")

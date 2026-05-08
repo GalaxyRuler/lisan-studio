@@ -21,9 +21,23 @@ The installed smoke script verifies:
 - the app can launch with a file path
 - the bundled runtime has no editable local `apython` markers
 
+The automated Qt editor torture tests verify:
+
+- mixed Arabic/English text preservation
+- UTF-8 save and reopen behavior
+- hidden BiDi control detection
+- syntax spans for Arabic keywords, strings, comments, and numbers
+- selection, copy, paste, undo, redo, backspace, and delete around mixed text
+- logical cursor traversal across a long mixed-direction line
+- line-number gutter visibility and width scaling
+
 ## Manual Gate
 
-Use the installed app for these checks:
+Use the installed app for these checks. The sample project is:
+
+```text
+samples\torture-project
+```
 
 - launch from the Start Menu
 - open a real `.apy` folder

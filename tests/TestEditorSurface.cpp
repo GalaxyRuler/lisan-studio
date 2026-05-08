@@ -9,10 +9,28 @@ class TestEditorSurface : public QObject
 
 private slots:
     void preservesMixedArabicCodeText();
+    void saveAndReopenPreservesUtf8TortureText();
     void rejectsHiddenBidiControls();
+    void detectsAllHiddenBidiControls();
     void highlightsArabicKeywordsStringsCommentsAndNumbers();
     void supportsCursorSelectionUndoAndDeleteInMixedText();
+    void supportsCopyPasteUndoRedoAndDeleteAroundMixedDirectionText();
+    void cursorCanVisitEveryLogicalPositionInMixedDirectionLongLine();
+    void lineNumberAreaScalesAndStaysVisibleForLongFiles();
 };
+
+static QString tortureText()
+{
+    return QString::fromUtf8(
+        "# apython: dict=ar-v2\n"
+        "اسم_المستخدم = \"سارة user-42\"\n"
+        "path = \"C:/Users/Admin/مشروع طويل/src/main.apy\"\n"
+        "english_name = اسم_المستخدم\n"
+        "اذا len(path) > 10:\n"
+        "    اطبع(\"مرحبا hello 123\")\n"
+        "قائمة = [1, 22, 333]\n"
+        "نتيجة = english_name + \" :: \" + path\n");
+}
 
 void TestEditorSurface::preservesMixedArabicCodeText()
 {
@@ -28,6 +46,25 @@ void TestEditorSurface::preservesMixedArabicCodeText()
 
     QCOMPARE(editor.toPlainText(), text);
     QCOMPARE(editor.document()->defaultTextOption().textDirection(), Qt::RightToLeft);
+    QCOMPARE(editor.lineWrapMode(), QPlainTextEdit::NoWrap);
+}
+
+void TestEditorSurface::saveAndReopenPreservesUtf8TortureText()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    const QString path = temp.filePath(QStringLiteral("main.apy"));
+    const QString text = tortureText();
+
+    EditorSurface editor;
+    editor.setPlainText(text);
+    QVERIFY(editor.saveFileAs(path));
+    QCOMPARE(editor.findHiddenBidiControls(editor.toPlainText()).size(), 0);
+
+    EditorSurface reopened;
+    QVERIFY(reopened.openFile(path));
+    QCOMPARE(reopened.toPlainText(), text);
+    QVERIFY(!reopened.isDirty());
 }
 
 void TestEditorSurface::rejectsHiddenBidiControls()
@@ -39,6 +76,18 @@ void TestEditorSurface::rejectsHiddenBidiControls()
 
     QCOMPARE(findings.size(), 1);
     QCOMPARE(findings.first().unicodeName, QStringLiteral("RIGHT-TO-LEFT OVERRIDE"));
+}
+
+void TestEditorSurface::detectsAllHiddenBidiControls()
+{
+    EditorSurface editor;
+    const QString unsafe = QString::fromUtf8("\u202A\u202B\u202C\u202D\u202E\u2066\u2067\u2068\u2069");
+
+    const auto findings = editor.findHiddenBidiControls(unsafe);
+
+    QCOMPARE(findings.size(), 9);
+    QCOMPARE(findings.first().unicodeName, QStringLiteral("LEFT-TO-RIGHT EMBEDDING"));
+    QCOMPARE(findings.last().unicodeName, QStringLiteral("POP DIRECTIONAL ISOLATE"));
 }
 
 void TestEditorSurface::highlightsArabicKeywordsStringsCommentsAndNumbers()
@@ -75,6 +124,86 @@ void TestEditorSurface::supportsCursorSelectionUndoAndDeleteInMixedText()
 
     editor.undo();
     QVERIFY(editor.toPlainText().startsWith(QString::fromUtf8("عدد = 12")));
+}
+
+void TestEditorSurface::supportsCopyPasteUndoRedoAndDeleteAroundMixedDirectionText()
+{
+    EditorSurface editor;
+    editor.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&editor));
+    editor.setPlainText(QString::fromUtf8("اسم = \"سارة\"\npath = \"C:/Users/Admin/مشروع/main.apy\"\n"));
+
+    QTextCursor cursor = editor.textCursor();
+    cursor.setPosition(0);
+    cursor.movePosition(QTextCursor::EndOfLine, QTextCursor::KeepAnchor);
+    editor.setTextCursor(cursor);
+    editor.copy();
+
+    cursor.clearSelection();
+    cursor.movePosition(QTextCursor::End);
+    editor.setTextCursor(cursor);
+    editor.paste();
+    QVERIFY(editor.toPlainText().endsWith(QString::fromUtf8("اسم = \"سارة\"")));
+
+    editor.undo();
+    QVERIFY(!editor.toPlainText().endsWith(QString::fromUtf8("اسم = \"سارة\"")));
+    editor.redo();
+    QVERIFY(editor.toPlainText().endsWith(QString::fromUtf8("اسم = \"سارة\"")));
+
+    cursor = editor.textCursor();
+    const int arabicStart = editor.toPlainText().indexOf(QString::fromUtf8("سارة"));
+    QVERIFY(arabicStart > 0);
+    cursor.setPosition(arabicStart + 1);
+    editor.setTextCursor(cursor);
+    QTest::keyClick(&editor, Qt::Key_Backspace);
+    QVERIFY(editor.toPlainText().contains(QString::fromUtf8("ارة")));
+
+    cursor = editor.textCursor();
+    cursor.setPosition(editor.toPlainText().indexOf(QString::fromUtf8("مشروع")));
+    editor.setTextCursor(cursor);
+    QTest::keyClick(&editor, Qt::Key_Delete);
+    QVERIFY(editor.toPlainText().contains(QString::fromUtf8("شروع/main.apy")));
+}
+
+void TestEditorSurface::cursorCanVisitEveryLogicalPositionInMixedDirectionLongLine()
+{
+    EditorSurface editor;
+    const QString line = QString::fromUtf8("نتيجة = call_english(اسم_المستخدم, 123, \"C:/Users/Admin/مشروع/main.apy\") + \" hello مرحبا \"");
+    editor.setPlainText(line);
+
+    QTextCursor cursor = editor.textCursor();
+    for (int position = 0; position <= line.size(); ++position) {
+        cursor.setPosition(position);
+        editor.setTextCursor(cursor);
+        QCOMPARE(editor.textCursor().position(), position);
+    }
+
+    cursor.setPosition(0);
+    cursor.movePosition(QTextCursor::NextCharacter, QTextCursor::KeepAnchor, line.size());
+    editor.setTextCursor(cursor);
+    QCOMPARE(editor.textCursor().selectedText(), line);
+}
+
+void TestEditorSurface::lineNumberAreaScalesAndStaysVisibleForLongFiles()
+{
+    EditorSurface editor;
+    QStringList lines;
+    for (int i = 1; i <= 125; ++i) {
+        lines << QString::fromUtf8("اطبع(\"line %1\")").arg(i);
+    }
+
+    const int initialWidth = editor.lineNumberAreaWidth();
+    editor.setPlainText(lines.join('\n'));
+    const int expandedWidth = editor.lineNumberAreaWidth();
+
+    QVERIFY(expandedWidth > initialWidth);
+    editor.resize(640, 480);
+    editor.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&editor));
+    auto *lineNumberArea = editor.findChild<QWidget *>(QStringLiteral("lineNumberArea"));
+    QVERIFY(lineNumberArea != nullptr);
+    QVERIFY(lineNumberArea->isVisible());
+    QVERIFY(lineNumberArea->width() >= expandedWidth);
 }
 
 QTEST_MAIN(TestEditorSurface)

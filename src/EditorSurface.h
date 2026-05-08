@@ -5,6 +5,8 @@
 #include <QPlainTextEdit>
 #include <QVector>
 
+class LineNumberArea;
+
 struct HiddenBidiFinding
 {
     int position = 0;
@@ -26,6 +28,8 @@ public:
     QString currentFilePath() const;
     bool isDirty() const;
     QVector<HiddenBidiFinding> findHiddenBidiControls(const QString &text) const;
+    int lineNumberAreaWidth() const;
+    void lineNumberAreaPaintEvent(QPaintEvent *event);
 
 signals:
     void filePathChanged(const QString &path);
@@ -34,8 +38,11 @@ signals:
 private:
     QString filePath;
     ApyHighlighter *highlighter = nullptr;
+    LineNumberArea *lineNumberArea = nullptr;
 
     static QString unicodeName(QChar ch);
     void setCurrentFilePath(const QString &path);
+    void updateLineNumberAreaWidth(int blockCount);
+    void updateLineNumberArea(const QRect &rect, int dy);
+    void resizeEvent(QResizeEvent *event) override;
 };
-

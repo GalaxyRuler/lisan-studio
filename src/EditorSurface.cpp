@@ -1,8 +1,37 @@
 #include "EditorSurface.h"
 
+#include <QPainter>
 #include <QFile>
 #include <QFontDatabase>
+#include <QPaintEvent>
+#include <QTextBlock>
 #include <QTextOption>
+
+class LineNumberArea final : public QWidget
+{
+public:
+    explicit LineNumberArea(EditorSurface *editor)
+        : QWidget(editor),
+          editorSurface(editor)
+    {
+        setObjectName(QStringLiteral("lineNumberArea"));
+        setLayoutDirection(Qt::LeftToRight);
+    }
+
+    QSize sizeHint() const override
+    {
+        return QSize(editorSurface->lineNumberAreaWidth(), 0);
+    }
+
+protected:
+    void paintEvent(QPaintEvent *event) override
+    {
+        editorSurface->lineNumberAreaPaintEvent(event);
+    }
+
+private:
+    EditorSurface *editorSurface = nullptr;
+};
 
 EditorSurface::EditorSurface(QWidget *parent)
     : QPlainTextEdit(parent)
@@ -23,9 +52,14 @@ EditorSurface::EditorSurface(QWidget *parent)
     font.setPointSize(12);
     setFont(font);
 
+    lineNumberArea = new LineNumberArea(this);
+    updateLineNumberAreaWidth(blockCount());
+
     highlighter = new ApyHighlighter(document());
 
     connect(document(), &QTextDocument::modificationChanged, this, &EditorSurface::dirtyStateChanged);
+    connect(this, &QPlainTextEdit::blockCountChanged, this, &EditorSurface::updateLineNumberAreaWidth);
+    connect(this, &QPlainTextEdit::updateRequest, this, &EditorSurface::updateLineNumberArea);
 }
 
 bool EditorSurface::openFile(const QString &path, QString *error)
@@ -93,6 +127,48 @@ QVector<HiddenBidiFinding> EditorSurface::findHiddenBidiControls(const QString &
     return findings;
 }
 
+int EditorSurface::lineNumberAreaWidth() const
+{
+    int digits = 1;
+    int maximum = qMax(1, blockCount());
+    while (maximum >= 10) {
+        maximum /= 10;
+        ++digits;
+    }
+
+    return 12 + fontMetrics().horizontalAdvance(QLatin1Char('9')) * digits;
+}
+
+void EditorSurface::lineNumberAreaPaintEvent(QPaintEvent *event)
+{
+    QPainter painter(lineNumberArea);
+    painter.fillRect(event->rect(), QColor(33, 37, 41));
+    painter.setPen(QColor(173, 181, 189));
+
+    QTextBlock block = firstVisibleBlock();
+    int blockNumber = block.blockNumber();
+    int top = qRound(blockBoundingGeometry(block).translated(contentOffset()).top());
+    int bottom = top + qRound(blockBoundingRect(block).height());
+
+    while (block.isValid() && top <= event->rect().bottom()) {
+        if (block.isVisible() && bottom >= event->rect().top()) {
+            const QString number = QString::number(blockNumber + 1);
+            painter.drawText(
+                0,
+                top,
+                lineNumberArea->width() - 6,
+                fontMetrics().height(),
+                Qt::AlignRight,
+                number);
+        }
+
+        block = block.next();
+        top = bottom;
+        bottom = top + qRound(blockBoundingRect(block).height());
+        ++blockNumber;
+    }
+}
+
 QString EditorSurface::unicodeName(QChar ch)
 {
     switch (ch.unicode()) {
@@ -128,3 +204,28 @@ void EditorSurface::setCurrentFilePath(const QString &path)
     emit filePathChanged(filePath);
 }
 
+void EditorSurface::updateLineNumberAreaWidth(int)
+{
+    setViewportMargins(lineNumberAreaWidth(), 0, 0, 0);
+}
+
+void EditorSurface::updateLineNumberArea(const QRect &rect, int dy)
+{
+    if (dy != 0) {
+        lineNumberArea->scroll(0, dy);
+    } else {
+        lineNumberArea->update(0, rect.y(), lineNumberArea->width(), rect.height());
+    }
+
+    if (rect.contains(viewport()->rect())) {
+        updateLineNumberAreaWidth(blockCount());
+    }
+}
+
+void EditorSurface::resizeEvent(QResizeEvent *event)
+{
+    QPlainTextEdit::resizeEvent(event);
+
+    const QRect cr = contentsRect();
+    lineNumberArea->setGeometry(QRect(cr.left(), cr.top(), lineNumberAreaWidth(), cr.height()));
+}
