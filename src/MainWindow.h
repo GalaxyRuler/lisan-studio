@@ -7,6 +7,7 @@
 #include "SettingsStore.h"
 
 #include <QFileSystemModel>
+#include <QDockWidget>
 #include <QLabel>
 #include <QLineEdit>
 #include <QMainWindow>
@@ -45,6 +46,7 @@ private:
     QLineEdit *commandBox = nullptr;
     QLineEdit *searchBox = nullptr;
     QPlainTextEdit *outputPanel = nullptr;
+    QDockWidget *outputDock = nullptr;
     QLabel *statusLabel = nullptr;
     SettingsStore settings;
     RuntimeRunner runtime;
@@ -55,6 +57,7 @@ private:
     bool loadProject(const QString &path);
     bool openEditorFile(const QString &path);
     void writeOutput(const QString &title, const QString &text);
+    void showOutputPanel();
     bool confirmSaveIfDirty();
     bool ensureCurrentFileSaved();
     void runRuntimeAction(RuntimeAction action, const QString &title, bool reloadAfterSuccess = false);

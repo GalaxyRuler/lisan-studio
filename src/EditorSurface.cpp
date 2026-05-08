@@ -44,6 +44,7 @@ EditorSurface::EditorSurface(QWidget *parent)
 
     QTextOption option = document()->defaultTextOption();
     option.setTextDirection(Qt::RightToLeft);
+    option.setAlignment(Qt::AlignRight);
     option.setFlags(option.flags() | QTextOption::ShowTabsAndSpaces);
     document()->setDefaultTextOption(option);
 
@@ -76,6 +77,13 @@ bool EditorSurface::openFile(const QString &path, QString *error)
     document()->setModified(false);
     setCurrentFilePath(path);
     return true;
+}
+
+void EditorSurface::resetForNewFile()
+{
+    clear();
+    document()->setModified(false);
+    setCurrentFilePath(QString());
 }
 
 bool EditorSurface::saveFile(QString *error)
@@ -206,7 +214,7 @@ void EditorSurface::setCurrentFilePath(const QString &path)
 
 void EditorSurface::updateLineNumberAreaWidth(int)
 {
-    setViewportMargins(lineNumberAreaWidth(), 0, 0, 0);
+    setViewportMargins(0, 0, lineNumberAreaWidth(), 0);
 }
 
 void EditorSurface::updateLineNumberArea(const QRect &rect, int dy)
@@ -227,5 +235,6 @@ void EditorSurface::resizeEvent(QResizeEvent *event)
     QPlainTextEdit::resizeEvent(event);
 
     const QRect cr = contentsRect();
-    lineNumberArea->setGeometry(QRect(cr.left(), cr.top(), lineNumberAreaWidth(), cr.height()));
+    const int width = lineNumberAreaWidth();
+    lineNumberArea->setGeometry(QRect(cr.right() - width + 1, cr.top(), width, cr.height()));
 }

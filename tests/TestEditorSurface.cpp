@@ -17,6 +17,7 @@ private slots:
     void supportsCopyPasteUndoRedoAndDeleteAroundMixedDirectionText();
     void cursorCanVisitEveryLogicalPositionInMixedDirectionLongLine();
     void lineNumberAreaScalesAndStaysVisibleForLongFiles();
+    void lineNumbersStayOnRightEdgeForArabicEditing();
 };
 
 static QString tortureText()
@@ -204,6 +205,24 @@ void TestEditorSurface::lineNumberAreaScalesAndStaysVisibleForLongFiles()
     QVERIFY(lineNumberArea != nullptr);
     QVERIFY(lineNumberArea->isVisible());
     QVERIFY(lineNumberArea->width() >= expandedWidth);
+}
+
+void TestEditorSurface::lineNumbersStayOnRightEdgeForArabicEditing()
+{
+    EditorSurface editor;
+    editor.setPlainText(QString::fromUtf8("اجلب\nاطبع(\"مرحبا\")\n"));
+    editor.resize(640, 360);
+    editor.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&editor));
+
+    auto *lineNumberArea = editor.findChild<QWidget *>(QStringLiteral("lineNumberArea"));
+    QVERIFY(lineNumberArea != nullptr);
+    QVERIFY(lineNumberArea->geometry().right() >= editor.contentsRect().right() - 1);
+    QVERIFY(editor.viewport()->geometry().right() < lineNumberArea->geometry().left());
+
+    const QTextOption option = editor.document()->defaultTextOption();
+    QCOMPARE(option.textDirection(), Qt::RightToLeft);
+    QCOMPARE(option.alignment() & Qt::AlignHorizontal_Mask, Qt::AlignRight);
 }
 
 QTEST_MAIN(TestEditorSurface)

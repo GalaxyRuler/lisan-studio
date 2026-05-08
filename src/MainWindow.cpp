@@ -1,7 +1,7 @@
 #include "MainWindow.h"
 
+#include <QApplication>
 #include <QDir>
-#include <QDockWidget>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QFormLayout>
@@ -10,6 +10,7 @@
 #include <QMessageBox>
 #include <QSplitter>
 #include <QStatusBar>
+#include <QStyle>
 #include <QTextStream>
 #include <QToolBar>
 #include <QVBoxLayout>
@@ -51,24 +52,35 @@ void MainWindow::buildUi()
 {
     setLayoutDirection(Qt::RightToLeft);
 
+    setStyleSheet(QStringLiteral(
+        "QMainWindow, QWidget { background: #202124; color: #e8eaed; }"
+        "QToolBar { background: #181a1b; border: 0; spacing: 6px; padding: 6px; }"
+        "QToolButton { background: #2b2f31; border: 1px solid #3d4347; border-radius: 4px; padding: 5px 8px; }"
+        "QToolButton:hover { background: #343a3f; }"
+        "QLineEdit { background: #111315; border: 1px solid #3d4347; border-radius: 4px; padding: 5px 8px; }"
+        "QTreeView, QPlainTextEdit { background: #25282a; border: 1px solid #343a3f; selection-background-color: #365b6d; }"
+        "QDockWidget::title { background: #181a1b; padding: 5px; text-align: right; }"
+        "QStatusBar { background: #181a1b; }"));
+
     auto *toolbar = addToolBar(QString::fromUtf8("الأوامر"));
     toolbar->setMovable(false);
     toolbar->setLayoutDirection(Qt::RightToLeft);
+    toolbar->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
 
-    auto addActionButton = [&](const QString &label, auto slot) {
-        QAction *action = toolbar->addAction(label);
+    auto addActionButton = [&](const QIcon &icon, const QString &label, auto slot) {
+        QAction *action = toolbar->addAction(icon, label);
         connect(action, &QAction::triggered, this, slot);
     };
 
-    addActionButton(QString::fromUtf8("جديد"), &MainWindow::newFile);
-    addActionButton(QString::fromUtf8("فتح ملف"), &MainWindow::openFile);
-    addActionButton(QString::fromUtf8("حفظ"), &MainWindow::saveFile);
-    addActionButton(QString::fromUtf8("حفظ باسم"), &MainWindow::saveFileAs);
-    addActionButton(QString::fromUtf8("فتح مشروع"), &MainWindow::openFolder);
-    addActionButton(QString::fromUtf8("تشغيل"), &MainWindow::runCurrentFile);
-    addActionButton(QString::fromUtf8("فحص"), &MainWindow::lintCurrentFile);
-    addActionButton(QString::fromUtf8("تنسيق"), &MainWindow::formatCurrentFile);
-    addActionButton(QString::fromUtf8("الإعدادات"), &MainWindow::openSettings);
+    addActionButton(style()->standardIcon(QStyle::SP_FileIcon), QString::fromUtf8("جديد"), &MainWindow::newFile);
+    addActionButton(style()->standardIcon(QStyle::SP_DialogOpenButton), QString::fromUtf8("فتح ملف"), &MainWindow::openFile);
+    addActionButton(style()->standardIcon(QStyle::SP_DialogSaveButton), QString::fromUtf8("حفظ"), &MainWindow::saveFile);
+    addActionButton(style()->standardIcon(QStyle::SP_DriveFDIcon), QString::fromUtf8("حفظ باسم"), &MainWindow::saveFileAs);
+    addActionButton(style()->standardIcon(QStyle::SP_DirOpenIcon), QString::fromUtf8("فتح مشروع"), &MainWindow::openFolder);
+    addActionButton(style()->standardIcon(QStyle::SP_MediaPlay), QString::fromUtf8("تشغيل"), &MainWindow::runCurrentFile);
+    addActionButton(style()->standardIcon(QStyle::SP_MessageBoxInformation), QString::fromUtf8("فحص"), &MainWindow::lintCurrentFile);
+    addActionButton(style()->standardIcon(QStyle::SP_BrowserReload), QString::fromUtf8("تنسيق"), &MainWindow::formatCurrentFile);
+    addActionButton(style()->standardIcon(QStyle::SP_FileDialogDetailedView), QString::fromUtf8("الإعدادات"), &MainWindow::openSettings);
 
     commandBox = new QLineEdit(this);
     commandBox->setPlaceholderText(QString::fromUtf8("ابحث أو اكتب أمرا"));
@@ -92,6 +104,9 @@ void MainWindow::buildUi()
     projectTree->setObjectName(QStringLiteral("projectTree"));
     projectTree->setHeaderHidden(true);
     projectTree->setModel(fileSystemModel);
+    projectTree->hideColumn(1);
+    projectTree->hideColumn(2);
+    projectTree->hideColumn(3);
     projectTree->setMinimumWidth(240);
     connect(projectTree, &QTreeView::doubleClicked, this, &MainWindow::openSelectedProjectFile);
 
@@ -113,11 +128,16 @@ void MainWindow::buildUi()
     outputPanel->setObjectName(QStringLiteral("outputPanel"));
     outputPanel->setReadOnly(true);
     outputPanel->setLayoutDirection(Qt::LeftToRight);
+    outputPanel->setMinimumHeight(160);
     outputPanel->setPlaceholderText(QString::fromUtf8("المخرجات ستظهر هنا"));
 
-    auto *dock = new QDockWidget(QString::fromUtf8("المخرجات"), this);
-    dock->setWidget(outputPanel);
-    addDockWidget(Qt::BottomDockWidgetArea, dock);
+    outputDock = new QDockWidget(QString::fromUtf8("المخرجات"), this);
+    outputDock->setObjectName(QStringLiteral("outputDock"));
+    outputDock->setWidget(outputPanel);
+    outputDock->setMinimumHeight(180);
+    outputDock->setFeatures(QDockWidget::DockWidgetMovable | QDockWidget::DockWidgetFloatable);
+    addDockWidget(Qt::BottomDockWidgetArea, outputDock);
+    resizeDocks({outputDock}, {190}, Qt::Vertical);
 
     statusLabel = new QLabel(QString::fromUtf8("جاهز"), this);
     statusBar()->addPermanentWidget(statusLabel, 1);
@@ -128,8 +148,8 @@ void MainWindow::newFile()
     if (!confirmSaveIfDirty()) {
         return;
     }
-    editor->clear();
-    editor->document()->setModified(false);
+    editor->resetForNewFile();
+    outputPanel->clear();
     setStatus(QString::fromUtf8("ملف جديد"));
 }
 
@@ -285,7 +305,17 @@ bool MainWindow::openEditorFile(const QString &path)
 
 void MainWindow::writeOutput(const QString &title, const QString &text)
 {
+    showOutputPanel();
     outputPanel->setPlainText(QStringLiteral("[%1]\n%2").arg(title, text));
+}
+
+void MainWindow::showOutputPanel()
+{
+    if (!outputDock->isVisible()) {
+        outputDock->show();
+    }
+    outputDock->raise();
+    resizeDocks({outputDock}, {190}, Qt::Vertical);
 }
 
 bool MainWindow::confirmSaveIfDirty()
@@ -328,6 +358,10 @@ void MainWindow::runRuntimeAction(RuntimeAction action, const QString &title, bo
     if (!ensureCurrentFileSaved()) {
         return;
     }
+
+    writeOutput(title, QString::fromUtf8("جار التنفيذ..."));
+    setStatus(QString::fromUtf8("%1...").arg(title));
+    QApplication::processEvents();
 
     const RuntimeResult result = runtime.runBlocking(action, editor->currentFilePath(), 30000);
     const QString output = QString::fromUtf8("exit=%1\n\n%2\n%3")

@@ -22,6 +22,7 @@ public:
     explicit EditorSurface(QWidget *parent = nullptr);
 
     bool openFile(const QString &path, QString *error = nullptr);
+    void resetForNewFile();
     bool saveFile(QString *error = nullptr);
     bool saveFileAs(const QString &path, QString *error = nullptr);
 
