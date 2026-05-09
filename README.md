@@ -52,6 +52,7 @@ The packager stages:
 - Python runtime under `runtime\python`
 - `lughat-althuban` installed into the staged runtime
 - license and release docs
+- third-party license payloads under `licenses\`
 - per-user install path under `%LOCALAPPDATA%\LisanStudio`
 - `LisanStudio-0.1.0-beta.msi` under `artifacts\`
 
@@ -65,6 +66,16 @@ After installing the MSI, run:
 
 This validates the installed executable, bundled Python runtime, Arabic `.apy`
 execution, command-line project/file launch, and non-editable runtime packaging.
+
+To validate the actual MSI install and uninstall path:
+
+```powershell
+.\scripts\msi-smoke.ps1
+```
+
+This performs a silent per-user install from the beta MSI, runs installed smoke,
+checks shortcuts and license payloads, then uninstalls unless `-KeepInstalled`
+is supplied.
 
 ## Beta Boundaries
 

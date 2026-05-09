@@ -16,11 +16,13 @@ $bash = "C:\msys64\usr\bin\bash.exe"
 $windeployqt = "C:\msys64\ucrt64\bin\windeployqt6.exe"
 $wix = "C:\Program Files\WiX Toolset v7.0\bin\wix.exe"
 $wxs = Join-Path $repo "packaging\wix\LisanStudio.wxs"
+$qtLicenseRoot = "C:\msys64\ucrt64\share\licenses\qt6-base"
 
 if (-not (Test-Path $bash)) { throw "MSYS2 bash not found: $bash" }
 if (-not (Test-Path $windeployqt)) { throw "windeployqt6 not found: $windeployqt" }
 if (-not (Test-Path $ApythonRoot)) { throw "ApythonRoot not found: $ApythonRoot" }
 if (-not (Test-Path $PythonRoot)) { throw "PythonRoot not found: $PythonRoot" }
+if (-not (Test-Path $qtLicenseRoot)) { throw "Qt license folder not found: $qtLicenseRoot" }
 
 & (Join-Path $PSScriptRoot "validate.ps1")
 
@@ -85,6 +87,12 @@ Copy-Item -LiteralPath (Join-Path $repo "docs\RELEASE_NOTES.md") -Destination (J
 Copy-Item -LiteralPath (Join-Path $repo "docs\BETA_VALIDATION.md") -Destination (Join-Path $stage "BETA_VALIDATION.md") -Force
 Copy-Item -LiteralPath (Join-Path $repo "licenses\LICENSES.md") -Destination (Join-Path $stage "LICENSES.md") -Force
 Copy-Item -LiteralPath (Join-Path $repo "samples") -Destination (Join-Path $stage "samples") -Recurse -Force
+
+$stageLicenses = Join-Path $stage "licenses"
+New-Item -ItemType Directory -Force -Path $stageLicenses | Out-Null
+Copy-Item -LiteralPath $qtLicenseRoot -Destination (Join-Path $stageLicenses "qt6-base") -Recurse -Force
+Copy-Item -LiteralPath (Join-Path $PythonRoot "LICENSE.txt") -Destination (Join-Path $stageLicenses "Python-LICENSE.txt") -Force
+Copy-Item -LiteralPath (Join-Path $ApythonRoot "LICENSE") -Destination (Join-Path $stageLicenses "lughat-althuban-LICENSE") -Force
 
 if (-not $SkipMsi) {
     if (-not (Test-Path $wix)) {

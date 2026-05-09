@@ -6,7 +6,9 @@
     Version="$(var.ProductVersion)"
     UpgradeCode="b45833fc-87f8-4656-8cc4-dc87769ea386"
     Scope="perUser">
-    <MajorUpgrade DowngradeErrorMessage="A newer Lisan Studio is already installed." />
+    <MajorUpgrade
+      AllowSameVersionUpgrades="yes"
+      DowngradeErrorMessage="A newer Lisan Studio is already installed." />
     <MediaTemplate EmbedCab="yes" />
 
     <Feature Id="MainFeature" Title="Lisan Studio" Level="1">

@@ -21,7 +21,9 @@
 - RTL settings dialog with editor font controls, runtime diagnostics, and recent projects.
 - Runtime diagnostics for bundled Python, `lughat-althuban`, run, lint, and format availability.
 - Lisan Studio application metadata, executable name, install folder, and shortcut targets.
+- Packaged Qt, Python, and `lughat-althuban` license payloads.
 - WiX MSI packaging path for `LisanStudio-0.1.0-beta.msi`.
+- MSI install/uninstall smoke script for private beta validation.
 
 ## Deferred
 
@@ -37,6 +39,8 @@
 - Arabic output mojibake.
 - Save/open data loss.
 - Installer requiring manual PATH or Python setup.
+- MSI install/uninstall smoke failure.
+- Missing Qt, Python, or `lughat-althuban` license payloads.
 - Hidden BiDi controls inserted by the editor.
 - Any return of a native `QMenuBar` or `QToolBar` shell surface.
 - Left-to-right shell regression in top command bar menus, project/sidebar, tabs, status bar, or bottom panel.

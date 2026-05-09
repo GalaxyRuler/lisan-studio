@@ -9,6 +9,7 @@ Run validation from the installed app, not only from the build tree.
 .\scripts\validate.ps1
 .\scripts\package.ps1
 .\scripts\installed-smoke.ps1
+.\scripts\msi-smoke.ps1
 ```
 
 The installed smoke script verifies:
@@ -21,6 +22,18 @@ The installed smoke script verifies:
 - the app can launch with a project path
 - the app can launch with a file path
 - the bundled runtime has no editable local `apython` markers
+
+The MSI smoke script verifies:
+
+- silent MSI install from `artifacts\LisanStudio-0.1.0-beta.msi`
+- pre-clean of older local Lisan Studio MSI products
+- installed payload under `%LOCALAPPDATA%\LisanStudio`
+- Start Menu and Desktop shortcuts
+- packaged README, release notes, validation notes, and license files
+- Qt, Python, and `lughat-althuban` license payloads
+- installed runtime smoke through `scripts\installed-smoke.ps1`
+- silent MSI uninstall removes the app executable and shortcuts
+- same-version beta MSI rebuilds can replace older local beta installs
 
 The automated Qt editor torture tests verify:
 
@@ -68,7 +81,8 @@ samples\torture-project
 - insert a hidden BiDi control into a scratch file and confirm the Problems panel reports it
 - run the current `.apy` file and confirm stdout/stderr, exit code, elapsed time, and cancel behavior are readable
 - open Settings, verify runtime diagnostics, change the editor font setting, and reopen the app
-- uninstall and confirm app payload files are removed
+- uninstall and confirm app payload files and shortcuts are removed
+- confirm user settings under the Qt app config location are not treated as MSI payload
 
 ## Blockers
 
@@ -76,6 +90,8 @@ samples\torture-project
 - Arabic output mojibake
 - save/open data loss
 - installer requiring PATH or system Python setup
+- MSI install/uninstall smoke failure
+- missing Qt, Python, or `lughat-althuban` license payloads
 - hidden BiDi controls inserted by the editor
 - visible placeholder UI
 - any return of a native `QMenuBar` or `QToolBar` shell surface
