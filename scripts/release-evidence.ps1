@@ -1,0 +1,196 @@
+param(
+    [string]$ProductVersion = "0.1.0",
+    [string]$ReleaseLabel = "0.1.0-beta"
+)
+
+$ErrorActionPreference = "Stop"
+
+$repo = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+$releaseDir = Join-Path $repo "artifacts\release\$ReleaseLabel"
+$logsDir = Join-Path $releaseDir "logs"
+$screenshotsDir = Join-Path $releaseDir "screenshots"
+$msiPath = Join-Path $repo "artifacts\LisanStudio-0.1.0-beta.msi"
+$installRoot = Join-Path $env:LOCALAPPDATA "LisanStudio"
+$app = Join-Path $installRoot "LisanStudio.exe"
+
+New-Item -ItemType Directory -Force -Path $releaseDir, $logsDir, $screenshotsDir | Out-Null
+
+function Invoke-LoggedStep {
+    param(
+        [Parameter(Mandatory = $true)][string]$Name,
+        [Parameter(Mandatory = $true)][scriptblock]$Command
+    )
+
+    $logPath = Join-Path $logsDir "$Name.log"
+    $started = Get-Date
+    try {
+        $output = & $Command 2>&1
+        $output | Set-Content -LiteralPath $logPath -Encoding UTF8
+        [PSCustomObject]@{
+            Name = $Name
+            Status = "PASS"
+            Started = $started
+            Finished = Get-Date
+            Log = $logPath
+        }
+    } catch {
+        @($_.Exception.Message, "", $_.ScriptStackTrace) | Set-Content -LiteralPath $logPath -Encoding UTF8
+        throw
+    }
+}
+
+function Get-LisanInstalledProducts {
+    $installer = New-Object -ComObject WindowsInstaller.Installer
+    foreach ($product in @($installer.ProductsEx("", "", 7))) {
+        if ($product.InstallProperty("ProductName") -eq "Lisan Studio") {
+            [PSCustomObject]@{
+                ProductCode = $product.ProductCode()
+                Name = $product.InstallProperty("ProductName")
+                LocalPackage = $product.InstallProperty("LocalPackage")
+            }
+        }
+    }
+}
+
+function Save-InstalledAppScreenshot {
+    Add-Type -AssemblyName System.Drawing
+    Add-Type -AssemblyName System.Windows.Forms
+    Add-Type @'
+using System;
+using System.Runtime.InteropServices;
+public static class LisanReleaseWindowOps {
+  [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left; public int Top; public int Right; public int Bottom; }
+  [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
+  [DllImport("user32.dll")] public static extern bool MoveWindow(IntPtr hWnd, int X, int Y, int nWidth, int nHeight, bool bRepaint);
+  [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+}
+'@
+
+    Get-Process LisanStudio -ErrorAction SilentlyContinue | Stop-Process -Force
+    $sampleProject = Join-Path $installRoot "samples\torture-project"
+    $process = Start-Process -FilePath $app -ArgumentList @($sampleProject) -PassThru
+    $handle = [IntPtr]::Zero
+    for ($index = 0; $index -lt 60; ++$index) {
+        Start-Sleep -Milliseconds 200
+        $process.Refresh()
+        if ($process.MainWindowHandle -ne 0) {
+            $handle = $process.MainWindowHandle
+            break
+        }
+    }
+    if ($handle -eq [IntPtr]::Zero) {
+        throw "Lisan Studio did not expose a main window handle for screenshot capture."
+    }
+
+    $secondary = [System.Windows.Forms.Screen]::AllScreens | Where-Object { -not $_.Primary } | Select-Object -First 1
+    if ($secondary) {
+        $x = $secondary.WorkingArea.X + 40
+        $y = $secondary.WorkingArea.Y + 80
+    } else {
+        $x = 100
+        $y = 100
+    }
+
+    [LisanReleaseWindowOps]::ShowWindow($handle, 9) | Out-Null
+    [LisanReleaseWindowOps]::MoveWindow($handle, $x, $y, 1600, 950, $true) | Out-Null
+    Start-Sleep -Milliseconds 900
+
+    $rect = New-Object LisanReleaseWindowOps+RECT
+    [LisanReleaseWindowOps]::GetWindowRect($handle, [ref]$rect) | Out-Null
+    $width = $rect.Right - $rect.Left
+    $height = $rect.Bottom - $rect.Top
+    $bitmap = New-Object System.Drawing.Bitmap($width, $height)
+    $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
+    $graphics.CopyFromScreen($rect.Left, $rect.Top, 0, 0, $bitmap.Size)
+    $screenshotPath = Join-Path $screenshotsDir "main-window.png"
+    $bitmap.Save($screenshotPath, [System.Drawing.Imaging.ImageFormat]::Png)
+    $graphics.Dispose()
+    $bitmap.Dispose()
+    Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+    $screenshotPath
+}
+
+$steps = @()
+$steps += Invoke-LoggedStep -Name "package" -Command { & (Join-Path $PSScriptRoot "package.ps1") -ProductVersion $ProductVersion }
+$steps += Invoke-LoggedStep -Name "msi-smoke-keep-installed" -Command { & (Join-Path $PSScriptRoot "msi-smoke.ps1") -KeepInstalled }
+
+if (-not (Test-Path -LiteralPath $msiPath)) {
+    throw "Release MSI missing after package step: $msiPath"
+}
+if (-not (Test-Path -LiteralPath $app)) {
+    throw "Installed app missing after MSI smoke: $app"
+}
+
+$screenshot = Save-InstalledAppScreenshot
+$hashRows = Get-FileHash -Algorithm SHA256 -LiteralPath $msiPath, $app
+$checksumsPath = Join-Path $releaseDir "CHECKSUMS-SHA256.txt"
+$hashRows | ForEach-Object { "$($_.Hash)  $($_.Path)" } | Set-Content -LiteralPath $checksumsPath -Encoding ASCII
+
+$knownIssuesPath = Join-Path $releaseDir "KNOWN_ISSUES.md"
+@"
+# Lisan Studio $ReleaseLabel Known Issues
+
+- Private beta only; no public distribution yet.
+- No Git UI, AI panel, auto-update, or plugin system in this beta.
+- Manual Arabic editor torture validation is still required before tagging.
+- `windeployqt6` may warn that Qt translations and DirectX shader compiler DLLs are unavailable in this local toolchain; these are tracked as non-blocking for the current private beta smoke.
+"@ | Set-Content -LiteralPath $knownIssuesPath -Encoding UTF8
+
+$gitCommit = (& git -C $repo rev-parse --short HEAD).Trim()
+$gitBranch = (& git -C $repo branch --show-current).Trim()
+$gitStatus = (& git -C $repo status --short) -join "`n"
+$products = @(Get-LisanInstalledProducts)
+$msiHash = ($hashRows | Where-Object { $_.Path -eq $msiPath }).Hash
+$validationLog = Join-Path $releaseDir "VALIDATION_LOG.md"
+
+$stepLines = $steps | ForEach-Object {
+    "- {0}: {1} ({2})" -f $_.Name, $_.Status, $_.Log
+}
+$productLines = $products | ForEach-Object {
+    "- {0} {1} {2}" -f $_.ProductCode, $_.Name, $_.LocalPackage
+}
+if (-not $productLines) {
+    $productLines = @("- None")
+}
+
+$validationLines = @(
+    "# Lisan Studio $ReleaseLabel Validation Log",
+    "",
+    "Generated: $(Get-Date -Format "yyyy-MM-dd HH:mm:ss zzz")",
+    "Repository: $repo",
+    "Branch: $gitBranch",
+    "Commit: $gitCommit",
+    "",
+    "## Gate Results",
+    "",
+    $stepLines,
+    "",
+    "## Release Artifacts",
+    "",
+    "- MSI: $msiPath",
+    "- MSI SHA256: $msiHash",
+    "- Checksums: $checksumsPath",
+    "- Known issues: $knownIssuesPath",
+    "- Screenshot: $screenshot",
+    "",
+    "## Installed Product State",
+    "",
+    $productLines,
+    "",
+    "## Git Status At Evidence Time",
+    "",
+    '```text',
+    $gitStatus,
+    '```'
+)
+$validationLines | Set-Content -LiteralPath $validationLog -Encoding UTF8
+
+[PSCustomObject]@{
+    ReleaseDir = $releaseDir
+    ValidationLog = $validationLog
+    Checksums = $checksumsPath
+    KnownIssues = $knownIssuesPath
+    Screenshot = $screenshot
+    Msi = $msiPath
+    MsiSha256 = $msiHash
+}

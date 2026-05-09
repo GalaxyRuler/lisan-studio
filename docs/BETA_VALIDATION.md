@@ -10,6 +10,7 @@ Run validation from the installed app, not only from the build tree.
 .\scripts\package.ps1
 .\scripts\installed-smoke.ps1
 .\scripts\msi-smoke.ps1
+.\scripts\release-evidence.ps1
 ```
 
 The installed smoke script verifies:
@@ -34,6 +35,13 @@ The MSI smoke script verifies:
 - installed runtime smoke through `scripts\installed-smoke.ps1`
 - silent MSI uninstall removes the app executable and shortcuts
 - same-version beta MSI rebuilds can replace older local beta installs
+
+The release evidence script produces:
+
+- `artifacts\release\0.1.0-beta\VALIDATION_LOG.md`
+- `artifacts\release\0.1.0-beta\CHECKSUMS-SHA256.txt`
+- `artifacts\release\0.1.0-beta\KNOWN_ISSUES.md`
+- `artifacts\release\0.1.0-beta\screenshots\main-window.png`
 
 The automated Qt editor torture tests verify:
 

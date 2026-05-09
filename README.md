@@ -77,6 +77,16 @@ This performs a silent per-user install from the beta MSI, runs installed smoke,
 checks shortcuts and license payloads, then uninstalls unless `-KeepInstalled`
 is supplied.
 
+To generate release evidence for a private beta handoff:
+
+```powershell
+.\scripts\release-evidence.ps1
+```
+
+This runs packaging and MSI smoke, leaves the validated MSI-installed app
+available, writes SHA256 checksums, a validation log, known issues, and a
+screenshot under `artifacts\release\0.1.0-beta\`.
+
 ## Beta Boundaries
 
 Included in v0.1.0 beta:
