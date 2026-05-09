@@ -7,6 +7,7 @@
 #include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
+#include <QFontComboBox>
 #include <QFormLayout>
 #include <QFrame>
 #include <QHBoxLayout>
@@ -746,14 +747,45 @@ void MainWindow::findInProject()
     const auto rows = service.search(projectRoot, query);
     searchResultsPanel->clear();
     for (const auto &row : rows) {
-        const QString label = QString::fromUtf8("%1 - السطر %2 - %3")
-            .arg(QFileInfo(row.path).fileName())
-            .arg(row.line)
-            .arg(row.preview);
-        auto *item = new QListWidgetItem(label, searchResultsPanel);
+        auto *item = new QListWidgetItem(searchResultsPanel);
         item->setData(Qt::UserRole, row.path);
         item->setData(Qt::UserRole + 1, row.line);
         item->setToolTip(QDir::toNativeSeparators(row.path));
+        item->setText(QString::fromUtf8("%1، السطر %2").arg(QFileInfo(row.path).fileName()).arg(row.line));
+
+        auto *rowWidget = new QWidget(searchResultsPanel);
+        rowWidget->setObjectName(QStringLiteral("searchResultRow"));
+        rowWidget->setLayoutDirection(Qt::RightToLeft);
+        auto *rowLayout = new QVBoxLayout(rowWidget);
+        rowLayout->setContentsMargins(12, 8, 12, 8);
+        rowLayout->setSpacing(4);
+
+        auto *metaLayout = new QHBoxLayout;
+        metaLayout->setDirection(QBoxLayout::RightToLeft);
+        metaLayout->setSpacing(8);
+        auto *fileLabel = new QLabel(QFileInfo(row.path).fileName(), rowWidget);
+        fileLabel->setObjectName(QStringLiteral("searchResultFileLabel"));
+        fileLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        fileLabel->setStyleSheet(QStringLiteral("color: #E8ECF2; font-weight: 600;"));
+        auto *lineLabel = new QLabel(QString::fromUtf8("السطر %1").arg(row.line), rowWidget);
+        lineLabel->setObjectName(QStringLiteral("searchResultLineLabel"));
+        lineLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        lineLabel->setStyleSheet(QStringLiteral("color: #AEC6FF;"));
+        metaLayout->addWidget(fileLabel);
+        metaLayout->addWidget(lineLabel);
+        metaLayout->addStretch(1);
+
+        auto *previewLabel = new QLabel(row.preview, rowWidget);
+        previewLabel->setObjectName(QStringLiteral("searchResultPreviewLabel"));
+        previewLabel->setLayoutDirection(Qt::RightToLeft);
+        previewLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        previewLabel->setWordWrap(true);
+        previewLabel->setStyleSheet(QStringLiteral("color: #9AA7B6;"));
+
+        rowLayout->addLayout(metaLayout);
+        rowLayout->addWidget(previewLabel);
+        item->setSizeHint(rowWidget->sizeHint());
+        searchResultsPanel->setItemWidget(item, rowWidget);
     }
     showSearchResultsPanel();
     setStatus(QString::fromUtf8("نتائج البحث: %1").arg(rows.size()));
@@ -839,16 +871,18 @@ void MainWindow::openSettings()
     editorPage->setLayoutDirection(Qt::RightToLeft);
     auto *editorForm = new QFormLayout(editorPage);
     editorForm->setLabelAlignment(Qt::AlignRight);
-    auto *fontFamilyInput = new QLineEdit(settings.editorFontFamily(), editorPage);
-    fontFamilyInput->setObjectName(QStringLiteral("editorFontFamilyInput"));
-    fontFamilyInput->setLayoutDirection(Qt::LeftToRight);
+    auto *fontFamilyCombo = new QFontComboBox(editorPage);
+    fontFamilyCombo->setObjectName(QStringLiteral("editorFontFamilyCombo"));
+    fontFamilyCombo->setLayoutDirection(Qt::RightToLeft);
+    fontFamilyCombo->setEditable(false);
+    fontFamilyCombo->setCurrentFont(QFont(settings.editorFontFamily()));
     auto *fontSizeInput = new QSpinBox(editorPage);
     fontSizeInput->setObjectName(QStringLiteral("editorFontSizeInput"));
     fontSizeInput->setRange(8, 28);
     fontSizeInput->setValue(settings.editorFontSize());
     auto *themeValue = new QLabel(QString::fromUtf8("داكن مستقبلي"), editorPage);
     themeValue->setObjectName(QStringLiteral("settingsThemeValue"));
-    editorForm->addRow(QString::fromUtf8("خط المحرر"), fontFamilyInput);
+    editorForm->addRow(QString::fromUtf8("خط المحرر"), fontFamilyCombo);
     editorForm->addRow(QString::fromUtf8("حجم الخط"), fontSizeInput);
     editorForm->addRow(QString::fromUtf8("السمة"), themeValue);
 
@@ -910,9 +944,9 @@ void MainWindow::openSettings()
         return;
     }
 
-    settings.setEditorFontFamily(fontFamilyInput->text().trimmed().isEmpty()
+    settings.setEditorFontFamily(fontFamilyCombo->currentFont().family().trimmed().isEmpty()
         ? QStringLiteral("Cascadia Code")
-        : fontFamilyInput->text().trimmed());
+        : fontFamilyCombo->currentFont().family().trimmed());
     settings.setEditorFontSize(fontSizeInput->value());
     for (int i = 0; editorTabs && i < editorTabs->count(); ++i) {
         if (auto *surface = qobject_cast<EditorSurface *>(editorTabs->widget(i))) {

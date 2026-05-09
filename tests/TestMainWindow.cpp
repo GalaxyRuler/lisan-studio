@@ -4,6 +4,7 @@
 
 #include <QDialog>
 #include <QDialogButtonBox>
+#include <QFontComboBox>
 #include <QMenuBar>
 #include <QFrame>
 #include <QLabel>
@@ -370,8 +371,20 @@ void TestMainWindow::projectSearchShowsClickableResultRows()
     auto *results = window.findChild<QListWidget *>(QStringLiteral("searchResultsPanel"));
     QVERIFY(results != nullptr);
     QCOMPARE(results->count(), 1);
-    QVERIFY(results->item(0)->text().contains(QStringLiteral("main.apy")));
-    QVERIFY(results->item(0)->text().contains(QString::fromUtf8("السطر 2")));
+    auto *resultRow = results->itemWidget(results->item(0));
+    QVERIFY(resultRow != nullptr);
+    QCOMPARE(resultRow->layoutDirection(), Qt::RightToLeft);
+    auto *fileLabel = resultRow->findChild<QLabel *>(QStringLiteral("searchResultFileLabel"));
+    auto *lineLabel = resultRow->findChild<QLabel *>(QStringLiteral("searchResultLineLabel"));
+    auto *previewLabel = resultRow->findChild<QLabel *>(QStringLiteral("searchResultPreviewLabel"));
+    QVERIFY(fileLabel != nullptr);
+    QVERIFY(lineLabel != nullptr);
+    QVERIFY(previewLabel != nullptr);
+    QCOMPARE(fileLabel->text(), QStringLiteral("main.apy"));
+    QCOMPARE(lineLabel->text(), QString::fromUtf8("السطر 2"));
+    QVERIFY(previewLabel->text().contains(QString::fromUtf8("اطبع")));
+    QCOMPARE(fileLabel->alignment() & Qt::AlignRight, Qt::AlignRight);
+    QCOMPARE(previewLabel->alignment() & Qt::AlignRight, Qt::AlignRight);
     QCOMPARE(QDir::toNativeSeparators(results->item(0)->data(Qt::UserRole).toString()), QDir::toNativeSeparators(filePath));
     QCOMPARE(results->item(0)->data(Qt::UserRole + 1).toInt(), 2);
 
@@ -580,6 +593,7 @@ void TestMainWindow::settingsDialogExposesCategoriesAndRuntimeDiagnostics()
 
         auto *categories = dialog->findChild<QListWidget *>(QStringLiteral("settingsCategories"));
         auto *pages = dialog->findChild<QTabWidget *>(QStringLiteral("settingsPages"));
+        auto *fontFamily = dialog->findChild<QFontComboBox *>(QStringLiteral("editorFontFamilyCombo"));
         auto *pythonPath = dialog->findChild<QLabel *>(QStringLiteral("runtimePythonPathValue"));
         auto *packageStatus = dialog->findChild<QLabel *>(QStringLiteral("runtimePackageStatusValue"));
         auto *buttons = dialog->findChild<QDialogButtonBox *>();
@@ -602,6 +616,10 @@ void TestMainWindow::settingsDialogExposesCategoriesAndRuntimeDiagnostics()
             && pages
             && pages->layoutDirection() == Qt::RightToLeft
             && dialog->findChild<QWidget *>(QStringLiteral("editorSettingsPage"))
+            && fontFamily
+            && fontFamily->layoutDirection() == Qt::RightToLeft
+            && fontFamily->count() > 0
+            && dialog->findChild<QLineEdit *>(QStringLiteral("editorFontFamilyInput")) == nullptr
             && dialog->findChild<QWidget *>(QStringLiteral("runtimeDiagnosticsPage"))
             && dialog->findChild<QWidget *>(QStringLiteral("recentProjectsPage"))
             && pythonPath
