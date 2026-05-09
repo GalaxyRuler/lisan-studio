@@ -5,6 +5,7 @@
 #include <QMenuBar>
 #include <QLabel>
 #include <QLineEdit>
+#include <QListWidget>
 #include <QStatusBar>
 #include <QToolBar>
 #include <QToolButton>
@@ -24,6 +25,8 @@ private slots:
     void newFileCreatesANewEditorTab();
     void openingMultipleFilesKeepsEachDocumentInATab();
     void projectTreeShowsOnlyFileNames();
+    void projectSearchShowsClickableResultRows();
+    void problemsPanelShowsHiddenBidiWarnings();
     void outputPanelIsVisibleForRunFeedback();
     void outputPlaceholderPaintsFromRight();
     void untitledEditorBufferMaterializesForRunWithoutSaveDialog();
@@ -166,11 +169,12 @@ void TestMainWindow::exposesPremiumFutureBottomPanelTabs()
     auto *tabs = window.findChild<QTabWidget *>(QStringLiteral("bottomPanelTabs"));
     QVERIFY(tabs != nullptr);
     QCOMPARE(tabs->layoutDirection(), Qt::RightToLeft);
-    QCOMPARE(tabs->count(), 4);
+    QCOMPARE(tabs->count(), 5);
     QCOMPARE(tabs->tabText(0), QString::fromUtf8("الطرفية"));
     QCOMPARE(tabs->tabText(1), QString::fromUtf8("الإخراج"));
     QCOMPARE(tabs->tabText(2), QString::fromUtf8("المشاكل"));
-    QCOMPARE(tabs->tabText(3), QString::fromUtf8("التصحيح"));
+    QCOMPARE(tabs->tabText(3), QString::fromUtf8("نتائج البحث"));
+    QCOMPARE(tabs->tabText(4), QString::fromUtf8("التصحيح"));
 }
 
 void TestMainWindow::enforcesRtlDirectionAcrossShellContainers()
@@ -201,6 +205,14 @@ void TestMainWindow::enforcesRtlDirectionAcrossShellContainers()
     auto *outputPanel = window.findChild<QPlainTextEdit *>(QStringLiteral("outputPanel"));
     QVERIFY(outputPanel != nullptr);
     QCOMPARE(outputPanel->layoutDirection(), Qt::RightToLeft);
+
+    auto *problemsPanel = window.findChild<QListWidget *>(QStringLiteral("problemsPanel"));
+    QVERIFY(problemsPanel != nullptr);
+    QCOMPARE(problemsPanel->layoutDirection(), Qt::RightToLeft);
+
+    auto *searchResultsPanel = window.findChild<QListWidget *>(QStringLiteral("searchResultsPanel"));
+    QVERIFY(searchResultsPanel != nullptr);
+    QCOMPARE(searchResultsPanel->layoutDirection(), Qt::RightToLeft);
 
     auto *statusBar = window.statusBar();
     QVERIFY(statusBar != nullptr);
@@ -290,6 +302,72 @@ void TestMainWindow::projectTreeShowsOnlyFileNames()
     QVERIFY(tree->isColumnHidden(1));
     QVERIFY(tree->isColumnHidden(2));
     QVERIFY(tree->isColumnHidden(3));
+}
+
+void TestMainWindow::projectSearchShowsClickableResultRows()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    QDir root(temp.path());
+    const QString filePath = writeFile(
+        root,
+        QStringLiteral("src/main.apy"),
+        QString::fromUtf8("س = 1\nاطبع(س)\nاكتب(\"بعيد\")\n"));
+
+    MainWindow window;
+    window.resize(1000, 700);
+    QVERIFY(window.openPath(root.absolutePath()));
+
+    auto *commandBox = window.findChild<QLineEdit *>(QStringLiteral("commandBox"));
+    QVERIFY(commandBox != nullptr);
+    commandBox->setText(QString::fromUtf8("اطبع"));
+
+    QVERIFY(QMetaObject::invokeMethod(&window, "findInProject", Qt::DirectConnection));
+
+    auto *results = window.findChild<QListWidget *>(QStringLiteral("searchResultsPanel"));
+    QVERIFY(results != nullptr);
+    QCOMPARE(results->count(), 1);
+    QVERIFY(results->item(0)->text().contains(QStringLiteral("main.apy")));
+    QVERIFY(results->item(0)->text().contains(QString::fromUtf8("السطر 2")));
+    QCOMPARE(QDir::toNativeSeparators(results->item(0)->data(Qt::UserRole).toString()), QDir::toNativeSeparators(filePath));
+    QCOMPARE(results->item(0)->data(Qt::UserRole + 1).toInt(), 2);
+
+    auto *tabs = window.findChild<QTabWidget *>(QStringLiteral("bottomPanelTabs"));
+    QVERIFY(tabs != nullptr);
+    QCOMPARE(tabs->currentWidget(), results);
+
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    results->setFocus();
+    results->setCurrentRow(0);
+    QTest::keyClick(results, Qt::Key_Return);
+
+    QCOMPARE(QDir::toNativeSeparators(window.currentEditorPath()), QDir::toNativeSeparators(filePath));
+    auto *editor = window.findChild<EditorSurface *>(QStringLiteral("editorSurface"));
+    QVERIFY(editor != nullptr);
+    QCOMPARE(editor->textCursor().blockNumber(), 1);
+}
+
+void TestMainWindow::problemsPanelShowsHiddenBidiWarnings()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    QDir root(temp.path());
+    const QString filePath = writeFile(
+        root,
+        QStringLiteral("main.apy"),
+        QString::fromUtf8("اطبع(\"سليم\")\n") + QChar(0x202E) + QString::fromUtf8("اطبع(\"مخفي\")\n"));
+
+    MainWindow window;
+    QVERIFY(window.openPath(filePath));
+
+    auto *problems = window.findChild<QListWidget *>(QStringLiteral("problemsPanel"));
+    QVERIFY(problems != nullptr);
+    QCOMPARE(problems->count(), 1);
+    QVERIFY(problems->item(0)->text().contains(QString::fromUtf8("تحكم اتجاه مخفي")));
+    QVERIFY(problems->item(0)->text().contains(QStringLiteral("RIGHT-TO-LEFT OVERRIDE")));
+    QCOMPARE(QDir::toNativeSeparators(problems->item(0)->data(Qt::UserRole).toString()), QDir::toNativeSeparators(filePath));
+    QCOMPARE(problems->item(0)->data(Qt::UserRole + 1).toInt(), 2);
 }
 
 void TestMainWindow::outputPanelIsVisibleForRunFeedback()

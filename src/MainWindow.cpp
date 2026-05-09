@@ -10,6 +10,7 @@
 #include <QHBoxLayout>
 #include <QInputDialog>
 #include <QListWidget>
+#include <QListWidgetItem>
 #include <QMenu>
 #include <QMessageBox>
 #include <QPainter>
@@ -18,6 +19,7 @@
 #include <QSplitter>
 #include <QStatusBar>
 #include <QStyle>
+#include <QTextBlock>
 #include <QTextStream>
 #include <QToolButton>
 #include <QStandardPaths>
@@ -167,6 +169,9 @@ void MainWindow::buildUi()
         "QLineEdit { background: #1B2230; border: 1px solid #303746; border-radius: 12px; padding: 5px 12px; color: #E8ECF2; selection-background-color: #264F78; }"
         "QLineEdit:focus { border-color: #4C8DFF; }"
         "QTreeView, QPlainTextEdit, QListWidget { background: #0D1117; border: 1px solid #303746; selection-background-color: #264F78; color: #E8ECF2; }"
+        "QListWidget::item { padding: 8px 10px; border-bottom: 1px solid #1B2230; }"
+        "QListWidget::item:hover { background: #13233A; color: #FFFFFF; }"
+        "QListWidget::item:selected { background: #264F78; color: #FFFFFF; }"
         "QTabWidget::pane { border: 1px solid #303746; background: #0D1117; }"
         "QTabBar::tab { background: #171B22; color: #A7B0BE; border: 1px solid #303746; padding: 7px 12px; }"
         "QTabBar::tab:selected { background: #202633; color: #E8ECF2; border-top: 2px solid #4C8DFF; }"
@@ -386,12 +391,25 @@ void MainWindow::buildUi()
     terminalPanel->setLayoutDirection(Qt::RightToLeft);
     arabicTerminalPanel->setArabicPlaceholderText(QString::fromUtf8("الطرفية ستظهر هنا"));
 
-    auto *arabicProblemsPanel = new ArabicPlaceholderPlainTextEdit(bottomPanelTabs);
-    problemsPanel = arabicProblemsPanel;
+    problemsPanel = new QListWidget(bottomPanelTabs);
     problemsPanel->setObjectName(QStringLiteral("problemsPanel"));
-    problemsPanel->setReadOnly(true);
     problemsPanel->setLayoutDirection(Qt::RightToLeft);
-    arabicProblemsPanel->setArabicPlaceholderText(QString::fromUtf8("لا توجد مشاكل حاليا"));
+    problemsPanel->setWordWrap(true);
+    problemsPanel->setUniformItemSizes(false);
+    problemsPanel->setToolTip(QString::fromUtf8("تحذيرات الاتجاه وأخطاء التشغيل القابلة للفتح."));
+    connect(problemsPanel, &QListWidget::itemClicked, this, &MainWindow::openProblemResult);
+    connect(problemsPanel, &QListWidget::itemActivated, this, &MainWindow::openProblemResult);
+    connect(problemsPanel, &QListWidget::itemDoubleClicked, this, &MainWindow::openProblemResult);
+
+    searchResultsPanel = new QListWidget(bottomPanelTabs);
+    searchResultsPanel->setObjectName(QStringLiteral("searchResultsPanel"));
+    searchResultsPanel->setLayoutDirection(Qt::RightToLeft);
+    searchResultsPanel->setWordWrap(true);
+    searchResultsPanel->setUniformItemSizes(false);
+    searchResultsPanel->setToolTip(QString::fromUtf8("نتائج البحث في المشروع. اضغط Enter أو انقر مرتين للفتح."));
+    connect(searchResultsPanel, &QListWidget::itemClicked, this, &MainWindow::openSearchResult);
+    connect(searchResultsPanel, &QListWidget::itemActivated, this, &MainWindow::openSearchResult);
+    connect(searchResultsPanel, &QListWidget::itemDoubleClicked, this, &MainWindow::openSearchResult);
 
     auto *arabicDebugPanel = new ArabicPlaceholderPlainTextEdit(bottomPanelTabs);
     debugPanel = arabicDebugPanel;
@@ -403,6 +421,7 @@ void MainWindow::buildUi()
     bottomPanelTabs->addTab(terminalPanel, QString::fromUtf8("الطرفية"));
     bottomPanelTabs->addTab(outputPanel, QString::fromUtf8("الإخراج"));
     bottomPanelTabs->addTab(problemsPanel, QString::fromUtf8("المشاكل"));
+    bottomPanelTabs->addTab(searchResultsPanel, QString::fromUtf8("نتائج البحث"));
     bottomPanelTabs->addTab(debugPanel, QString::fromUtf8("التصحيح"));
 
     outputDock = new QDockWidget(QString::fromUtf8("اللوحة السفلية"), this);
@@ -424,6 +443,7 @@ void MainWindow::newFile()
     }
     createEditorTab(QString::fromUtf8("ملف جديد"));
     outputPanel->clear();
+    refreshEditorProblems();
     setStatus(QString::fromUtf8("ملف جديد"));
 }
 
@@ -534,6 +554,13 @@ void MainWindow::finishRuntimeProcess(int exitCode, QProcess::ExitStatus exitSta
         .arg(exitCode)
         .arg(activeRuntimeTimer.isValid() ? activeRuntimeTimer.elapsed() : 0);
     appendRuntimeOutput(QString::fromUtf8("النظام"), finalText);
+    if (exitCode != 0) {
+        addProblem(
+            QString::fromUtf8("خطأ"),
+            QString::fromUtf8("%1 انتهى برمز خروج %2").arg(activeRuntimeTitle).arg(exitCode),
+            activeRuntimeProcess->property("runFilePath").toString(),
+            0);
+    }
     completeRuntimeProcess(QString::fromUtf8("%1 انتهى: %2").arg(activeRuntimeTitle).arg(exitCode));
 }
 
@@ -551,6 +578,11 @@ void MainWindow::handleRuntimeProcessError(QProcess::ProcessError error)
     appendRuntimeOutput(
         QString::fromUtf8("النظام"),
         QString::fromUtf8("تعذر بدء العملية: %1\nرمز الخروج: -1").arg(activeRuntimeProcess->errorString()));
+    addProblem(
+        QString::fromUtf8("خطأ"),
+        QString::fromUtf8("تعذر بدء %1: %2").arg(activeRuntimeTitle, activeRuntimeProcess->errorString()),
+        activeRuntimeProcess->property("runFilePath").toString(),
+        0);
     completeRuntimeProcess(QString::fromUtf8("تعذر بدء %1").arg(activeRuntimeTitle));
 }
 
@@ -561,6 +593,11 @@ void MainWindow::handleRuntimeTimeout()
     }
 
     appendRuntimeOutput(QString::fromUtf8("النظام"), QString::fromUtf8("انتهت مهلة التشغيل."));
+    addProblem(
+        QString::fromUtf8("خطأ"),
+        QString::fromUtf8("انتهت مهلة %1 بعد 30 ثانية.").arg(activeRuntimeTitle),
+        activeRuntimeProcess->property("runFilePath").toString(),
+        0);
     activeRuntimeProcess->kill();
     setStatus(QString::fromUtf8("انتهت مهلة التشغيل"));
 }
@@ -607,12 +644,47 @@ void MainWindow::findInProject()
 
     SearchService service;
     const auto rows = service.search(projectRoot, query);
-    QStringList lines;
+    searchResultsPanel->clear();
     for (const auto &row : rows) {
-        lines << QStringLiteral("%1:%2: %3").arg(row.path).arg(row.line).arg(row.preview);
+        const QString label = QString::fromUtf8("%1 - السطر %2 - %3")
+            .arg(QFileInfo(row.path).fileName())
+            .arg(row.line)
+            .arg(row.preview);
+        auto *item = new QListWidgetItem(label, searchResultsPanel);
+        item->setData(Qt::UserRole, row.path);
+        item->setData(Qt::UserRole + 1, row.line);
+        item->setToolTip(QDir::toNativeSeparators(row.path));
     }
-    writeOutput(QString::fromUtf8("البحث"), lines.join('\n'));
+    showSearchResultsPanel();
     setStatus(QString::fromUtf8("نتائج البحث: %1").arg(rows.size()));
+}
+
+void MainWindow::openSearchResult(QListWidgetItem *item)
+{
+    if (!item) {
+        return;
+    }
+
+    const QString path = item->data(Qt::UserRole).toString();
+    const int line = item->data(Qt::UserRole + 1).toInt();
+    if (!path.isEmpty() && QFileInfo(path).isFile()) {
+        openEditorFile(path);
+    }
+    goToEditorLine(line);
+}
+
+void MainWindow::openProblemResult(QListWidgetItem *item)
+{
+    if (!item) {
+        return;
+    }
+
+    const QString path = item->data(Qt::UserRole).toString();
+    const int line = item->data(Qt::UserRole + 1).toInt();
+    if (!path.isEmpty() && QFileInfo(path).isFile()) {
+        openEditorFile(path);
+    }
+    goToEditorLine(line);
 }
 
 void MainWindow::openSelectedProjectFile(const QModelIndex &index)
@@ -710,6 +782,11 @@ EditorSurface *MainWindow::createEditorTab(const QString &title)
     connect(surface, &EditorSurface::dirtyStateChanged, this, [this, surface](bool) {
         updateEditorTabTitle(surface);
     });
+    connect(surface->document(), &QTextDocument::contentsChanged, this, [this, surface]() {
+        if (surface == editor) {
+            refreshEditorProblems();
+        }
+    });
 
     updateEditorTabTitle(surface);
     return surface;
@@ -731,6 +808,7 @@ void MainWindow::setCurrentEditor(EditorSurface *surface)
     setWindowTitle(editor->currentFilePath().isEmpty()
         ? QString::fromUtf8("استوديو لسان")
         : QString::fromUtf8("استوديو لسان - %1").arg(QFileInfo(editor->currentFilePath()).fileName()));
+    refreshEditorProblems();
 }
 
 void MainWindow::updateEditorTabTitle(EditorSurface *surface)
@@ -770,12 +848,14 @@ void MainWindow::closeEditorTab(int index)
     if (editorTabs->count() == 1) {
         surface->resetForNewFile();
         updateEditorTabTitle(surface);
+        refreshEditorProblems();
         return;
     }
 
     editorTabs->removeTab(index);
     surface->deleteLater();
     setCurrentEditor(qobject_cast<EditorSurface *>(editorTabs->currentWidget()));
+    refreshEditorProblems();
 }
 
 void MainWindow::writeOutput(const QString &title, const QString &text)
@@ -794,6 +874,82 @@ void MainWindow::showOutputPanel()
     }
     outputDock->raise();
     resizeDocks({outputDock}, {190}, Qt::Vertical);
+}
+
+void MainWindow::showProblemsPanel()
+{
+    if (!outputDock->isVisible()) {
+        outputDock->show();
+    }
+    if (bottomPanelTabs) {
+        bottomPanelTabs->setCurrentWidget(problemsPanel);
+    }
+    outputDock->raise();
+    resizeDocks({outputDock}, {190}, Qt::Vertical);
+}
+
+void MainWindow::showSearchResultsPanel()
+{
+    if (!outputDock->isVisible()) {
+        outputDock->show();
+    }
+    if (bottomPanelTabs) {
+        bottomPanelTabs->setCurrentWidget(searchResultsPanel);
+    }
+    outputDock->raise();
+    resizeDocks({outputDock}, {190}, Qt::Vertical);
+}
+
+void MainWindow::refreshEditorProblems()
+{
+    if (!problemsPanel || !editor) {
+        return;
+    }
+
+    problemsPanel->clear();
+    const QVector<HiddenBidiFinding> findings = editor->findHiddenBidiControls(editor->toPlainText());
+    for (const auto &finding : findings) {
+        const QTextBlock block = editor->document()->findBlock(finding.position);
+        const int line = block.isValid() ? block.blockNumber() + 1 : 0;
+        const int column = block.isValid() ? finding.position - block.position() + 1 : 0;
+        addProblem(
+            QString::fromUtf8("تحذير"),
+            QString::fromUtf8("تحكم اتجاه مخفي: %1 عند السطر %2، العمود %3").arg(finding.unicodeName).arg(line).arg(column),
+            editor->currentFilePath(),
+            line);
+    }
+}
+
+void MainWindow::addProblem(const QString &severity, const QString &message, const QString &path, int line)
+{
+    if (!problemsPanel) {
+        return;
+    }
+
+    const QString fileName = path.isEmpty() ? QString::fromUtf8("المحرر الحالي") : QFileInfo(path).fileName();
+    const QString lineText = line > 0 ? QString::fromUtf8(" - السطر %1").arg(line) : QString();
+    auto *item = new QListWidgetItem(QStringLiteral("%1: %2%3 - %4").arg(severity, fileName, lineText, message), problemsPanel);
+    item->setData(Qt::UserRole, path);
+    item->setData(Qt::UserRole + 1, line);
+    item->setToolTip(path.isEmpty() ? message : QDir::toNativeSeparators(path));
+    item->setForeground(severity == QString::fromUtf8("خطأ") ? QColor(249, 112, 102) : QColor(123, 223, 242));
+}
+
+void MainWindow::goToEditorLine(int line)
+{
+    if (!editor || line < 1) {
+        return;
+    }
+
+    const QTextBlock block = editor->document()->findBlockByNumber(line - 1);
+    if (!block.isValid()) {
+        return;
+    }
+
+    QTextCursor cursor(block);
+    editor->setTextCursor(cursor);
+    editor->centerCursor();
+    editor->setFocus();
 }
 
 bool MainWindow::confirmSaveIfDirty()

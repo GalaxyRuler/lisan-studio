@@ -12,6 +12,7 @@
 #include <QElapsedTimer>
 #include <QLabel>
 #include <QLineEdit>
+#include <QListWidget>
 #include <QMainWindow>
 #include <QPlainTextEdit>
 #include <QProcess>
@@ -48,6 +49,8 @@ private slots:
     void handleRuntimeTimeout();
     void openCommandPalette();
     void findInProject();
+    void openSearchResult(QListWidgetItem *item);
+    void openProblemResult(QListWidgetItem *item);
     void openSelectedProjectFile(const QModelIndex &index);
     void openSettings();
 
@@ -59,7 +62,8 @@ private:
     QLineEdit *commandBox = nullptr;
     QPlainTextEdit *outputPanel = nullptr;
     QPlainTextEdit *terminalPanel = nullptr;
-    QPlainTextEdit *problemsPanel = nullptr;
+    QListWidget *problemsPanel = nullptr;
+    QListWidget *searchResultsPanel = nullptr;
     QPlainTextEdit *debugPanel = nullptr;
     QTabWidget *bottomPanelTabs = nullptr;
     QDockWidget *outputDock = nullptr;
@@ -89,6 +93,11 @@ private:
     void closeEditorTab(int index);
     void writeOutput(const QString &title, const QString &text);
     void showOutputPanel();
+    void showProblemsPanel();
+    void showSearchResultsPanel();
+    void refreshEditorProblems();
+    void addProblem(const QString &severity, const QString &message, const QString &path = QString(), int line = 0);
+    void goToEditorLine(int line);
     QString runtimeWorkingDirectory() const;
     bool confirmSaveIfDirty();
     void runRuntimeAction(RuntimeAction action, const QString &title, bool reloadAfterSuccess = false);

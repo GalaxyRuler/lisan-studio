@@ -14,8 +14,9 @@
 - Hidden Unicode BiDi control detection.
 - Project folder tree.
 - Editor tabs for multiple open documents.
-- Bottom panel tabs for terminal, output, problems, and debug.
-- Project text search.
+- Bottom panel tabs for terminal, output, problems, search results, and debug.
+- Project text search with clickable file/line result rows.
+- Problems panel entries for hidden BiDi controls and runtime failures.
 - Run current `.apy` through bundled runtime with live output, exit code, elapsed time, and cancel action.
 - WiX MSI packaging path for `LisanStudio-0.1.0-beta.msi`.
 

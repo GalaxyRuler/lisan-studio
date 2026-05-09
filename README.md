@@ -76,8 +76,9 @@ Included in v0.1.0 beta:
 - custom RTL Claude-design top shell with integrated menus, primary run action, and unified command/search field
 - no inherited `QMenuBar` or `QToolBar` shell surface
 - RTL editor tabs, project sidebar, bottom panel, and status bar
-- tabbed bottom panel for terminal, output, problems, and debug
-- project search
+- tabbed bottom panel for terminal, output, problems, search results, and debug
+- project search with clickable file/line result rows
+- Problems panel for hidden BiDi warnings and runtime failures
 - run current `.apy`
 - structured runtime output with exit code, elapsed time, and cancel action
 - basic settings

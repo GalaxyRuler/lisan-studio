@@ -29,8 +29,8 @@ The automated Qt editor torture tests verify:
 - top shell follows the accepted Claude design: one integrated menu/run/command row
 - brand row includes the logo and `Lisan Studio` text as one product block
 - primary run is the only visible top-row action; stop, save, search, command palette, settings, lint, and format remain available through menus/shortcuts
-- RTL editor tabs, project sidebar, bottom panel tabs, output panel, and status bar
-- bottom panel tab order: terminal, output, problems, debug
+- RTL editor tabs, project sidebar, bottom panel tabs, output panel, Problems panel, search results panel, and status bar
+- bottom panel tab order: terminal, output, problems, search results, debug
 - mixed Arabic/English text preservation
 - UTF-8 save and reopen behavior
 - hidden BiDi control detection
@@ -39,6 +39,8 @@ The automated Qt editor torture tests verify:
 - logical cursor traversal across a long mixed-direction line
 - line-number gutter visibility and width scaling
 - editor tab creation, tab switching, and current-document path tracking
+- clickable project search rows open the matching file at the result line
+- Problems panel lists hidden BiDi controls with file and line data
 - run-tool feedback with command title, file path, working directory, exit code, and cancel action
 - output feedback selects the output tab even though the bottom panel defaults to terminal
 
@@ -58,7 +60,8 @@ samples\torture-project
 - open two files and verify each stays available in its own editor tab
 - verify cursor movement across Arabic identifiers, English names, numbers, operators, and Windows paths
 - verify selection, copy, paste, undo, redo, backspace, and delete near Arabic text
-- search the project and open a result
+- search the project and open a result from the search-results tab
+- insert a hidden BiDi control into a scratch file and confirm the Problems panel reports it
 - run the current `.apy` file and confirm stdout/stderr, exit code, elapsed time, and cancel behavior are readable
 - change the editor font setting and reopen the app
 - uninstall and confirm app payload files are removed
