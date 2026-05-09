@@ -18,6 +18,8 @@
 - Project text search with clickable file/line result rows.
 - Problems panel entries for hidden BiDi controls and runtime failures.
 - Run current `.apy` through bundled runtime with live output, exit code, elapsed time, and cancel action.
+- RTL settings dialog with editor font controls, runtime diagnostics, and recent projects.
+- Runtime diagnostics for bundled Python, `lughat-althuban`, run, lint, and format availability.
 - WiX MSI packaging path for `LisanStudio-0.1.0-beta.msi`.
 
 ## Deferred

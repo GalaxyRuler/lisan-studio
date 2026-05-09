@@ -81,7 +81,8 @@ Included in v0.1.0 beta:
 - Problems panel for hidden BiDi warnings and runtime failures
 - run current `.apy`
 - structured runtime output with exit code, elapsed time, and cancel action
-- basic settings
+- real RTL settings dialog for editor font, runtime diagnostics, and recent projects
+- runtime diagnostics for bundled Python, `lughat-althuban`, run, lint, and format availability
 - MSI packaging
 
 Deferred:

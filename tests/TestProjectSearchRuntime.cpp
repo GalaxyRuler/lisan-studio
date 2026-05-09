@@ -15,6 +15,7 @@ private slots:
     void runtimeRunnerBuildsExplicitArgumentList();
     void runtimeRunnerCanUseExplicitProjectWorkingDirectory();
     void runtimeRunnerUsesIsolatedUtf8PythonEnvironment();
+    void runtimeRunnerReportsMissingBundledPythonDiagnostics();
     void settingsStorePersistsArabicFontAndRecentProject();
 };
 
@@ -105,6 +106,23 @@ void TestProjectSearchRuntime::runtimeRunnerUsesIsolatedUtf8PythonEnvironment()
     QCOMPARE(environment.value(QStringLiteral("PYTHONIOENCODING")), QStringLiteral("utf-8"));
     QVERIFY(!environment.contains(QStringLiteral("PYTHONHOME")));
     QVERIFY(!environment.contains(QStringLiteral("PYTHONPATH")));
+}
+
+void TestProjectSearchRuntime::runtimeRunnerReportsMissingBundledPythonDiagnostics()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+
+    RuntimeRunner runner;
+    runner.setRuntimeRoot(temp.path() + QStringLiteral("/runtime"));
+
+    const RuntimeDiagnostics diagnostics = runner.diagnostics(100);
+    QVERIFY(diagnostics.pythonExecutable.endsWith(QStringLiteral("runtime\\python\\python.exe"))
+        || diagnostics.pythonExecutable.endsWith(QStringLiteral("runtime/python/python.exe")));
+    QVERIFY(!diagnostics.pythonExists);
+    QVERIFY(!diagnostics.packageAvailable);
+    QCOMPARE(diagnostics.packageVersion, QString());
+    QVERIFY(diagnostics.statusText.contains(QString::fromUtf8("غير متوفر")));
 }
 
 void TestProjectSearchRuntime::settingsStorePersistsArabicFontAndRecentProject()

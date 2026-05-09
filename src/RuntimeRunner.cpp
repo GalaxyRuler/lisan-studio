@@ -3,6 +3,8 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QFileInfo>
+#include <QRegularExpression>
+#include <QStringList>
 
 RuntimeRunner::RuntimeRunner(QObject *parent)
     : QObject(parent)
@@ -54,6 +56,61 @@ QProcessEnvironment RuntimeRunner::processEnvironment() const
     environment.insert(QStringLiteral("PYTHONUTF8"), QStringLiteral("1"));
     environment.insert(QStringLiteral("PYTHONIOENCODING"), QStringLiteral("utf-8"));
     return environment;
+}
+
+RuntimeDiagnostics RuntimeRunner::diagnostics(int timeoutMs) const
+{
+    RuntimeDiagnostics diagnostics;
+    diagnostics.pythonExecutable = pythonExecutable();
+    diagnostics.pythonExists = QFileInfo::exists(diagnostics.pythonExecutable);
+
+    if (!diagnostics.pythonExists) {
+        diagnostics.statusText = QString::fromUtf8("غير متوفر: لم يتم العثور على Python المضمن.");
+        return diagnostics;
+    }
+
+    QProcess process;
+    process.setProgram(diagnostics.pythonExecutable);
+    process.setArguments({
+        QStringLiteral("-c"),
+        QStringLiteral(
+            "import importlib.metadata as m\n"
+            "import importlib.util as u\n"
+            "try:\n"
+            "    print(m.version('lughat-althuban'))\n"
+            "except Exception:\n"
+            "    print('')\n"
+            "for name in ('arabicpython.cli','arabicpython.linter','arabicpython.formatter'):\n"
+            "    print('1' if u.find_spec(name) else '0')\n")
+    });
+    process.setProcessEnvironment(processEnvironment());
+    process.start();
+
+    if (!process.waitForStarted(5000)) {
+        diagnostics.statusText = QString::fromUtf8("غير متوفر: تعذر بدء Python المضمن.");
+        return diagnostics;
+    }
+
+    if (!process.waitForFinished(timeoutMs)) {
+        process.kill();
+        process.waitForFinished(3000);
+        diagnostics.statusText = QString::fromUtf8("غير متوفر: انتهت مهلة فحص التشغيل.");
+        return diagnostics;
+    }
+
+    const QStringList lines = QString::fromUtf8(process.readAllStandardOutput()).split(
+        QRegularExpression(QStringLiteral("[\\r\\n]+")),
+        Qt::SkipEmptyParts);
+    diagnostics.packageVersion = lines.value(0).trimmed();
+    diagnostics.packageAvailable = !diagnostics.packageVersion.isEmpty();
+    diagnostics.runModuleAvailable = lines.value(1).trimmed() == QStringLiteral("1");
+    diagnostics.lintModuleAvailable = lines.value(2).trimmed() == QStringLiteral("1");
+    diagnostics.formatModuleAvailable = lines.value(3).trimmed() == QStringLiteral("1");
+
+    diagnostics.statusText = diagnostics.packageAvailable && diagnostics.runModuleAvailable
+        ? QString::fromUtf8("جاهز: lughat-althuban %1").arg(diagnostics.packageVersion)
+        : QString::fromUtf8("غير متوفر: حزمة لغة الثعبان غير جاهزة.");
+    return diagnostics;
 }
 
 RuntimeResult RuntimeRunner::runBlocking(RuntimeAction action, const QString &filePath, int timeoutMs) const

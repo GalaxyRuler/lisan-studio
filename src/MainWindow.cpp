@@ -2,16 +2,17 @@
 
 #include <QApplication>
 #include <QDialog>
+#include <QDialogButtonBox>
 #include <QDir>
 #include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QFormLayout>
+#include <QFrame>
 #include <QHBoxLayout>
 #include <QInputDialog>
 #include <QListWidget>
 #include <QListWidgetItem>
-#include <QMenu>
 #include <QMessageBox>
 #include <QPainter>
 #include <QPaintEvent>
@@ -19,6 +20,8 @@
 #include <QSplitter>
 #include <QStatusBar>
 #include <QStyle>
+#include <QSpinBox>
+#include <QTabBar>
 #include <QTextBlock>
 #include <QTextStream>
 #include <QToolButton>
@@ -62,12 +65,14 @@ private:
     QString placeholder;
 };
 
+
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
 {
     buildUi();
     resize(1280, 820);
     setWindowTitle(QString::fromUtf8("استوديو لسان"));
+    setWindowIcon(QIcon(QStringLiteral(":/branding/lisan-logo.png")));
 }
 
 bool MainWindow::openPath(const QString &path)
@@ -149,9 +154,9 @@ void MainWindow::buildUi()
 
     setStyleSheet(QStringLiteral(
         "QMainWindow, QWidget { background: #0f141a; color: #E8ECF2; font-family: 'IBM Plex Sans Arabic', 'Segoe UI'; }"
-        "QMenu { background: #171B22; color: #E8ECF2; border: 1px solid #303746; }"
-        "QMenu::item { padding: 6px 24px; }"
-        "QMenu::item:selected { background: #264F78; }"
+        "QFrame[role=\"menuPopup\"] { background: #171B22; color: #E8ECF2; border: 1px solid #303746; }"
+        "QToolButton[role=\"menuRow\"] { background: transparent; border: 0; border-radius: 0; padding: 8px 18px; text-align: right; color: #E8ECF2; }"
+        "QToolButton[role=\"menuRow\"]:hover { background: #264F78; color: #FFFFFF; }"
         "QWidget#topShell { background: #111318; border-bottom: 1px solid #303746; }"
         "QWidget#topMenuRow { background: #111318; border-bottom: 1px solid #303746; }"
         "QWidget#brandBlock { background: transparent; }"
@@ -217,27 +222,49 @@ void MainWindow::buildUi()
     brandLayout->addWidget(brandLogoLabel);
     brandLayout->addWidget(brandTextLabel);
 
-    auto *fileMenu = new QMenu(QString::fromUtf8("ملف"), this);
-    auto *editMenu = new QMenu(QString::fromUtf8("تحرير"), this);
-    auto *viewMenu = new QMenu(QString::fromUtf8("عرض"), this);
-    auto *runMenu = new QMenu(QString::fromUtf8("تشغيل"), this);
-    auto *searchMenu = new QMenu(QString::fromUtf8("بحث"), this);
-    auto *toolsMenu = new QMenu(QString::fromUtf8("أدوات"), this);
-    auto *helpMenu = new QMenu(QString::fromUtf8("مساعدة"), this);
-    for (auto *menu : {fileMenu, editMenu, viewMenu, runMenu, searchMenu, toolsMenu, helpMenu}) {
-        menu->setLayoutDirection(Qt::RightToLeft);
-    }
+    auto makeMenuPanel = [&](const QString &objectName) {
+        auto *panel = new QFrame(this, Qt::Popup | Qt::FramelessWindowHint);
+        panel->setObjectName(objectName);
+        panel->setProperty("role", "menuPopup");
+        panel->setLayoutDirection(Qt::RightToLeft);
+        panel->setMinimumWidth(240);
+        auto *panelLayout = new QVBoxLayout(panel);
+        panelLayout->setContentsMargins(0, 0, 0, 0);
+        panelLayout->setSpacing(0);
+        return panel;
+    };
 
-    auto addMenuButton = [&](const QString &objectName, const QString &label, QMenu *menu) {
+    auto *fileMenu = makeMenuPanel(QStringLiteral("fileMenu"));
+    auto *editMenu = makeMenuPanel(QStringLiteral("editMenu"));
+    auto *viewMenu = makeMenuPanel(QStringLiteral("viewMenu"));
+    auto *runMenu = makeMenuPanel(QStringLiteral("runMenu"));
+    auto *searchMenu = makeMenuPanel(QStringLiteral("searchMenu"));
+    auto *toolsMenu = makeMenuPanel(QStringLiteral("toolsMenu"));
+    auto *helpMenu = makeMenuPanel(QStringLiteral("helpMenu"));
+
+    auto addMenuButton = [&](const QString &objectName, const QString &label, QFrame *menu) {
         auto *button = new QToolButton(topMenuRow);
         button->setObjectName(objectName);
         button->setProperty("role", "topMenu");
+        button->setProperty("attachedMenuName", menu->objectName());
         button->setText(label);
-        button->setMenu(menu);
-        button->setPopupMode(QToolButton::InstantPopup);
         button->setToolButtonStyle(Qt::ToolButtonTextOnly);
         button->setLayoutDirection(Qt::RightToLeft);
         button->setCursor(Qt::PointingHandCursor);
+        button->setCheckable(true);
+        connect(button, &QToolButton::clicked, this, [button, menu]() {
+            const QSize menuSize = menu->sizeHint().expandedTo(QSize(menu->minimumWidth(), 1));
+            menu->resize(menuSize);
+            const QPoint popupPosition = button->mapToGlobal(QPoint(button->width() - menuSize.width(), button->height()));
+            menu->move(popupPosition);
+            menu->show();
+            menu->raise();
+            button->setChecked(true);
+            button->setProperty("active", true);
+            button->style()->unpolish(button);
+            button->style()->polish(button);
+            button->update();
+        });
         menuLayout->addWidget(button);
         return button;
     };
@@ -286,34 +313,63 @@ void MainWindow::buildUi()
     commandPaletteAction = makeAction(style()->standardIcon(QStyle::SP_FileDialogListView), QString::fromUtf8("لوحة الأوامر"), &MainWindow::openCommandPalette);
     commandPaletteAction->setObjectName(QStringLiteral("commandPaletteAction"));
     commandPaletteAction->setShortcuts({QKeySequence(QStringLiteral("Ctrl+Shift+P"))});
-    auto *settingsAction = makeAction(style()->standardIcon(QStyle::SP_FileDialogDetailedView), QString::fromUtf8("الإعدادات"), &MainWindow::openSettings);
+    auto *settingsAction = makeAction(QIcon(), QString::fromUtf8("الإعدادات"), &MainWindow::openSettings);
+    settingsAction->setObjectName(QStringLiteral("settingsAction"));
     auto *searchAction = makeAction(style()->standardIcon(QStyle::SP_FileDialogContentsView), QString::fromUtf8("بحث"), &MainWindow::findInProject);
 
     addTopButton(QStringLiteral("topRunButton"), runAction, "primaryAction", Qt::ToolButtonTextBesideIcon);
 
-    fileMenu->addAction(QString::fromUtf8("ملف جديد"), QKeySequence::New, this, &MainWindow::newFile);
-    fileMenu->addAction(QString::fromUtf8("فتح ملف"), QKeySequence::Open, this, &MainWindow::openFile);
-    fileMenu->addAction(QString::fromUtf8("فتح مشروع"), this, &MainWindow::openFolder);
-    fileMenu->addAction(QString::fromUtf8("حفظ"), QKeySequence::Save, this, &MainWindow::saveFile);
-    fileMenu->addAction(QString::fromUtf8("حفظ باسم"), QKeySequence::SaveAs, this, &MainWindow::saveFileAs);
-    editMenu->addAction(QString::fromUtf8("تراجع"), QKeySequence::Undo, this, [this]() {
+    auto addTextOnlyMenuAction = [this](QFrame *menu, const QString &text, const QKeySequence &shortcut = QKeySequence()) {
+        auto *action = new QAction(text, this);
+        action->setText(text);
+        action->setIcon(QIcon());
+        action->setIconVisibleInMenu(false);
+        if (!shortcut.isEmpty()) {
+            action->setShortcut(shortcut);
+            action->setShortcutContext(Qt::ApplicationShortcut);
+            addAction(action);
+        }
+        auto *row = new QToolButton(menu);
+        row->setProperty("role", "menuRow");
+        row->setIcon(QIcon());
+        row->setText(text);
+        row->setToolButtonStyle(Qt::ToolButtonTextOnly);
+        row->setLayoutDirection(Qt::RightToLeft);
+        row->setCursor(Qt::PointingHandCursor);
+        row->setMinimumWidth(menu->minimumWidth());
+        if (auto *menuLayout = qobject_cast<QVBoxLayout *>(menu->layout())) {
+            menuLayout->addWidget(row);
+        }
+        connect(row, &QToolButton::clicked, action, &QAction::trigger);
+        connect(row, &QToolButton::clicked, menu, &QFrame::hide);
+        return action;
+    };
+
+    connect(addTextOnlyMenuAction(fileMenu, QString::fromUtf8("ملف جديد"), QKeySequence::New), &QAction::triggered, this, &MainWindow::newFile);
+    connect(addTextOnlyMenuAction(fileMenu, QString::fromUtf8("فتح ملف"), QKeySequence::Open), &QAction::triggered, this, &MainWindow::openFile);
+    connect(addTextOnlyMenuAction(fileMenu, QString::fromUtf8("فتح مشروع")), &QAction::triggered, this, &MainWindow::openFolder);
+    connect(addTextOnlyMenuAction(fileMenu, QString::fromUtf8("حفظ"), QKeySequence::Save), &QAction::triggered, this, &MainWindow::saveFile);
+    connect(addTextOnlyMenuAction(fileMenu, QString::fromUtf8("حفظ باسم"), QKeySequence::SaveAs), &QAction::triggered, this, &MainWindow::saveFileAs);
+    connect(addTextOnlyMenuAction(editMenu, QString::fromUtf8("تراجع"), QKeySequence::Undo), &QAction::triggered, this, [this]() {
         if (editor) {
             editor->undo();
         }
     });
-    editMenu->addAction(QString::fromUtf8("إعادة"), QKeySequence::Redo, this, [this]() {
+    connect(addTextOnlyMenuAction(editMenu, QString::fromUtf8("إعادة"), QKeySequence::Redo), &QAction::triggered, this, [this]() {
         if (editor) {
             editor->redo();
         }
     });
-    viewMenu->addAction(commandPaletteAction);
-    searchMenu->addAction(QString::fromUtf8("بحث في المشروع"), this, &MainWindow::findInProject);
-    toolsMenu->addAction(QString::fromUtf8("فحص"), this, &MainWindow::lintCurrentFile);
-    toolsMenu->addAction(QString::fromUtf8("تنسيق"), this, &MainWindow::formatCurrentFile);
-    toolsMenu->addAction(settingsAction);
-    runMenu->addAction(QString::fromUtf8("تشغيل الملف الحالي"), QKeySequence(QStringLiteral("F5")), this, &MainWindow::runCurrentFile);
-    runMenu->addAction(QString::fromUtf8("إيقاف التشغيل"), QKeySequence(QStringLiteral("Shift+F5")), this, &MainWindow::cancelRuntimeProcess);
-    helpMenu->addAction(QString::fromUtf8("عن استوديو لسان"), this, [this]() {
+    commandPaletteAction->setIconVisibleInMenu(false);
+    connect(addTextOnlyMenuAction(viewMenu, QString::fromUtf8("لوحة الأوامر")), &QAction::triggered, this, &MainWindow::openCommandPalette);
+    connect(addTextOnlyMenuAction(searchMenu, QString::fromUtf8("بحث في المشروع")), &QAction::triggered, this, &MainWindow::findInProject);
+    connect(addTextOnlyMenuAction(toolsMenu, QString::fromUtf8("فحص")), &QAction::triggered, this, &MainWindow::lintCurrentFile);
+    connect(addTextOnlyMenuAction(toolsMenu, QString::fromUtf8("تنسيق")), &QAction::triggered, this, &MainWindow::formatCurrentFile);
+    settingsAction->setIconVisibleInMenu(false);
+    connect(addTextOnlyMenuAction(toolsMenu, QString::fromUtf8("الإعدادات")), &QAction::triggered, this, &MainWindow::openSettings);
+    connect(addTextOnlyMenuAction(runMenu, QString::fromUtf8("تشغيل الملف الحالي"), QKeySequence(QStringLiteral("F5"))), &QAction::triggered, this, &MainWindow::runCurrentFile);
+    connect(addTextOnlyMenuAction(runMenu, QString::fromUtf8("إيقاف التشغيل"), QKeySequence(QStringLiteral("Shift+F5"))), &QAction::triggered, this, &MainWindow::cancelRuntimeProcess);
+    connect(addTextOnlyMenuAction(helpMenu, QString::fromUtf8("عن استوديو لسان")), &QAction::triggered, this, [this]() {
         QMessageBox::information(this, QString::fromUtf8("عن استوديو لسان"), QString::fromUtf8("استوديو لسان\nبيئة عربية أصلية لملفات .apy"));
     });
 
@@ -697,21 +753,137 @@ void MainWindow::openSelectedProjectFile(const QModelIndex &index)
 
 void MainWindow::openSettings()
 {
-    bool ok = false;
-    const QString family = QInputDialog::getText(
-        this,
-        QString::fromUtf8("إعدادات الخط"),
-        QString::fromUtf8("اسم الخط"),
-        QLineEdit::Normal,
-        settings.editorFontFamily(),
-        &ok);
-    if (!ok || family.trimmed().isEmpty()) {
+    QDialog dialog(this);
+    dialog.setObjectName(QStringLiteral("settingsDialog"));
+    dialog.setWindowFlags(Qt::Dialog | Qt::FramelessWindowHint);
+    dialog.setWindowTitle(QString::fromUtf8("الإعدادات"));
+    dialog.setLayoutDirection(Qt::RightToLeft);
+    dialog.resize(760, 500);
+
+    auto *rootLayout = new QVBoxLayout(&dialog);
+    rootLayout->setContentsMargins(14, 14, 14, 14);
+    rootLayout->setSpacing(12);
+
+    auto *headerLayout = new QHBoxLayout;
+    headerLayout->setDirection(QBoxLayout::RightToLeft);
+    auto *headerTitle = new QLabel(QString::fromUtf8("الإعدادات"), &dialog);
+    headerTitle->setObjectName(QStringLiteral("settingsHeaderTitle"));
+    headerTitle->setStyleSheet(QStringLiteral("font-size: 18px; font-weight: 700; color: #E8ECF2;"));
+    auto *headerClose = new QToolButton(&dialog);
+    headerClose->setObjectName(QStringLiteral("settingsHeaderCloseButton"));
+    headerClose->setText(QString::fromUtf8("إغلاق"));
+    headerClose->setCursor(Qt::PointingHandCursor);
+    connect(headerClose, &QToolButton::clicked, &dialog, &QDialog::reject);
+    headerLayout->addWidget(headerTitle);
+    headerLayout->addStretch(1);
+    headerLayout->addWidget(headerClose);
+    rootLayout->addLayout(headerLayout);
+
+    auto *contentLayout = new QHBoxLayout;
+    contentLayout->setDirection(QBoxLayout::RightToLeft);
+    contentLayout->setSpacing(12);
+
+    auto *categories = new QListWidget(&dialog);
+    categories->setObjectName(QStringLiteral("settingsCategories"));
+    categories->setLayoutDirection(Qt::RightToLeft);
+    categories->setFixedWidth(180);
+    categories->addItem(QString::fromUtf8("المحرر"));
+    categories->addItem(QString::fromUtf8("التشغيل"));
+    categories->addItem(QString::fromUtf8("المشاريع"));
+
+    auto *pages = new QTabWidget(&dialog);
+    pages->setObjectName(QStringLiteral("settingsPages"));
+    pages->setLayoutDirection(Qt::RightToLeft);
+    pages->tabBar()->hide();
+
+    auto *editorPage = new QWidget(pages);
+    editorPage->setObjectName(QStringLiteral("editorSettingsPage"));
+    editorPage->setLayoutDirection(Qt::RightToLeft);
+    auto *editorForm = new QFormLayout(editorPage);
+    editorForm->setLabelAlignment(Qt::AlignRight);
+    auto *fontFamilyInput = new QLineEdit(settings.editorFontFamily(), editorPage);
+    fontFamilyInput->setObjectName(QStringLiteral("editorFontFamilyInput"));
+    fontFamilyInput->setLayoutDirection(Qt::LeftToRight);
+    auto *fontSizeInput = new QSpinBox(editorPage);
+    fontSizeInput->setObjectName(QStringLiteral("editorFontSizeInput"));
+    fontSizeInput->setRange(8, 28);
+    fontSizeInput->setValue(settings.editorFontSize());
+    auto *themeValue = new QLabel(QString::fromUtf8("داكن مستقبلي"), editorPage);
+    themeValue->setObjectName(QStringLiteral("settingsThemeValue"));
+    editorForm->addRow(QString::fromUtf8("خط المحرر"), fontFamilyInput);
+    editorForm->addRow(QString::fromUtf8("حجم الخط"), fontSizeInput);
+    editorForm->addRow(QString::fromUtf8("السمة"), themeValue);
+
+    const RuntimeDiagnostics diagnostics = runtime.diagnostics(1500);
+    auto *runtimePage = new QWidget(pages);
+    runtimePage->setObjectName(QStringLiteral("runtimeDiagnosticsPage"));
+    runtimePage->setLayoutDirection(Qt::RightToLeft);
+    auto *runtimeForm = new QFormLayout(runtimePage);
+    runtimeForm->setLabelAlignment(Qt::AlignRight);
+    auto *runtimePythonPath = new QLabel(QDir::toNativeSeparators(diagnostics.pythonExecutable), runtimePage);
+    runtimePythonPath->setObjectName(QStringLiteral("runtimePythonPathValue"));
+    runtimePythonPath->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    auto *runtimePackageStatus = new QLabel(diagnostics.statusText, runtimePage);
+    runtimePackageStatus->setObjectName(QStringLiteral("runtimePackageStatusValue"));
+    runtimePackageStatus->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    auto *runtimeRunStatus = new QLabel(diagnostics.runModuleAvailable ? QString::fromUtf8("جاهز") : QString::fromUtf8("غير متوفر"), runtimePage);
+    runtimeRunStatus->setObjectName(QStringLiteral("runtimeRunStatusValue"));
+    auto *runtimeLintStatus = new QLabel(diagnostics.lintModuleAvailable ? QString::fromUtf8("جاهز") : QString::fromUtf8("غير متوفر"), runtimePage);
+    runtimeLintStatus->setObjectName(QStringLiteral("runtimeLintStatusValue"));
+    auto *runtimeFormatStatus = new QLabel(diagnostics.formatModuleAvailable ? QString::fromUtf8("جاهز") : QString::fromUtf8("غير متوفر"), runtimePage);
+    runtimeFormatStatus->setObjectName(QStringLiteral("runtimeFormatStatusValue"));
+    runtimeForm->addRow(QString::fromUtf8("مسار Python"), runtimePythonPath);
+    runtimeForm->addRow(QString::fromUtf8("حزمة لغة الثعبان"), runtimePackageStatus);
+    runtimeForm->addRow(QString::fromUtf8("تشغيل .apy"), runtimeRunStatus);
+    runtimeForm->addRow(QString::fromUtf8("الفحص"), runtimeLintStatus);
+    runtimeForm->addRow(QString::fromUtf8("التنسيق"), runtimeFormatStatus);
+
+    auto *projectsPage = new QWidget(pages);
+    projectsPage->setObjectName(QStringLiteral("recentProjectsPage"));
+    projectsPage->setLayoutDirection(Qt::RightToLeft);
+    auto *projectsLayout = new QVBoxLayout(projectsPage);
+    auto *recentProjects = new QListWidget(projectsPage);
+    recentProjects->setObjectName(QStringLiteral("recentProjectsList"));
+    recentProjects->setLayoutDirection(Qt::RightToLeft);
+    for (const QString &project : settings.recentProjects()) {
+        recentProjects->addItem(QDir::toNativeSeparators(project));
+    }
+    projectsLayout->addWidget(recentProjects);
+
+    pages->addTab(editorPage, QString::fromUtf8("المحرر"));
+    pages->addTab(runtimePage, QString::fromUtf8("التشغيل"));
+    pages->addTab(projectsPage, QString::fromUtf8("المشاريع"));
+    categories->setCurrentRow(0);
+    connect(categories, &QListWidget::currentRowChanged, pages, &QTabWidget::setCurrentIndex);
+
+    contentLayout->addWidget(categories);
+    contentLayout->addWidget(pages, 1);
+    rootLayout->addLayout(contentLayout);
+
+    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+    buttons->setLayoutDirection(Qt::RightToLeft);
+    buttons->button(QDialogButtonBox::Ok)->setText(QString::fromUtf8("تطبيق"));
+    buttons->button(QDialogButtonBox::Cancel)->setText(QString::fromUtf8("إلغاء"));
+    rootLayout->addWidget(buttons);
+    connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+
+    if (dialog.exec() != QDialog::Accepted) {
         return;
     }
-    settings.setEditorFontFamily(family.trimmed());
-    QFont font = editor->font();
-    font.setFamily(family.trimmed());
-    editor->setFont(font);
+
+    settings.setEditorFontFamily(fontFamilyInput->text().trimmed().isEmpty()
+        ? QStringLiteral("Cascadia Code")
+        : fontFamilyInput->text().trimmed());
+    settings.setEditorFontSize(fontSizeInput->value());
+    for (int i = 0; editorTabs && i < editorTabs->count(); ++i) {
+        if (auto *surface = qobject_cast<EditorSurface *>(editorTabs->widget(i))) {
+            QFont font = surface->font();
+            font.setFamily(settings.editorFontFamily());
+            font.setPointSize(settings.editorFontSize());
+            surface->setFont(font);
+        }
+    }
     setStatus(QString::fromUtf8("تم تحديث الإعدادات"));
 }
 
@@ -767,6 +939,10 @@ bool MainWindow::openEditorFile(const QString &path)
 EditorSurface *MainWindow::createEditorTab(const QString &title)
 {
     auto *surface = new EditorSurface(editorTabs);
+    QFont configuredFont = surface->font();
+    configuredFont.setFamily(settings.editorFontFamily());
+    configuredFont.setPointSize(settings.editorFontSize());
+    surface->setFont(configuredFont);
     const int index = editorTabs->addTab(surface, title);
     editorTabs->setCurrentIndex(index);
     setCurrentEditor(surface);

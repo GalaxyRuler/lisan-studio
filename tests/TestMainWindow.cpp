@@ -2,11 +2,14 @@
 
 #include "MainWindow.h"
 
+#include <QDialog>
 #include <QMenuBar>
+#include <QFrame>
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
 #include <QStatusBar>
+#include <QTabWidget>
 #include <QToolBar>
 #include <QToolButton>
 
@@ -32,6 +35,7 @@ private slots:
     void untitledEditorBufferMaterializesForRunWithoutSaveDialog();
     void runUsesUntitledBufferWithoutOpeningSaveDialog();
     void runToolProvidesCancelableStructuredFeedback();
+    void settingsDialogExposesCategoriesAndRuntimeDiagnostics();
 };
 
 static QString writeFile(const QDir &root, const QString &relative, const QString &text)
@@ -71,8 +75,11 @@ void TestMainWindow::usesSingleRtlTopCommandBarWithMenuButtons()
     QVERIFY(window.windowTitle().contains(QString::fromUtf8("استوديو لسان")));
     QVERIFY(window.styleSheet().contains(QStringLiteral("QToolButton[role=\"topMenu\"]::menu-indicator")));
     QVERIFY(window.styleSheet().contains(QStringLiteral("image: none")));
+    QVERIFY(window.styleSheet().contains(QStringLiteral("QFrame[role=\"menuPopup\"]")));
+    QVERIFY(window.styleSheet().contains(QStringLiteral("QToolButton[role=\"menuRow\"]")));
     QVERIFY(window.styleSheet().contains(QStringLiteral("QToolButton[role=\"topMenu\"]:hover")));
     QVERIFY(window.styleSheet().contains(QStringLiteral("border-bottom: 2px solid #4C8DFF")));
+    QVERIFY(!window.windowIcon().isNull());
 
     QVERIFY(window.findChild<QMenuBar *>(QStringLiteral("mainMenuBar")) == nullptr);
     QVERIFY(window.findChild<QToolBar *>() == nullptr);
@@ -104,6 +111,15 @@ void TestMainWindow::usesSingleRtlTopCommandBarWithMenuButtons()
         QStringLiteral("topMenuToolsButton"),
         QStringLiteral("topMenuHelpButton"),
     };
+    const QStringList menuObjectNames = {
+        QStringLiteral("fileMenu"),
+        QStringLiteral("editMenu"),
+        QStringLiteral("viewMenu"),
+        QStringLiteral("runMenu"),
+        QStringLiteral("searchMenu"),
+        QStringLiteral("toolsMenu"),
+        QStringLiteral("helpMenu"),
+    };
     const QStringList menuButtonTexts = {
         QString::fromUtf8("ملف"),
         QString::fromUtf8("تحرير"),
@@ -120,8 +136,21 @@ void TestMainWindow::usesSingleRtlTopCommandBarWithMenuButtons()
         QCOMPARE(button->layoutDirection(), Qt::RightToLeft);
         QCOMPARE(button->text(), menuButtonTexts.at(i));
         QCOMPARE(button->cursor().shape(), Qt::PointingHandCursor);
-        QVERIFY(button->menu() != nullptr);
-        QVERIFY(!button->menu()->actions().isEmpty());
+        QVERIFY(button->menu() == nullptr);
+        QCOMPARE(button->property("attachedMenuName").toString(), menuObjectNames.at(i));
+
+        auto *menu = window.findChild<QFrame *>(menuObjectNames.at(i));
+        QVERIFY(menu != nullptr);
+        QCOMPARE(menu->layoutDirection(), Qt::RightToLeft);
+        QCOMPARE(menu->property("role").toString(), QStringLiteral("menuPopup"));
+        const auto rows = menu->findChildren<QToolButton *>(QString(), Qt::FindDirectChildrenOnly);
+        QVERIFY(!rows.isEmpty());
+        for (auto *row : rows) {
+            QVERIFY(row != nullptr);
+            QCOMPARE(row->property("role").toString(), QStringLiteral("menuRow"));
+            QCOMPARE(row->toolButtonStyle(), Qt::ToolButtonTextOnly);
+            QVERIFY(row->icon().isNull());
+        }
     }
 
     auto *runButton = window.findChild<QToolButton *>(QStringLiteral("topRunButton"));
@@ -227,6 +256,11 @@ void TestMainWindow::exposesCommandPaletteAction()
     QVERIFY(action != nullptr);
     QCOMPARE(action->text(), QString::fromUtf8("لوحة الأوامر"));
     QVERIFY(action->shortcuts().contains(QKeySequence(QStringLiteral("Ctrl+Shift+P"))));
+
+    auto *settingsAction = window.findChild<QAction *>(QStringLiteral("settingsAction"));
+    QVERIFY(settingsAction != nullptr);
+    QCOMPARE(settingsAction->text(), QString::fromUtf8("الإعدادات"));
+    QVERIFY(settingsAction->icon().isNull());
 }
 
 void TestMainWindow::newFileClearsCurrentPathAndEditorText()
@@ -517,6 +551,59 @@ void TestMainWindow::runToolProvidesCancelableStructuredFeedback()
     QVERIFY2(output.contains(QString::fromUtf8("ملف:")), qPrintable(output));
     QVERIFY2(output.contains(QString::fromUtf8("مجلد العمل:")), qPrintable(output));
     QVERIFY2(output.contains(QString::fromUtf8("رمز الخروج:")) || output.contains(QString::fromUtf8("تعذر بدء العملية")), qPrintable(output));
+}
+
+void TestMainWindow::settingsDialogExposesCategoriesAndRuntimeDiagnostics()
+{
+    MainWindow window;
+    bool inspected = false;
+    QString failure;
+
+    QTimer::singleShot(0, &window, [&window]() {
+        QMetaObject::invokeMethod(&window, "openSettings", Qt::DirectConnection);
+    });
+    QTimer::singleShot(150, &window, [&inspected, &failure]() {
+        auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+        if (!dialog) {
+            failure = QStringLiteral("settings dialog did not open");
+            return;
+        }
+
+        auto *categories = dialog->findChild<QListWidget *>(QStringLiteral("settingsCategories"));
+        auto *pages = dialog->findChild<QTabWidget *>(QStringLiteral("settingsPages"));
+        auto *pythonPath = dialog->findChild<QLabel *>(QStringLiteral("runtimePythonPathValue"));
+        auto *packageStatus = dialog->findChild<QLabel *>(QStringLiteral("runtimePackageStatusValue"));
+
+        inspected =
+            dialog->objectName() == QStringLiteral("settingsDialog")
+            && dialog->layoutDirection() == Qt::RightToLeft
+            && (dialog->windowFlags() & Qt::FramelessWindowHint)
+            && dialog->findChild<QLabel *>(QStringLiteral("settingsHeaderTitle"))
+            && dialog->findChild<QToolButton *>(QStringLiteral("settingsHeaderCloseButton"))
+            && categories
+            && categories->layoutDirection() == Qt::RightToLeft
+            && categories->count() == 3
+            && categories->item(0)->text() == QString::fromUtf8("المحرر")
+            && categories->item(1)->text() == QString::fromUtf8("التشغيل")
+            && categories->item(2)->text() == QString::fromUtf8("المشاريع")
+            && pages
+            && pages->layoutDirection() == Qt::RightToLeft
+            && dialog->findChild<QWidget *>(QStringLiteral("editorSettingsPage"))
+            && dialog->findChild<QWidget *>(QStringLiteral("runtimeDiagnosticsPage"))
+            && dialog->findChild<QWidget *>(QStringLiteral("recentProjectsPage"))
+            && pythonPath
+            && !pythonPath->text().isEmpty()
+            && packageStatus
+            && (packageStatus->text().contains(QString::fromUtf8("جاهز"))
+                || packageStatus->text().contains(QString::fromUtf8("غير متوفر")));
+
+        if (!inspected) {
+            failure = QStringLiteral("settings dialog did not expose expected RTL categories and diagnostics");
+        }
+        dialog->reject();
+    });
+
+    QTRY_VERIFY2(inspected, qPrintable(failure));
 }
 
 QTEST_MAIN(TestMainWindow)

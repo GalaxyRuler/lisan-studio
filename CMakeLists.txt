@@ -39,6 +39,7 @@ qt_add_executable(ArabicCodeStudioQt
     src/main.cpp
     src/MainWindow.h
     src/MainWindow.cpp
+    resources/app.rc
     resources/resources.qrc
 )
 

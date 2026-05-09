@@ -26,6 +26,18 @@ struct RuntimeResult
     QString standardError;
 };
 
+struct RuntimeDiagnostics
+{
+    QString pythonExecutable;
+    bool pythonExists = false;
+    bool packageAvailable = false;
+    QString packageVersion;
+    bool runModuleAvailable = false;
+    bool lintModuleAvailable = false;
+    bool formatModuleAvailable = false;
+    QString statusText;
+};
+
 class RuntimeRunner final : public QObject
 {
     Q_OBJECT
@@ -39,6 +51,7 @@ public:
     RuntimeCommand buildCommand(RuntimeAction action, const QString &filePath) const;
     RuntimeCommand buildCommand(RuntimeAction action, const QString &filePath, const QString &workingDirectory) const;
     QProcessEnvironment processEnvironment() const;
+    RuntimeDiagnostics diagnostics(int timeoutMs = 5000) const;
     RuntimeResult runBlocking(RuntimeAction action, const QString &filePath, int timeoutMs = 30000) const;
     RuntimeResult runBlocking(RuntimeAction action, const QString &filePath, const QString &workingDirectory, int timeoutMs = 30000) const;
 

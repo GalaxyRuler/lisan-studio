@@ -42,6 +42,8 @@ The automated Qt editor torture tests verify:
 - clickable project search rows open the matching file at the result line
 - Problems panel lists hidden BiDi controls with file and line data
 - run-tool feedback with command title, file path, working directory, exit code, and cancel action
+- Settings opens as a real RTL dialog with editor, runtime, and recent-project categories
+- runtime diagnostics report bundled Python path and `lughat-althuban` readiness
 - output feedback selects the output tab even though the bottom panel defaults to terminal
 
 ## Manual Gate
@@ -63,7 +65,7 @@ samples\torture-project
 - search the project and open a result from the search-results tab
 - insert a hidden BiDi control into a scratch file and confirm the Problems panel reports it
 - run the current `.apy` file and confirm stdout/stderr, exit code, elapsed time, and cancel behavior are readable
-- change the editor font setting and reopen the app
+- open Settings, verify runtime diagnostics, change the editor font setting, and reopen the app
 - uninstall and confirm app payload files are removed
 
 ## Blockers
