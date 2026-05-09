@@ -63,6 +63,7 @@ public static class LisanReleaseWindowOps {
   [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
   [DllImport("user32.dll")] public static extern bool MoveWindow(IntPtr hWnd, int X, int Y, int nWidth, int nHeight, bool bRepaint);
   [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+  [DllImport("dwmapi.dll")] public static extern int DwmGetWindowAttribute(IntPtr hWnd, int attr, out RECT rect, int size);
 }
 '@
 
@@ -96,7 +97,15 @@ public static class LisanReleaseWindowOps {
     Start-Sleep -Milliseconds 900
 
     $rect = New-Object LisanReleaseWindowOps+RECT
-    [LisanReleaseWindowOps]::GetWindowRect($handle, [ref]$rect) | Out-Null
+    $dwmResult = [LisanReleaseWindowOps]::DwmGetWindowAttribute(
+        $handle,
+        9,
+        [ref]$rect,
+        [System.Runtime.InteropServices.Marshal]::SizeOf([type][LisanReleaseWindowOps+RECT])
+    )
+    if ($dwmResult -ne 0) {
+        [LisanReleaseWindowOps]::GetWindowRect($handle, [ref]$rect) | Out-Null
+    }
     $width = $rect.Right - $rect.Left
     $height = $rect.Bottom - $rect.Top
     $bitmap = New-Object System.Drawing.Bitmap($width, $height)
