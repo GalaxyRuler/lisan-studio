@@ -3,11 +3,13 @@
 #include "MainWindow.h"
 
 #include <QDialog>
+#include <QDialogButtonBox>
 #include <QMenuBar>
 #include <QFrame>
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
+#include <QPushButton>
 #include <QStatusBar>
 #include <QTabWidget>
 #include <QToolBar>
@@ -76,7 +78,7 @@ void TestMainWindow::usesSingleRtlTopCommandBarWithMenuButtons()
     QVERIFY(window.styleSheet().contains(QStringLiteral("QToolButton[role=\"topMenu\"]::menu-indicator")));
     QVERIFY(window.styleSheet().contains(QStringLiteral("image: none")));
     QVERIFY(window.styleSheet().contains(QStringLiteral("QFrame[role=\"menuPopup\"]")));
-    QVERIFY(window.styleSheet().contains(QStringLiteral("QToolButton[role=\"menuRow\"]")));
+    QVERIFY(window.styleSheet().contains(QStringLiteral("QPushButton[role=\"menuRow\"]")));
     QVERIFY(window.styleSheet().contains(QStringLiteral("QToolButton[role=\"topMenu\"]:hover")));
     QVERIFY(window.styleSheet().contains(QStringLiteral("border-bottom: 2px solid #4C8DFF")));
     QVERIFY(!window.windowIcon().isNull());
@@ -143,14 +145,21 @@ void TestMainWindow::usesSingleRtlTopCommandBarWithMenuButtons()
         QVERIFY(menu != nullptr);
         QCOMPARE(menu->layoutDirection(), Qt::RightToLeft);
         QCOMPARE(menu->property("role").toString(), QStringLiteral("menuPopup"));
-        const auto rows = menu->findChildren<QToolButton *>(QString(), Qt::FindDirectChildrenOnly);
+        const auto rows = menu->findChildren<QPushButton *>(QString(), Qt::FindDirectChildrenOnly);
         QVERIFY(!rows.isEmpty());
         for (auto *row : rows) {
             QVERIFY(row != nullptr);
             QCOMPARE(row->property("role").toString(), QStringLiteral("menuRow"));
-            QCOMPARE(row->toolButtonStyle(), Qt::ToolButtonTextOnly);
             QVERIFY(row->icon().isNull());
+            QVERIFY(row->isFlat());
         }
+
+        button->click();
+        QVERIFY(menu->isVisible());
+        QVERIFY(button->property("active").toBool());
+        menu->hide();
+        QVERIFY(!button->isChecked());
+        QVERIFY(!button->property("active").toBool());
     }
 
     auto *runButton = window.findChild<QToolButton *>(QStringLiteral("topRunButton"));
@@ -573,13 +582,17 @@ void TestMainWindow::settingsDialogExposesCategoriesAndRuntimeDiagnostics()
         auto *pages = dialog->findChild<QTabWidget *>(QStringLiteral("settingsPages"));
         auto *pythonPath = dialog->findChild<QLabel *>(QStringLiteral("runtimePythonPathValue"));
         auto *packageStatus = dialog->findChild<QLabel *>(QStringLiteral("runtimePackageStatusValue"));
+        auto *buttons = dialog->findChild<QDialogButtonBox *>();
 
         inspected =
             dialog->objectName() == QStringLiteral("settingsDialog")
             && dialog->layoutDirection() == Qt::RightToLeft
             && (dialog->windowFlags() & Qt::FramelessWindowHint)
             && dialog->findChild<QLabel *>(QStringLiteral("settingsHeaderTitle"))
-            && dialog->findChild<QToolButton *>(QStringLiteral("settingsHeaderCloseButton"))
+            && !dialog->findChild<QToolButton *>(QStringLiteral("settingsHeaderCloseButton"))
+            && buttons
+            && buttons->button(QDialogButtonBox::Ok)->text() == QString::fromUtf8("تطبيق")
+            && buttons->button(QDialogButtonBox::Cancel)->text() == QString::fromUtf8("إلغاء")
             && categories
             && categories->layoutDirection() == Qt::RightToLeft
             && categories->count() == 3

@@ -10,6 +10,7 @@
 #include <QFormLayout>
 #include <QFrame>
 #include <QHBoxLayout>
+#include <QHideEvent>
 #include <QInputDialog>
 #include <QListWidget>
 #include <QListWidgetItem>
@@ -17,6 +18,7 @@
 #include <QPainter>
 #include <QPaintEvent>
 #include <QPixmap>
+#include <QPushButton>
 #include <QSplitter>
 #include <QStatusBar>
 #include <QStyle>
@@ -63,6 +65,36 @@ protected:
 
 private:
     QString placeholder;
+};
+
+class MenuPopupFrame final : public QFrame
+{
+public:
+    explicit MenuPopupFrame(QWidget *parent = nullptr)
+        : QFrame(parent, Qt::Popup | Qt::FramelessWindowHint)
+    {
+    }
+
+    void setOwnerButton(QToolButton *button)
+    {
+        ownerButton = button;
+    }
+
+protected:
+    void hideEvent(QHideEvent *event) override
+    {
+        if (ownerButton) {
+            ownerButton->setChecked(false);
+            ownerButton->setProperty("active", false);
+            ownerButton->style()->unpolish(ownerButton);
+            ownerButton->style()->polish(ownerButton);
+            ownerButton->update();
+        }
+        QFrame::hideEvent(event);
+    }
+
+private:
+    QToolButton *ownerButton = nullptr;
 };
 
 
@@ -155,8 +187,8 @@ void MainWindow::buildUi()
     setStyleSheet(QStringLiteral(
         "QMainWindow, QWidget { background: #0f141a; color: #E8ECF2; font-family: 'IBM Plex Sans Arabic', 'Segoe UI'; }"
         "QFrame[role=\"menuPopup\"] { background: #171B22; color: #E8ECF2; border: 1px solid #303746; }"
-        "QToolButton[role=\"menuRow\"] { background: transparent; border: 0; border-radius: 0; padding: 8px 18px; text-align: right; color: #E8ECF2; }"
-        "QToolButton[role=\"menuRow\"]:hover { background: #264F78; color: #FFFFFF; }"
+        "QPushButton[role=\"menuRow\"] { background: transparent; border: 0; border-radius: 0; padding: 8px 18px; text-align: right; color: #E8ECF2; }"
+        "QPushButton[role=\"menuRow\"]:hover { background: #264F78; color: #FFFFFF; }"
         "QWidget#topShell { background: #111318; border-bottom: 1px solid #303746; }"
         "QWidget#topMenuRow { background: #111318; border-bottom: 1px solid #303746; }"
         "QWidget#brandBlock { background: transparent; }"
@@ -222,8 +254,9 @@ void MainWindow::buildUi()
     brandLayout->addWidget(brandLogoLabel);
     brandLayout->addWidget(brandTextLabel);
 
+    QList<MenuPopupFrame *> menuPanels;
     auto makeMenuPanel = [&](const QString &objectName) {
-        auto *panel = new QFrame(this, Qt::Popup | Qt::FramelessWindowHint);
+        auto *panel = new MenuPopupFrame(this);
         panel->setObjectName(objectName);
         panel->setProperty("role", "menuPopup");
         panel->setLayoutDirection(Qt::RightToLeft);
@@ -231,6 +264,7 @@ void MainWindow::buildUi()
         auto *panelLayout = new QVBoxLayout(panel);
         panelLayout->setContentsMargins(0, 0, 0, 0);
         panelLayout->setSpacing(0);
+        menuPanels.append(panel);
         return panel;
     };
 
@@ -242,7 +276,7 @@ void MainWindow::buildUi()
     auto *toolsMenu = makeMenuPanel(QStringLiteral("toolsMenu"));
     auto *helpMenu = makeMenuPanel(QStringLiteral("helpMenu"));
 
-    auto addMenuButton = [&](const QString &objectName, const QString &label, QFrame *menu) {
+    auto addMenuButton = [&](const QString &objectName, const QString &label, MenuPopupFrame *menu) {
         auto *button = new QToolButton(topMenuRow);
         button->setObjectName(objectName);
         button->setProperty("role", "topMenu");
@@ -252,7 +286,17 @@ void MainWindow::buildUi()
         button->setLayoutDirection(Qt::RightToLeft);
         button->setCursor(Qt::PointingHandCursor);
         button->setCheckable(true);
-        connect(button, &QToolButton::clicked, this, [button, menu]() {
+        menu->setOwnerButton(button);
+        connect(button, &QToolButton::clicked, this, [button, menu, menuPanels]() {
+            if (menu->isVisible()) {
+                menu->hide();
+                return;
+            }
+            for (auto *otherMenu : menuPanels) {
+                if (otherMenu != menu) {
+                    otherMenu->hide();
+                }
+            }
             const QSize menuSize = menu->sizeHint().expandedTo(QSize(menu->minimumWidth(), 1));
             menu->resize(menuSize);
             const QPoint popupPosition = button->mapToGlobal(QPoint(button->width() - menuSize.width(), button->height()));
@@ -329,19 +373,19 @@ void MainWindow::buildUi()
             action->setShortcutContext(Qt::ApplicationShortcut);
             addAction(action);
         }
-        auto *row = new QToolButton(menu);
+        auto *row = new QPushButton(menu);
         row->setProperty("role", "menuRow");
         row->setIcon(QIcon());
         row->setText(text);
-        row->setToolButtonStyle(Qt::ToolButtonTextOnly);
         row->setLayoutDirection(Qt::RightToLeft);
         row->setCursor(Qt::PointingHandCursor);
         row->setMinimumWidth(menu->minimumWidth());
+        row->setFlat(true);
         if (auto *menuLayout = qobject_cast<QVBoxLayout *>(menu->layout())) {
             menuLayout->addWidget(row);
         }
-        connect(row, &QToolButton::clicked, action, &QAction::trigger);
-        connect(row, &QToolButton::clicked, menu, &QFrame::hide);
+        connect(row, &QPushButton::clicked, action, &QAction::trigger);
+        connect(row, &QPushButton::clicked, menu, &QFrame::hide);
         return action;
     };
 
@@ -769,14 +813,8 @@ void MainWindow::openSettings()
     auto *headerTitle = new QLabel(QString::fromUtf8("الإعدادات"), &dialog);
     headerTitle->setObjectName(QStringLiteral("settingsHeaderTitle"));
     headerTitle->setStyleSheet(QStringLiteral("font-size: 18px; font-weight: 700; color: #E8ECF2;"));
-    auto *headerClose = new QToolButton(&dialog);
-    headerClose->setObjectName(QStringLiteral("settingsHeaderCloseButton"));
-    headerClose->setText(QString::fromUtf8("إغلاق"));
-    headerClose->setCursor(Qt::PointingHandCursor);
-    connect(headerClose, &QToolButton::clicked, &dialog, &QDialog::reject);
     headerLayout->addWidget(headerTitle);
     headerLayout->addStretch(1);
-    headerLayout->addWidget(headerClose);
     rootLayout->addLayout(headerLayout);
 
     auto *contentLayout = new QHBoxLayout;
