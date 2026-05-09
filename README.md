@@ -73,7 +73,7 @@ Included in v0.1.0 beta:
 - minimal `.apy` syntax highlighting
 - hidden BiDi control detection
 - project tree
-- custom RTL Stitch-style single top shell with integrated menus, primary run action, and unified command/search field
+- custom RTL Claude-design top shell with integrated menus, primary run action, and unified command/search field
 - no inherited `QMenuBar` or `QToolBar` shell surface
 - RTL editor tabs, project sidebar, bottom panel, and status bar
 - tabbed bottom panel for terminal, output, problems, and debug

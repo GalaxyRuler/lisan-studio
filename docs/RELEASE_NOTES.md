@@ -4,8 +4,8 @@
 
 - Native Qt 6 desktop shell.
 - Lisan Studio app branding and bundled logo resource.
-- Premium dark visual system based on the Stitch design export.
-- Custom RTL Stitch-style single top shell with integrated menus, primary run action, and unified command/search field.
+- Premium dark visual system based on the accepted Claude design.
+- Custom RTL Claude-design single top shell with integrated menus, primary run action, and unified command/search field.
 - Integrated dropdown menus for file, edit, view, run, search, tools, and help.
 - No inherited `QMenuBar` or `QToolBar` shell surface.
 - RTL editor tabs, project sidebar, bottom panel tabs, and status bar.

@@ -24,9 +24,9 @@ The installed smoke script verifies:
 The automated Qt editor torture tests verify:
 
 - Lisan Studio branding and bundled logo resource
-- single custom RTL Stitch-style top command bar with integrated menu dropdowns
+- single custom RTL Claude-design top command bar with integrated menu dropdowns
 - no inherited `QMenuBar` or `QToolBar` shell surface
-- top shell follows the corrected Stitch export: one integrated menu/run/command row
+- top shell follows the accepted Claude design: one integrated menu/run/command row
 - brand row includes the logo and `Lisan Studio` text as one product block
 - primary run is the only visible top-row action; stop, save, search, command palette, settings, lint, and format remain available through menus/shortcuts
 - RTL editor tabs, project sidebar, bottom panel tabs, output panel, and status bar
@@ -52,7 +52,7 @@ samples\torture-project
 
 - launch from the Start Menu
 - open a real `.apy` folder
-- verify the shell title and single top command bar match the Stitch direction, with no extra native menu row
+- verify the shell title and single top command bar match the Claude design direction, with no extra native menu row
 - verify the project sidebar, editor tabs, and bottom panel are RTL
 - open, edit, save, close, and reopen a mixed Arabic/English file
 - open two files and verify each stays available in its own editor tab
