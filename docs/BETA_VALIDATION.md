@@ -14,6 +14,7 @@ Run validation from the installed app, not only from the build tree.
 The installed smoke script verifies:
 
 - the installed executable exists
+- the installed executable is `LisanStudio.exe` under `%LOCALAPPDATA%\LisanStudio`
 - the bundled Python runtime exists
 - `lughat-althuban` runs a mixed Arabic/English `.apy` file
 - Arabic output is decoded as UTF-8
@@ -57,6 +58,7 @@ samples\torture-project
 - launch from the Start Menu
 - open a real `.apy` folder
 - verify the shell title and single top command bar match the Claude design direction, with no extra native menu row
+- verify Start Menu/Desktop shortcuts launch Lisan Studio, not an old ArabicCodeStudioQt install
 - verify the project sidebar, editor tabs, and bottom panel are RTL
 - open, edit, save, close, and reopen a mixed Arabic/English file
 - open two files and verify each stays available in its own editor tab

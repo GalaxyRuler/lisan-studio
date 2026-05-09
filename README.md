@@ -47,11 +47,12 @@ The current gate builds the Qt app and runs:
 
 The packager stages:
 
-- `ArabicCodeStudioQt.exe`
+- `LisanStudio.exe`
 - Qt runtime files via `windeployqt6`
 - Python runtime under `runtime\python`
 - `lughat-althuban` installed into the staged runtime
 - license and release docs
+- per-user install path under `%LOCALAPPDATA%\LisanStudio`
 - `LisanStudio-0.1.0-beta.msi` under `artifacts\`
 
 ## Installed Smoke

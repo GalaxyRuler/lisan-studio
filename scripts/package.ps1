@@ -15,7 +15,7 @@ $build = Join-Path $repo "build"
 $bash = "C:\msys64\usr\bin\bash.exe"
 $windeployqt = "C:\msys64\ucrt64\bin\windeployqt6.exe"
 $wix = "C:\Program Files\WiX Toolset v7.0\bin\wix.exe"
-$wxs = Join-Path $repo "packaging\wix\ArabicCodeStudioQt.wxs"
+$wxs = Join-Path $repo "packaging\wix\LisanStudio.wxs"
 
 if (-not (Test-Path $bash)) { throw "MSYS2 bash not found: $bash" }
 if (-not (Test-Path $windeployqt)) { throw "windeployqt6 not found: $windeployqt" }
@@ -41,7 +41,7 @@ cd /c/Users/Admin/arabic-code-studio-qt
 cmake --install build --prefix stage
 "@
 
-& $windeployqt --release --no-translations (Join-Path $stage "ArabicCodeStudioQt.exe")
+& $windeployqt --release --no-translations (Join-Path $stage "LisanStudio.exe")
 
 $runtimeRoot = Join-Path $stage "runtime\python"
 Copy-Item -Path $PythonRoot -Destination $runtimeRoot -Recurse -Force

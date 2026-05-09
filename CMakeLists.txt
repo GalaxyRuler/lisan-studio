@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.24)
 
-project(ArabicCodeStudioQt
+project(LisanStudio
     VERSION 0.1.0
     DESCRIPTION "Arabic-first native IDE for .apy files"
     LANGUAGES CXX)
@@ -35,7 +35,7 @@ add_library(acs_core
 target_include_directories(acs_core PUBLIC src)
 target_link_libraries(acs_core PUBLIC Qt6::Core Qt6::Gui Qt6::Widgets)
 
-qt_add_executable(ArabicCodeStudioQt
+qt_add_executable(LisanStudio
     src/main.cpp
     src/MainWindow.h
     src/MainWindow.cpp
@@ -43,9 +43,9 @@ qt_add_executable(ArabicCodeStudioQt
     resources/resources.qrc
 )
 
-target_link_libraries(ArabicCodeStudioQt PRIVATE acs_core)
+target_link_libraries(LisanStudio PRIVATE acs_core)
 
-install(TARGETS ArabicCodeStudioQt
+install(TARGETS LisanStudio
     RUNTIME DESTINATION .)
 
 enable_testing()

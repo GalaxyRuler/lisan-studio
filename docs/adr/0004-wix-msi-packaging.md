@@ -28,6 +28,5 @@ distribution remain out of scope for v0.1.0 beta.
 
 ## Verification
 
-The packaging script must produce `artifacts\ArabicCodeStudioQt-0.1.0-beta.msi`
-from staged files.
-
+The packaging script must stage `LisanStudio.exe` and produce
+`artifacts\LisanStudio-0.1.0-beta.msi` from staged files.

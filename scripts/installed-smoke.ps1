@@ -1,11 +1,11 @@
 param(
-    [string]$InstallRoot = (Join-Path $env:LOCALAPPDATA "ArabicCodeStudioQt"),
+    [string]$InstallRoot = (Join-Path $env:LOCALAPPDATA "LisanStudio"),
     [int]$SmokeExitMs = 1500
 )
 
 $ErrorActionPreference = "Stop"
 
-$app = Join-Path $InstallRoot "ArabicCodeStudioQt.exe"
+$app = Join-Path $InstallRoot "LisanStudio.exe"
 $python = Join-Path $InstallRoot "runtime\python\python.exe"
 
 if (-not (Test-Path $app)) {
@@ -15,7 +15,7 @@ if (-not (Test-Path $python)) {
     throw "Installed Python runtime not found: $python"
 }
 
-$sampleRoot = Join-Path $env:TEMP "ArabicCodeStudioQtSmokeProject"
+$sampleRoot = Join-Path $env:TEMP "LisanStudioSmokeProject"
 if (Test-Path $sampleRoot) {
     Remove-Item -LiteralPath $sampleRoot -Recurse -Force
 }
@@ -31,7 +31,7 @@ $expected = -join @(
 )
 $lines = @(
     "$print(`"$expected`")",
-    "$print(`"Arabic Code Studio`")",
+    "$print(`"Lisan Studio`")",
     "$print(`"C:/Users/Admin/project/main.apy`")"
 )
 $lines | Set-Content -LiteralPath $sampleFile -Encoding UTF8

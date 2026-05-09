@@ -1,7 +1,7 @@
 # Arabic Editor Torture Project
 
-Open this folder from the installed Arabic Code Studio Qt app when running the
-manual beta gate.
+Open this folder from the installed Lisan Studio app when running the manual
+beta gate.
 
 Use `main.apy` to check:
 

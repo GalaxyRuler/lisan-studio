@@ -1,6 +1,6 @@
 # License Notes
 
-Arabic Code Studio Qt private beta stages third-party runtime components.
+Lisan Studio private beta stages third-party runtime components.
 
 ## Application
 
@@ -23,4 +23,3 @@ testing.
 
 `lughat-althuban` is installed into the staged runtime from the local source
 tree passed to `scripts\package.ps1`.
-
