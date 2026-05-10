@@ -35,6 +35,7 @@ private slots:
     void openingMultipleFilesKeepsEachDocumentInATab();
     void projectTreeShowsOnlyFileNames();
     void projectSearchShowsClickableResultRows();
+    void projectSearchFindsCurrentUnsavedEditorImmediately();
     void problemsPanelShowsHiddenBidiWarnings();
     void outputPanelIsVisibleForRunFeedback();
     void outputPlaceholderPaintsFromRight();
@@ -407,6 +408,43 @@ void TestMainWindow::projectSearchShowsClickableResultRows()
     auto *editor = window.findChild<EditorSurface *>(QStringLiteral("editorSurface"));
     QVERIFY(editor != nullptr);
     QCOMPARE(editor->textCursor().blockNumber(), 1);
+}
+
+void TestMainWindow::projectSearchFindsCurrentUnsavedEditorImmediately()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+
+    MainWindow window;
+    QVERIFY(window.openPath(temp.path()));
+    QVERIFY(QMetaObject::invokeMethod(&window, "newFile", Qt::DirectConnection));
+
+    auto *editor = window.findChild<EditorSurface *>(QStringLiteral("editorSurface"));
+    QVERIFY(editor != nullptr);
+    editor->setPlainText(QString::fromUtf8("العمر = 20\nاذا العمر >= 18:\n    اطبع(\"adult\")\n"));
+
+    auto *commandBox = window.findChild<QLineEdit *>(QStringLiteral("commandBox"));
+    QVERIFY(commandBox != nullptr);
+    commandBox->setText(QStringLiteral("adult"));
+
+    QVERIFY(QMetaObject::invokeMethod(&window, "findInProject", Qt::DirectConnection));
+
+    auto *results = window.findChild<QListWidget *>(QStringLiteral("searchResultsPanel"));
+    QVERIFY(results != nullptr);
+    QCOMPARE(results->count(), 1);
+    auto *resultRow = results->itemWidget(results->item(0));
+    QVERIFY(resultRow != nullptr);
+    auto *fileLabel = resultRow->findChild<QLabel *>(QStringLiteral("searchResultFileLabel"));
+    auto *lineLabel = resultRow->findChild<QLabel *>(QStringLiteral("searchResultLineLabel"));
+    auto *previewLabel = resultRow->findChild<QLabel *>(QStringLiteral("searchResultPreviewLabel"));
+    QVERIFY(fileLabel != nullptr);
+    QVERIFY(lineLabel != nullptr);
+    QVERIFY(previewLabel != nullptr);
+    QCOMPARE(fileLabel->text(), QString::fromUtf8("المحرر الحالي"));
+    QCOMPARE(lineLabel->text(), QString::fromUtf8("السطر 3"));
+    QVERIFY(previewLabel->text().contains(QStringLiteral("adult")));
+    QCOMPARE(results->item(0)->data(Qt::UserRole).toString(), QString());
+    QCOMPARE(results->item(0)->data(Qt::UserRole + 1).toInt(), 3);
 }
 
 void TestMainWindow::problemsPanelShowsHiddenBidiWarnings()

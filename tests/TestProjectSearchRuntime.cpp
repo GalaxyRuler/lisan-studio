@@ -12,6 +12,7 @@ class TestProjectSearchRuntime : public QObject
 private slots:
     void projectModelIgnoresBuildAndCacheDirectories();
     void searchServiceFindsUtf8ArabicMatches();
+    void searchServiceStopsBeforeHugeProjectTail();
     void runtimeRunnerBuildsExplicitArgumentList();
     void runtimeRunnerCanUseExplicitProjectWorkingDirectory();
     void runtimeRunnerUsesIsolatedUtf8PythonEnvironment();
@@ -62,6 +63,25 @@ void TestProjectSearchRuntime::searchServiceFindsUtf8ArabicMatches()
     QCOMPARE(rows.first().path, path);
     QCOMPARE(rows.first().line, 2);
     QVERIFY(rows.first().preview.contains(QString::fromUtf8("اطبع")));
+}
+
+void TestProjectSearchRuntime::searchServiceStopsBeforeHugeProjectTail()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    QDir root(temp.path());
+
+    for (int i = 0; i < 650; ++i) {
+        writeFile(
+            root,
+            QStringLiteral("src/%1.apy").arg(i, 4, 10, QLatin1Char('0')),
+            i == 640 ? QStringLiteral("adult\n") : QStringLiteral("لا يوجد\n"));
+    }
+
+    SearchService search;
+    const auto rows = search.search(root.absolutePath(), QStringLiteral("adult"));
+
+    QVERIFY(rows.isEmpty());
 }
 
 void TestProjectSearchRuntime::runtimeRunnerBuildsExplicitArgumentList()

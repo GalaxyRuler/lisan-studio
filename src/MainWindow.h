@@ -99,6 +99,7 @@ private:
     void showOutputPanel();
     void showProblemsPanel();
     void showSearchResultsPanel();
+    QVector<SearchResultRow> currentEditorSearchResults(const QString &query) const;
     void renderSearchResults(const QVector<SearchResultRow> &rows);
     void refreshEditorProblems();
     void addProblem(const QString &severity, const QString &message, const QString &path = QString(), int line = 0);

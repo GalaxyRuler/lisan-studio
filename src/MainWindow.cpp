@@ -800,13 +800,16 @@ void MainWindow::findInProject()
 
     const QString root = projectRoot;
     const int generation = ++searchGeneration;
-    searchResultsPanel->clear();
+    const QVector<SearchResultRow> immediateRows = currentEditorSearchResults(query);
+    renderSearchResults(immediateRows);
     showSearchResultsPanel();
-    setStatus(QString::fromUtf8("جار البحث عن: %1").arg(query));
+    setStatus(immediateRows.isEmpty()
+        ? QString::fromUtf8("جار البحث عن: %1").arg(query)
+        : QString::fromUtf8("نتائج فورية: %1، جار البحث في المشروع").arg(immediateRows.size()));
 
     auto *watcher = new QFutureWatcher<QVector<SearchResultRow>>(this);
     activeSearchWatcher = watcher;
-    connect(watcher, &QFutureWatcher<QVector<SearchResultRow>>::finished, this, [this, watcher, generation]() {
+    connect(watcher, &QFutureWatcher<QVector<SearchResultRow>>::finished, this, [this, watcher, generation, immediateRows]() {
         const QVector<SearchResultRow> rows = watcher->result();
         watcher->deleteLater();
         if (activeSearchWatcher == watcher) {
@@ -815,13 +818,39 @@ void MainWindow::findInProject()
         if (generation != searchGeneration) {
             return;
         }
-        renderSearchResults(rows);
-        setStatus(QString::fromUtf8("نتائج البحث: %1").arg(rows.size()));
+        QVector<SearchResultRow> mergedRows = immediateRows;
+        for (const auto &row : rows) {
+            const bool duplicate = std::any_of(mergedRows.cbegin(), mergedRows.cend(), [&row](const SearchResultRow &existing) {
+                return existing.path == row.path && existing.line == row.line;
+            });
+            if (!duplicate) {
+                mergedRows.push_back(row);
+            }
+        }
+        renderSearchResults(mergedRows);
+        setStatus(QString::fromUtf8("نتائج البحث: %1").arg(mergedRows.size()));
     });
     watcher->setFuture(QtConcurrent::run([root, query]() {
         SearchService service;
         return service.search(root, query);
     }));
+}
+
+QVector<SearchResultRow> MainWindow::currentEditorSearchResults(const QString &query) const
+{
+    QVector<SearchResultRow> rows;
+    if (!editor || query.trimmed().isEmpty()) {
+        return rows;
+    }
+
+    const QStringList lines = editor->toPlainText().split(QLatin1Char('\n'));
+    for (int i = 0; i < lines.size(); ++i) {
+        const QString preview = lines.at(i).trimmed();
+        if (preview.contains(query, Qt::CaseInsensitive)) {
+            rows.push_back({editor->currentFilePath(), i + 1, preview});
+        }
+    }
+    return rows;
 }
 
 void MainWindow::renderSearchResults(const QVector<SearchResultRow> &rows)
@@ -844,7 +873,10 @@ void MainWindow::renderSearchResults(const QVector<SearchResultRow> &rows)
         auto *metaLayout = new QHBoxLayout;
         metaLayout->setDirection(QBoxLayout::RightToLeft);
         metaLayout->setSpacing(8);
-        auto *fileLabel = new QLabel(QFileInfo(row.path).fileName(), rowWidget);
+        const QString fileLabelText = row.path.isEmpty()
+            ? QString::fromUtf8("المحرر الحالي")
+            : QFileInfo(row.path).fileName();
+        auto *fileLabel = new QLabel(fileLabelText, rowWidget);
         fileLabel->setObjectName(QStringLiteral("searchResultFileLabel"));
         fileLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
         fileLabel->setStyleSheet(QStringLiteral("color: #E8ECF2; font-weight: 600;"));
