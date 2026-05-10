@@ -32,6 +32,8 @@
 #include <QStandardPaths>
 #include <QVBoxLayout>
 
+#include <algorithm>
+
 class ArabicPlaceholderPlainTextEdit final : public QPlainTextEdit
 {
 public:
@@ -99,6 +101,57 @@ private:
     QToolButton *ownerButton = nullptr;
 };
 
+static QStringList arabicEditorFontFamilies()
+{
+    QStringList families = QFontDatabase::families(QFontDatabase::Arabic);
+    families.erase(std::remove_if(families.begin(), families.end(), [](const QString &family) {
+        return !QFontDatabase::writingSystems(family).contains(QFontDatabase::Arabic)
+            || family.contains(QStringLiteral("Cascadia"), Qt::CaseInsensitive)
+            || family.contains(QStringLiteral("JetBrains"), Qt::CaseInsensitive)
+            || family.compare(QStringLiteral("Consolas"), Qt::CaseInsensitive) == 0;
+    }), families.end());
+    families.sort(Qt::CaseInsensitive);
+
+    const QStringList preferredFonts = {
+        QStringLiteral("Segoe UI"),
+        QStringLiteral("Tahoma"),
+        QStringLiteral("Arial"),
+        QStringLiteral("Courier New"),
+        QStringLiteral("Traditional Arabic"),
+        QStringLiteral("Simplified Arabic"),
+        QStringLiteral("Arabic Typesetting"),
+    };
+
+    QStringList orderedFamilies;
+    for (const QString &preferred : preferredFonts) {
+        if (families.removeOne(preferred)) {
+            orderedFamilies.append(preferred);
+        }
+    }
+    orderedFamilies.append(families);
+    orderedFamilies.removeDuplicates();
+
+    if (orderedFamilies.isEmpty()) {
+        orderedFamilies.append(QStringLiteral("Segoe UI"));
+    }
+    return orderedFamilies;
+}
+
+static bool isArabicEditorFontFamily(const QString &family)
+{
+    const QStringList families = arabicEditorFontFamilies();
+    return std::any_of(families.cbegin(), families.cend(), [&family](const QString &candidate) {
+        return candidate.compare(family, Qt::CaseInsensitive) == 0;
+    });
+}
+
+static QString resolvedArabicEditorFontFamily(const QString &configuredFamily)
+{
+    if (isArabicEditorFontFamily(configuredFamily)) {
+        return configuredFamily;
+    }
+    return arabicEditorFontFamilies().first();
+}
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -876,29 +929,9 @@ void MainWindow::openSettings()
     fontFamilyCombo->setObjectName(QStringLiteral("editorFontFamilyCombo"));
     fontFamilyCombo->setLayoutDirection(Qt::RightToLeft);
     fontFamilyCombo->setEditable(false);
-    const QStringList preferredFonts = {
-        QStringLiteral("Cascadia Code"),
-        QStringLiteral("JetBrains Mono"),
-        QStringLiteral("Consolas"),
-        QStringLiteral("Courier New"),
-        QStringLiteral("Segoe UI"),
-        QStringLiteral("Tahoma"),
-    };
-    QStringList families = QFontDatabase::families();
-    families.sort(Qt::CaseInsensitive);
-    QStringList orderedFamilies;
-    for (const QString &preferred : preferredFonts) {
-        if (families.removeOne(preferred)) {
-            orderedFamilies.append(preferred);
-        }
-    }
-    orderedFamilies.append(families);
-    if (!orderedFamilies.contains(settings.editorFontFamily())) {
-        orderedFamilies.prepend(settings.editorFontFamily());
-    }
-    orderedFamilies.removeDuplicates();
+    const QStringList orderedFamilies = arabicEditorFontFamilies();
     fontFamilyCombo->addItems(orderedFamilies);
-    const int configuredFontIndex = fontFamilyCombo->findText(settings.editorFontFamily());
+    const int configuredFontIndex = fontFamilyCombo->findText(resolvedArabicEditorFontFamily(settings.editorFontFamily()));
     fontFamilyCombo->setCurrentIndex(configuredFontIndex >= 0 ? configuredFontIndex : 0);
     auto *fontSizeInput = new QSpinBox(editorPage);
     fontSizeInput->setObjectName(QStringLiteral("editorFontSizeInput"));
@@ -969,7 +1002,7 @@ void MainWindow::openSettings()
     }
 
     settings.setEditorFontFamily(fontFamilyCombo->currentText().trimmed().isEmpty()
-        ? QStringLiteral("Cascadia Code")
+        ? arabicEditorFontFamilies().first()
         : fontFamilyCombo->currentText().trimmed());
     settings.setEditorFontSize(fontSizeInput->value());
     for (int i = 0; editorTabs && i < editorTabs->count(); ++i) {
@@ -1064,17 +1097,18 @@ void MainWindow::applyEditorFont(EditorSurface *surface)
         return;
     }
 
+    const QString family = resolvedArabicEditorFontFamily(settings.editorFontFamily());
     QFont configuredFont = surface->font();
-    configuredFont.setFamily(settings.editorFontFamily());
+    configuredFont.setFamily(family);
     configuredFont.setPointSize(settings.editorFontSize());
     configuredFont.setStyleHint(QFont::Monospace);
     surface->setFont(configuredFont);
 
-    QString family = settings.editorFontFamily();
-    family.replace(QLatin1Char('\\'), QStringLiteral("\\\\"));
-    family.replace(QLatin1Char('"'), QStringLiteral("\\\""));
+    QString stylesheetFamily = family;
+    stylesheetFamily.replace(QLatin1Char('\\'), QStringLiteral("\\\\"));
+    stylesheetFamily.replace(QLatin1Char('"'), QStringLiteral("\\\""));
     surface->setStyleSheet(QStringLiteral("font-family: \"%1\"; font-size: %2pt;")
-        .arg(family)
+        .arg(stylesheetFamily)
         .arg(settings.editorFontSize()));
     surface->setTabStopDistance(surface->fontMetrics().horizontalAdvance(QLatin1Char(' ')) * 4);
 }

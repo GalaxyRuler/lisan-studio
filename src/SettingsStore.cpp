@@ -19,7 +19,7 @@ SettingsStore::SettingsStore(const QString &settingsPath)
 QString SettingsStore::editorFontFamily() const
 {
     QSettings settings(path, QSettings::IniFormat);
-    return settings.value(QStringLiteral("editor/fontFamily"), QStringLiteral("Cascadia Code")).toString();
+    return settings.value(QStringLiteral("editor/fontFamily"), QStringLiteral("Segoe UI")).toString();
 }
 
 void SettingsStore::setEditorFontFamily(const QString &family)
@@ -63,4 +63,3 @@ QString SettingsStore::settingsPath() const
 {
     return path;
 }
-

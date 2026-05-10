@@ -6,6 +6,7 @@
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QFontComboBox>
+#include <QFontDatabase>
 #include <QMenuBar>
 #include <QFrame>
 #include <QLabel>
@@ -602,40 +603,51 @@ void TestMainWindow::settingsDialogExposesCategoriesAndRuntimeDiagnostics()
         auto *packageStatus = dialog->findChild<QLabel *>(QStringLiteral("runtimePackageStatusValue"));
         auto *buttons = dialog->findChild<QDialogButtonBox *>();
 
-        inspected =
-            dialog->objectName() == QStringLiteral("settingsDialog")
-            && dialog->layoutDirection() == Qt::RightToLeft
-            && (dialog->windowFlags() & Qt::FramelessWindowHint)
-            && dialog->findChild<QLabel *>(QStringLiteral("settingsHeaderTitle"))
-            && !dialog->findChild<QToolButton *>(QStringLiteral("settingsHeaderCloseButton"))
-            && buttons
-            && buttons->button(QDialogButtonBox::Ok)->text() == QString::fromUtf8("تطبيق")
-            && buttons->button(QDialogButtonBox::Cancel)->text() == QString::fromUtf8("إلغاء")
-            && categories
-            && categories->layoutDirection() == Qt::RightToLeft
-            && categories->count() == 3
-            && categories->item(0)->text() == QString::fromUtf8("المحرر")
-            && categories->item(1)->text() == QString::fromUtf8("التشغيل")
-            && categories->item(2)->text() == QString::fromUtf8("المشاريع")
-            && pages
-            && pages->layoutDirection() == Qt::RightToLeft
-            && dialog->findChild<QWidget *>(QStringLiteral("editorSettingsPage"))
-            && fontFamily
-            && fontFamily->layoutDirection() == Qt::RightToLeft
-            && fontFamily->count() > 0
-            && fontFamily->itemText(0) == QStringLiteral("Cascadia Code")
-            && nativeFontPreview == nullptr
-            && dialog->findChild<QLineEdit *>(QStringLiteral("editorFontFamilyInput")) == nullptr
-            && dialog->findChild<QWidget *>(QStringLiteral("runtimeDiagnosticsPage"))
-            && dialog->findChild<QWidget *>(QStringLiteral("recentProjectsPage"))
-            && pythonPath
-            && !pythonPath->text().isEmpty()
-            && packageStatus
+        inspected = true;
+        auto require = [&inspected, &failure](bool condition, const QString &message) {
+            if (inspected && !condition) {
+                inspected = false;
+                failure = message;
+            }
+        };
+        require(dialog->objectName() == QStringLiteral("settingsDialog"), QStringLiteral("wrong settings dialog object name"));
+        require(dialog->layoutDirection() == Qt::RightToLeft, QStringLiteral("settings dialog is not RTL"));
+        require((dialog->windowFlags() & Qt::FramelessWindowHint), QStringLiteral("settings dialog is not frameless"));
+        require(dialog->findChild<QLabel *>(QStringLiteral("settingsHeaderTitle")), QStringLiteral("settings title missing"));
+        require(!dialog->findChild<QToolButton *>(QStringLiteral("settingsHeaderCloseButton")), QStringLiteral("redundant settings close button returned"));
+        require(buttons, QStringLiteral("settings buttons missing"));
+        require(buttons && buttons->button(QDialogButtonBox::Ok)->text() == QString::fromUtf8("تطبيق"), QStringLiteral("settings apply label wrong"));
+        require(buttons && buttons->button(QDialogButtonBox::Cancel)->text() == QString::fromUtf8("إلغاء"), QStringLiteral("settings cancel label wrong"));
+        require(categories, QStringLiteral("settings categories missing"));
+        require(categories && categories->layoutDirection() == Qt::RightToLeft, QStringLiteral("settings categories are not RTL"));
+        require(categories && categories->count() == 3, QStringLiteral("settings category count wrong"));
+        require(categories && categories->item(0)->text() == QString::fromUtf8("المحرر"), QStringLiteral("editor category missing"));
+        require(categories && categories->item(1)->text() == QString::fromUtf8("التشغيل"), QStringLiteral("runtime category missing"));
+        require(categories && categories->item(2)->text() == QString::fromUtf8("المشاريع"), QStringLiteral("projects category missing"));
+        require(pages, QStringLiteral("settings pages missing"));
+        require(pages && pages->layoutDirection() == Qt::RightToLeft, QStringLiteral("settings pages are not RTL"));
+        require(dialog->findChild<QWidget *>(QStringLiteral("editorSettingsPage")), QStringLiteral("editor settings page missing"));
+        require(fontFamily, QStringLiteral("font family combo missing"));
+        require(fontFamily && fontFamily->layoutDirection() == Qt::RightToLeft, QStringLiteral("font family combo is not RTL"));
+        require(fontFamily && fontFamily->count() > 0, QStringLiteral("font family combo is empty"));
+        require(fontFamily && fontFamily->findText(QStringLiteral("Cascadia Code")) == -1, QStringLiteral("font family combo contains non-Arabic Cascadia Code"));
+        require(nativeFontPreview == nullptr, QStringLiteral("native font preview combo returned"));
+        require(dialog->findChild<QLineEdit *>(QStringLiteral("editorFontFamilyInput")) == nullptr, QStringLiteral("old font text input returned"));
+        require(dialog->findChild<QWidget *>(QStringLiteral("runtimeDiagnosticsPage")), QStringLiteral("runtime diagnostics page missing"));
+        require(dialog->findChild<QWidget *>(QStringLiteral("recentProjectsPage")), QStringLiteral("recent projects page missing"));
+        require(pythonPath && !pythonPath->text().isEmpty(), QStringLiteral("runtime python path missing"));
+        require(packageStatus
             && (packageStatus->text().contains(QString::fromUtf8("جاهز"))
-                || packageStatus->text().contains(QString::fromUtf8("غير متوفر")));
-
-        if (!inspected) {
-            failure = QStringLiteral("settings dialog did not expose expected RTL categories and diagnostics");
+                || packageStatus->text().contains(QString::fromUtf8("غير متوفر"))),
+            QStringLiteral("runtime package status missing"));
+        if (fontFamily) {
+            for (int i = 0; i < fontFamily->count(); ++i) {
+                if (!QFontDatabase::writingSystems(fontFamily->itemText(i)).contains(QFontDatabase::Arabic)) {
+                    inspected = false;
+                    failure = QStringLiteral("font list contains non-Arabic-capable font: %1").arg(fontFamily->itemText(i));
+                    break;
+                }
+            }
         }
         dialog->reject();
     });
@@ -668,13 +680,11 @@ void TestMainWindow::settingsDialogAppliesEditorFontVisibly()
         QVERIFY(fontSize != nullptr);
         QVERIFY(buttons != nullptr);
 
-        int targetIndex = fontFamily->findText(QStringLiteral("Consolas"));
-        if (targetIndex < 0) {
-            targetIndex = qMin(1, fontFamily->count() - 1);
-        }
+        int targetIndex = qMin(1, fontFamily->count() - 1);
         QVERIFY(targetIndex >= 0);
         fontFamily->setCurrentIndex(targetIndex);
         selectedFamily = fontFamily->currentText();
+        QVERIFY(QFontDatabase::writingSystems(selectedFamily).contains(QFontDatabase::Arabic));
         fontSize->setValue(selectedSize);
         buttons->button(QDialogButtonBox::Ok)->click();
     });
