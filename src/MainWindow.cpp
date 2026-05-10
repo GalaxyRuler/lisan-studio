@@ -884,9 +884,9 @@ void MainWindow::renderSearchResults(const QVector<SearchResultRow> &rows)
         lineLabel->setObjectName(QStringLiteral("searchResultLineLabel"));
         lineLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
         lineLabel->setStyleSheet(QStringLiteral("color: #AEC6FF;"));
+        metaLayout->addStretch(1);
         metaLayout->addWidget(fileLabel);
         metaLayout->addWidget(lineLabel);
-        metaLayout->addStretch(1);
 
         auto *previewLabel = new QLabel(row.preview, rowWidget);
         previewLabel->setObjectName(QStringLiteral("searchResultPreviewLabel"));
@@ -894,6 +894,7 @@ void MainWindow::renderSearchResults(const QVector<SearchResultRow> &rows)
         previewLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
         previewLabel->setWordWrap(true);
         previewLabel->setStyleSheet(QStringLiteral("color: #9AA7B6;"));
+        previewLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
 
         rowLayout->addLayout(metaLayout);
         rowLayout->addWidget(previewLabel);

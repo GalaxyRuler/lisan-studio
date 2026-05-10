@@ -36,6 +36,7 @@ private slots:
     void projectTreeShowsOnlyFileNames();
     void projectSearchShowsClickableResultRows();
     void projectSearchFindsCurrentUnsavedEditorImmediately();
+    void projectSearchResultRowsFillRtlViewport();
     void problemsPanelShowsHiddenBidiWarnings();
     void outputPanelIsVisibleForRunFeedback();
     void outputPlaceholderPaintsFromRight();
@@ -445,6 +446,52 @@ void TestMainWindow::projectSearchFindsCurrentUnsavedEditorImmediately()
     QVERIFY(previewLabel->text().contains(QStringLiteral("adult")));
     QCOMPARE(results->item(0)->data(Qt::UserRole).toString(), QString());
     QCOMPARE(results->item(0)->data(Qt::UserRole + 1).toInt(), 3);
+}
+
+void TestMainWindow::projectSearchResultRowsFillRtlViewport()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+
+    MainWindow window;
+    window.resize(1200, 800);
+    QVERIFY(window.openPath(temp.path()));
+    QVERIFY(QMetaObject::invokeMethod(&window, "newFile", Qt::DirectConnection));
+
+    auto *editor = window.findChild<EditorSurface *>(QStringLiteral("editorSurface"));
+    QVERIFY(editor != nullptr);
+    editor->setPlainText(QString::fromUtf8("العمر = 20\nاطبع(\"adult\")\n"));
+
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    auto *commandBox = window.findChild<QLineEdit *>(QStringLiteral("commandBox"));
+    QVERIFY(commandBox != nullptr);
+    commandBox->setText(QStringLiteral("adult"));
+    QVERIFY(QMetaObject::invokeMethod(&window, "findInProject", Qt::DirectConnection));
+
+    auto *results = window.findChild<QListWidget *>(QStringLiteral("searchResultsPanel"));
+    QVERIFY(results != nullptr);
+    QCOMPARE(results->count(), 1);
+    QCoreApplication::processEvents();
+
+    auto *resultRow = results->itemWidget(results->item(0));
+    QVERIFY(resultRow != nullptr);
+    auto *fileLabel = resultRow->findChild<QLabel *>(QStringLiteral("searchResultFileLabel"));
+    QVERIFY(fileLabel != nullptr);
+
+    const QRect rowRect = resultRow->geometry();
+    const int viewportWidth = results->viewport()->width();
+    QVERIFY2(rowRect.width() > viewportWidth * 0.9,
+        qPrintable(QStringLiteral("search result row should fill viewport width. row=%1 viewport=%2")
+            .arg(rowRect.width())
+            .arg(viewportWidth)));
+
+    const QRect labelRect(fileLabel->mapTo(results->viewport(), QPoint(0, 0)), fileLabel->size());
+    QVERIFY2(labelRect.right() > viewportWidth - 260,
+        qPrintable(QStringLiteral("RTL search result title should sit near the right edge. labelRight=%1 viewport=%2")
+            .arg(labelRect.right())
+            .arg(viewportWidth)));
 }
 
 void TestMainWindow::problemsPanelShowsHiddenBidiWarnings()
