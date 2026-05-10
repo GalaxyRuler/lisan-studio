@@ -88,6 +88,7 @@ private:
     bool loadProject(const QString &path);
     bool openEditorFile(const QString &path);
     EditorSurface *createEditorTab(const QString &title);
+    void applyEditorFont(EditorSurface *surface);
     void setCurrentEditor(EditorSurface *surface);
     void updateEditorTabTitle(EditorSurface *surface);
     void closeEditorTab(int index);

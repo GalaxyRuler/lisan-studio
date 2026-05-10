@@ -974,10 +974,7 @@ void MainWindow::openSettings()
     settings.setEditorFontSize(fontSizeInput->value());
     for (int i = 0; editorTabs && i < editorTabs->count(); ++i) {
         if (auto *surface = qobject_cast<EditorSurface *>(editorTabs->widget(i))) {
-            QFont font = surface->font();
-            font.setFamily(settings.editorFontFamily());
-            font.setPointSize(settings.editorFontSize());
-            surface->setFont(font);
+            applyEditorFont(surface);
         }
     }
     setStatus(QString::fromUtf8("تم تحديث الإعدادات"));
@@ -1035,10 +1032,7 @@ bool MainWindow::openEditorFile(const QString &path)
 EditorSurface *MainWindow::createEditorTab(const QString &title)
 {
     auto *surface = new EditorSurface(editorTabs);
-    QFont configuredFont = surface->font();
-    configuredFont.setFamily(settings.editorFontFamily());
-    configuredFont.setPointSize(settings.editorFontSize());
-    surface->setFont(configuredFont);
+    applyEditorFont(surface);
     const int index = editorTabs->addTab(surface, title);
     editorTabs->setCurrentIndex(index);
     setCurrentEditor(surface);
@@ -1062,6 +1056,27 @@ EditorSurface *MainWindow::createEditorTab(const QString &title)
 
     updateEditorTabTitle(surface);
     return surface;
+}
+
+void MainWindow::applyEditorFont(EditorSurface *surface)
+{
+    if (!surface) {
+        return;
+    }
+
+    QFont configuredFont = surface->font();
+    configuredFont.setFamily(settings.editorFontFamily());
+    configuredFont.setPointSize(settings.editorFontSize());
+    configuredFont.setStyleHint(QFont::Monospace);
+    surface->setFont(configuredFont);
+
+    QString family = settings.editorFontFamily();
+    family.replace(QLatin1Char('\\'), QStringLiteral("\\\\"));
+    family.replace(QLatin1Char('"'), QStringLiteral("\\\""));
+    surface->setStyleSheet(QStringLiteral("font-family: \"%1\"; font-size: %2pt;")
+        .arg(family)
+        .arg(settings.editorFontSize()));
+    surface->setTabStopDistance(surface->fontMetrics().horizontalAdvance(QLatin1Char(' ')) * 4);
 }
 
 void MainWindow::setCurrentEditor(EditorSurface *surface)

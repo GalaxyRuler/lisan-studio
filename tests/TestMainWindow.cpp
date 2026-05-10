@@ -12,6 +12,7 @@
 #include <QLineEdit>
 #include <QListWidget>
 #include <QPushButton>
+#include <QSpinBox>
 #include <QStatusBar>
 #include <QTabWidget>
 #include <QToolBar>
@@ -40,6 +41,7 @@ private slots:
     void runUsesUntitledBufferWithoutOpeningSaveDialog();
     void runToolProvidesCancelableStructuredFeedback();
     void settingsDialogExposesCategoriesAndRuntimeDiagnostics();
+    void settingsDialogAppliesEditorFontVisibly();
 };
 
 static QString writeFile(const QDir &root, const QString &relative, const QString &text)
@@ -639,6 +641,53 @@ void TestMainWindow::settingsDialogExposesCategoriesAndRuntimeDiagnostics()
     });
 
     QTRY_VERIFY2(inspected, qPrintable(failure));
+}
+
+void TestMainWindow::settingsDialogAppliesEditorFontVisibly()
+{
+    MainWindow window;
+    QVERIFY(QMetaObject::invokeMethod(&window, "newFile", Qt::DirectConnection));
+
+    auto *editor = window.findChild<EditorSurface *>(QStringLiteral("editorSurface"));
+    QVERIFY(editor != nullptr);
+
+    QString selectedFamily;
+    int selectedSize = 18;
+
+    QTimer::singleShot(0, &window, [&window]() {
+        QMetaObject::invokeMethod(&window, "openSettings", Qt::DirectConnection);
+    });
+    QTimer::singleShot(150, &window, [&selectedFamily, selectedSize]() {
+        auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+        QVERIFY(dialog != nullptr);
+
+        auto *fontFamily = dialog->findChild<QComboBox *>(QStringLiteral("editorFontFamilyCombo"));
+        auto *fontSize = dialog->findChild<QSpinBox *>(QStringLiteral("editorFontSizeInput"));
+        auto *buttons = dialog->findChild<QDialogButtonBox *>();
+        QVERIFY(fontFamily != nullptr);
+        QVERIFY(fontSize != nullptr);
+        QVERIFY(buttons != nullptr);
+
+        int targetIndex = fontFamily->findText(QStringLiteral("Consolas"));
+        if (targetIndex < 0) {
+            targetIndex = qMin(1, fontFamily->count() - 1);
+        }
+        QVERIFY(targetIndex >= 0);
+        fontFamily->setCurrentIndex(targetIndex);
+        selectedFamily = fontFamily->currentText();
+        fontSize->setValue(selectedSize);
+        buttons->button(QDialogButtonBox::Ok)->click();
+    });
+
+    QTRY_VERIFY(!selectedFamily.isEmpty());
+    QCOMPARE(editor->font().family(), selectedFamily);
+    QCOMPARE(editor->font().pointSize(), selectedSize);
+    QVERIFY2(editor->styleSheet().contains(QStringLiteral("font-family")),
+        qPrintable(editor->styleSheet()));
+    QVERIFY2(editor->styleSheet().contains(selectedFamily),
+        qPrintable(editor->styleSheet()));
+    QVERIFY2(editor->styleSheet().contains(QStringLiteral("font-size: 18pt")),
+        qPrintable(editor->styleSheet()));
 }
 
 QTEST_MAIN(TestMainWindow)
