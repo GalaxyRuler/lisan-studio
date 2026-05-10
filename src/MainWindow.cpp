@@ -894,10 +894,17 @@ void MainWindow::renderSearchResults(const QVector<SearchResultRow> &rows)
         previewLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
         previewLabel->setWordWrap(true);
         previewLabel->setStyleSheet(QStringLiteral("color: #9AA7B6;"));
-        previewLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+        previewLabel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
+
+        auto *previewLayout = new QHBoxLayout;
+        previewLayout->setDirection(QBoxLayout::RightToLeft);
+        previewLayout->setContentsMargins(0, 0, 0, 0);
+        previewLayout->setSpacing(0);
+        previewLayout->addStretch(1);
+        previewLayout->addWidget(previewLabel);
 
         rowLayout->addLayout(metaLayout);
-        rowLayout->addWidget(previewLabel);
+        rowLayout->addLayout(previewLayout);
         item->setSizeHint(rowWidget->sizeHint());
         searchResultsPanel->setItemWidget(item, rowWidget);
     }

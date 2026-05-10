@@ -479,6 +479,8 @@ void TestMainWindow::projectSearchResultRowsFillRtlViewport()
     QVERIFY(resultRow != nullptr);
     auto *fileLabel = resultRow->findChild<QLabel *>(QStringLiteral("searchResultFileLabel"));
     QVERIFY(fileLabel != nullptr);
+    auto *previewLabel = resultRow->findChild<QLabel *>(QStringLiteral("searchResultPreviewLabel"));
+    QVERIFY(previewLabel != nullptr);
 
     const QRect rowRect = resultRow->geometry();
     const int viewportWidth = results->viewport()->width();
@@ -491,6 +493,16 @@ void TestMainWindow::projectSearchResultRowsFillRtlViewport()
     QVERIFY2(labelRect.right() > viewportWidth - 260,
         qPrintable(QStringLiteral("RTL search result title should sit near the right edge. labelRight=%1 viewport=%2")
             .arg(labelRect.right())
+            .arg(viewportWidth)));
+
+    const QRect previewRect(previewLabel->mapTo(results->viewport(), QPoint(0, 0)), previewLabel->size());
+    QVERIFY2(previewRect.right() > viewportWidth - 260,
+        qPrintable(QStringLiteral("RTL search result preview should sit near the right edge. previewRight=%1 viewport=%2")
+            .arg(previewRect.right())
+            .arg(viewportWidth)));
+    QVERIFY2(previewRect.left() > viewportWidth / 2,
+        qPrintable(QStringLiteral("RTL search result preview text box should not start at the left margin. previewLeft=%1 viewport=%2")
+            .arg(previewRect.left())
             .arg(viewportWidth)));
 }
 
