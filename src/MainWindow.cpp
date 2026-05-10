@@ -198,6 +198,19 @@ static QString resolvedArabicEditorFontFamily(const QString &configuredFamily)
     return arabicEditorFontFamilies().first();
 }
 
+static QFont compactSearchPreviewFont(const QFont &sourceFont)
+{
+    constexpr int MaxSearchPreviewPointSize = 13;
+    QFont previewFont = sourceFont;
+    if (previewFont.pointSize() > MaxSearchPreviewPointSize || previewFont.pointSize() <= 0) {
+        previewFont.setPointSize(MaxSearchPreviewPointSize);
+    }
+    if (previewFont.pointSizeF() > MaxSearchPreviewPointSize) {
+        previewFont.setPointSizeF(MaxSearchPreviewPointSize);
+    }
+    return previewFont;
+}
+
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
 {
@@ -933,7 +946,7 @@ void MainWindow::renderSearchResults(const QVector<SearchResultRow> &rows)
         metaLayout->addWidget(lineLabel);
 
         auto *previewText = new SearchResultPreviewText(rowWidget);
-        previewText->setFont(editor ? editor->font() : font());
+        previewText->setFont(compactSearchPreviewFont(editor ? editor->font() : font()));
         previewText->setPreviewText(row.preview);
         previewText->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
 

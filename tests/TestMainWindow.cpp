@@ -39,6 +39,7 @@ private slots:
     void projectSearchShowsClickableResultRows();
     void projectSearchFindsCurrentUnsavedEditorImmediately();
     void projectSearchResultRowsFillRtlViewport();
+    void projectSearchPreviewStaysCompactWithLargeEditorFont();
     void problemsPanelShowsHiddenBidiWarnings();
     void outputPanelIsVisibleForRunFeedback();
     void outputPlaceholderPaintsFromRight();
@@ -502,6 +503,44 @@ void TestMainWindow::projectSearchResultRowsFillRtlViewport()
     QCOMPARE(previewLabel->document()->defaultTextOption().alignment() & Qt::AlignRight, Qt::AlignRight);
     QCOMPARE(previewLabel->frameShape(), QFrame::NoFrame);
     QCOMPARE(previewLabel->focusPolicy(), Qt::NoFocus);
+}
+
+void TestMainWindow::projectSearchPreviewStaysCompactWithLargeEditorFont()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+
+    MainWindow window;
+    window.resize(1200, 800);
+    QVERIFY(window.openPath(temp.path()));
+    QVERIFY(QMetaObject::invokeMethod(&window, "newFile", Qt::DirectConnection));
+
+    auto *editor = window.findChild<EditorSurface *>(QStringLiteral("editorSurface"));
+    QVERIFY(editor != nullptr);
+    QFont largeEditorFont = editor->font();
+    largeEditorFont.setPointSize(22);
+    editor->setFont(largeEditorFont);
+    editor->setPlainText(QString::fromUtf8("اطبع(\"أنت adult\")\n"));
+
+    auto *commandBox = window.findChild<QLineEdit *>(QStringLiteral("commandBox"));
+    QVERIFY(commandBox != nullptr);
+    commandBox->setText(QStringLiteral("adult"));
+    QVERIFY(QMetaObject::invokeMethod(&window, "findInProject", Qt::DirectConnection));
+
+    auto *results = window.findChild<QListWidget *>(QStringLiteral("searchResultsPanel"));
+    QVERIFY(results != nullptr);
+    QCOMPARE(results->count(), 1);
+
+    auto *resultRow = results->itemWidget(results->item(0));
+    QVERIFY(resultRow != nullptr);
+    auto *previewText = resultRow->findChild<QPlainTextEdit *>(QStringLiteral("searchResultPreviewText"));
+    QVERIFY(previewText != nullptr);
+    QVERIFY2(previewText->font().pointSize() <= 13,
+        qPrintable(QStringLiteral("search preview should cap large editor fonts. preview=%1")
+            .arg(previewText->font().pointSize())));
+    QVERIFY2(previewText->height() <= 28,
+        qPrintable(QStringLiteral("search preview should remain compact. height=%1")
+            .arg(previewText->height())));
 }
 
 void TestMainWindow::problemsPanelShowsHiddenBidiWarnings()
