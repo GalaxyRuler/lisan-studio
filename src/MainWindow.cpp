@@ -1,13 +1,14 @@
 #include "MainWindow.h"
 
 #include <QApplication>
+#include <QComboBox>
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QDir>
 #include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
-#include <QFontComboBox>
+#include <QFontDatabase>
 #include <QFormLayout>
 #include <QFrame>
 #include <QHBoxLayout>
@@ -871,11 +872,34 @@ void MainWindow::openSettings()
     editorPage->setLayoutDirection(Qt::RightToLeft);
     auto *editorForm = new QFormLayout(editorPage);
     editorForm->setLabelAlignment(Qt::AlignRight);
-    auto *fontFamilyCombo = new QFontComboBox(editorPage);
+    auto *fontFamilyCombo = new QComboBox(editorPage);
     fontFamilyCombo->setObjectName(QStringLiteral("editorFontFamilyCombo"));
     fontFamilyCombo->setLayoutDirection(Qt::RightToLeft);
     fontFamilyCombo->setEditable(false);
-    fontFamilyCombo->setCurrentFont(QFont(settings.editorFontFamily()));
+    const QStringList preferredFonts = {
+        QStringLiteral("Cascadia Code"),
+        QStringLiteral("JetBrains Mono"),
+        QStringLiteral("Consolas"),
+        QStringLiteral("Courier New"),
+        QStringLiteral("Segoe UI"),
+        QStringLiteral("Tahoma"),
+    };
+    QStringList families = QFontDatabase::families();
+    families.sort(Qt::CaseInsensitive);
+    QStringList orderedFamilies;
+    for (const QString &preferred : preferredFonts) {
+        if (families.removeOne(preferred)) {
+            orderedFamilies.append(preferred);
+        }
+    }
+    orderedFamilies.append(families);
+    if (!orderedFamilies.contains(settings.editorFontFamily())) {
+        orderedFamilies.prepend(settings.editorFontFamily());
+    }
+    orderedFamilies.removeDuplicates();
+    fontFamilyCombo->addItems(orderedFamilies);
+    const int configuredFontIndex = fontFamilyCombo->findText(settings.editorFontFamily());
+    fontFamilyCombo->setCurrentIndex(configuredFontIndex >= 0 ? configuredFontIndex : 0);
     auto *fontSizeInput = new QSpinBox(editorPage);
     fontSizeInput->setObjectName(QStringLiteral("editorFontSizeInput"));
     fontSizeInput->setRange(8, 28);
@@ -944,9 +968,9 @@ void MainWindow::openSettings()
         return;
     }
 
-    settings.setEditorFontFamily(fontFamilyCombo->currentFont().family().trimmed().isEmpty()
+    settings.setEditorFontFamily(fontFamilyCombo->currentText().trimmed().isEmpty()
         ? QStringLiteral("Cascadia Code")
-        : fontFamilyCombo->currentFont().family().trimmed());
+        : fontFamilyCombo->currentText().trimmed());
     settings.setEditorFontSize(fontSizeInput->value());
     for (int i = 0; editorTabs && i < editorTabs->count(); ++i) {
         if (auto *surface = qobject_cast<EditorSurface *>(editorTabs->widget(i))) {

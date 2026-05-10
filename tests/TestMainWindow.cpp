@@ -2,6 +2,7 @@
 
 #include "MainWindow.h"
 
+#include <QComboBox>
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QFontComboBox>
@@ -593,7 +594,8 @@ void TestMainWindow::settingsDialogExposesCategoriesAndRuntimeDiagnostics()
 
         auto *categories = dialog->findChild<QListWidget *>(QStringLiteral("settingsCategories"));
         auto *pages = dialog->findChild<QTabWidget *>(QStringLiteral("settingsPages"));
-        auto *fontFamily = dialog->findChild<QFontComboBox *>(QStringLiteral("editorFontFamilyCombo"));
+        auto *fontFamily = dialog->findChild<QComboBox *>(QStringLiteral("editorFontFamilyCombo"));
+        auto *nativeFontPreview = dialog->findChild<QFontComboBox *>(QStringLiteral("editorFontFamilyCombo"));
         auto *pythonPath = dialog->findChild<QLabel *>(QStringLiteral("runtimePythonPathValue"));
         auto *packageStatus = dialog->findChild<QLabel *>(QStringLiteral("runtimePackageStatusValue"));
         auto *buttons = dialog->findChild<QDialogButtonBox *>();
@@ -619,6 +621,8 @@ void TestMainWindow::settingsDialogExposesCategoriesAndRuntimeDiagnostics()
             && fontFamily
             && fontFamily->layoutDirection() == Qt::RightToLeft
             && fontFamily->count() > 0
+            && fontFamily->itemText(0) == QStringLiteral("Cascadia Code")
+            && nativeFontPreview == nullptr
             && dialog->findChild<QLineEdit *>(QStringLiteral("editorFontFamilyInput")) == nullptr
             && dialog->findChild<QWidget *>(QStringLiteral("runtimeDiagnosticsPage"))
             && dialog->findChild<QWidget *>(QStringLiteral("recentProjectsPage"))
