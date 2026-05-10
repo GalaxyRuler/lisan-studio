@@ -27,6 +27,7 @@
 #include <QSpinBox>
 #include <QTabBar>
 #include <QTextBlock>
+#include <QTextOption>
 #include <QTextStream>
 #include <QToolButton>
 #include <QStandardPaths>
@@ -70,6 +71,49 @@ protected:
 
 private:
     QString placeholder;
+};
+
+class SearchResultPreviewText final : public QPlainTextEdit
+{
+public:
+    explicit SearchResultPreviewText(QWidget *parent = nullptr)
+        : QPlainTextEdit(parent)
+    {
+        setObjectName(QStringLiteral("searchResultPreviewText"));
+        setReadOnly(true);
+        setFrameShape(QFrame::NoFrame);
+        setFocusPolicy(Qt::NoFocus);
+        setTextInteractionFlags(Qt::NoTextInteraction);
+        setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+        setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+        setLineWrapMode(QPlainTextEdit::NoWrap);
+        setLayoutDirection(Qt::RightToLeft);
+        setContentsMargins(0, 0, 0, 0);
+        setViewportMargins(0, 0, 0, 0);
+        setStyleSheet(QStringLiteral(
+            "QPlainTextEdit#searchResultPreviewText {"
+            "background: transparent;"
+            "border: none;"
+            "color: #9AA7B6;"
+            "padding: 0px;"
+            "}"));
+        viewport()->setAutoFillBackground(false);
+        document()->setDocumentMargin(0);
+
+        QTextOption option = document()->defaultTextOption();
+        option.setTextDirection(Qt::RightToLeft);
+        option.setAlignment(Qt::AlignRight);
+        option.setWrapMode(QTextOption::NoWrap);
+        document()->setDefaultTextOption(option);
+        setFixedHeight(fontMetrics().lineSpacing() + 4);
+    }
+
+    void setPreviewText(const QString &text)
+    {
+        setPlainText(text);
+        document()->setModified(false);
+        setFixedHeight(fontMetrics().lineSpacing() + 4);
+    }
 };
 
 class MenuPopupFrame final : public QFrame
@@ -888,23 +932,13 @@ void MainWindow::renderSearchResults(const QVector<SearchResultRow> &rows)
         metaLayout->addWidget(fileLabel);
         metaLayout->addWidget(lineLabel);
 
-        auto *previewLabel = new QLabel(row.preview, rowWidget);
-        previewLabel->setObjectName(QStringLiteral("searchResultPreviewLabel"));
-        previewLabel->setLayoutDirection(Qt::RightToLeft);
-        previewLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-        previewLabel->setWordWrap(true);
-        previewLabel->setStyleSheet(QStringLiteral("color: #9AA7B6;"));
-        previewLabel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
-
-        auto *previewLayout = new QHBoxLayout;
-        previewLayout->setDirection(QBoxLayout::RightToLeft);
-        previewLayout->setContentsMargins(0, 0, 0, 0);
-        previewLayout->setSpacing(0);
-        previewLayout->addStretch(1);
-        previewLayout->addWidget(previewLabel);
+        auto *previewText = new SearchResultPreviewText(rowWidget);
+        previewText->setFont(editor ? editor->font() : font());
+        previewText->setPreviewText(row.preview);
+        previewText->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
 
         rowLayout->addLayout(metaLayout);
-        rowLayout->addLayout(previewLayout);
+        rowLayout->addWidget(previewText);
         item->setSizeHint(rowWidget->sizeHint());
         searchResultsPanel->setItemWidget(item, rowWidget);
     }

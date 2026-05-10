@@ -12,10 +12,12 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
+#include <QPlainTextEdit>
 #include <QPushButton>
 #include <QSpinBox>
 #include <QStatusBar>
 #include <QTabWidget>
+#include <QTextOption>
 #include <QToolBar>
 #include <QToolButton>
 
@@ -383,15 +385,16 @@ void TestMainWindow::projectSearchShowsClickableResultRows()
     QCOMPARE(resultRow->layoutDirection(), Qt::RightToLeft);
     auto *fileLabel = resultRow->findChild<QLabel *>(QStringLiteral("searchResultFileLabel"));
     auto *lineLabel = resultRow->findChild<QLabel *>(QStringLiteral("searchResultLineLabel"));
-    auto *previewLabel = resultRow->findChild<QLabel *>(QStringLiteral("searchResultPreviewLabel"));
+    auto *previewLabel = resultRow->findChild<QPlainTextEdit *>(QStringLiteral("searchResultPreviewText"));
     QVERIFY(fileLabel != nullptr);
     QVERIFY(lineLabel != nullptr);
     QVERIFY(previewLabel != nullptr);
     QCOMPARE(fileLabel->text(), QStringLiteral("main.apy"));
     QCOMPARE(lineLabel->text(), QString::fromUtf8("السطر 2"));
-    QVERIFY(previewLabel->text().contains(QString::fromUtf8("اطبع")));
+    QVERIFY(previewLabel->toPlainText().contains(QString::fromUtf8("اطبع")));
     QCOMPARE(fileLabel->alignment() & Qt::AlignRight, Qt::AlignRight);
-    QCOMPARE(previewLabel->alignment() & Qt::AlignRight, Qt::AlignRight);
+    QCOMPARE(previewLabel->document()->defaultTextOption().textDirection(), Qt::RightToLeft);
+    QCOMPARE(previewLabel->document()->defaultTextOption().alignment() & Qt::AlignRight, Qt::AlignRight);
     QCOMPARE(QDir::toNativeSeparators(results->item(0)->data(Qt::UserRole).toString()), QDir::toNativeSeparators(filePath));
     QCOMPARE(results->item(0)->data(Qt::UserRole + 1).toInt(), 2);
 
@@ -437,13 +440,13 @@ void TestMainWindow::projectSearchFindsCurrentUnsavedEditorImmediately()
     QVERIFY(resultRow != nullptr);
     auto *fileLabel = resultRow->findChild<QLabel *>(QStringLiteral("searchResultFileLabel"));
     auto *lineLabel = resultRow->findChild<QLabel *>(QStringLiteral("searchResultLineLabel"));
-    auto *previewLabel = resultRow->findChild<QLabel *>(QStringLiteral("searchResultPreviewLabel"));
+    auto *previewLabel = resultRow->findChild<QPlainTextEdit *>(QStringLiteral("searchResultPreviewText"));
     QVERIFY(fileLabel != nullptr);
     QVERIFY(lineLabel != nullptr);
     QVERIFY(previewLabel != nullptr);
     QCOMPARE(fileLabel->text(), QString::fromUtf8("المحرر الحالي"));
     QCOMPARE(lineLabel->text(), QString::fromUtf8("السطر 3"));
-    QVERIFY(previewLabel->text().contains(QStringLiteral("adult")));
+    QVERIFY(previewLabel->toPlainText().contains(QStringLiteral("adult")));
     QCOMPARE(results->item(0)->data(Qt::UserRole).toString(), QString());
     QCOMPARE(results->item(0)->data(Qt::UserRole + 1).toInt(), 3);
 }
@@ -479,7 +482,7 @@ void TestMainWindow::projectSearchResultRowsFillRtlViewport()
     QVERIFY(resultRow != nullptr);
     auto *fileLabel = resultRow->findChild<QLabel *>(QStringLiteral("searchResultFileLabel"));
     QVERIFY(fileLabel != nullptr);
-    auto *previewLabel = resultRow->findChild<QLabel *>(QStringLiteral("searchResultPreviewLabel"));
+    auto *previewLabel = resultRow->findChild<QPlainTextEdit *>(QStringLiteral("searchResultPreviewText"));
     QVERIFY(previewLabel != nullptr);
 
     const QRect rowRect = resultRow->geometry();
@@ -495,15 +498,10 @@ void TestMainWindow::projectSearchResultRowsFillRtlViewport()
             .arg(labelRect.right())
             .arg(viewportWidth)));
 
-    const QRect previewRect(previewLabel->mapTo(results->viewport(), QPoint(0, 0)), previewLabel->size());
-    QVERIFY2(previewRect.right() > viewportWidth - 260,
-        qPrintable(QStringLiteral("RTL search result preview should sit near the right edge. previewRight=%1 viewport=%2")
-            .arg(previewRect.right())
-            .arg(viewportWidth)));
-    QVERIFY2(previewRect.left() > viewportWidth / 2,
-        qPrintable(QStringLiteral("RTL search result preview text box should not start at the left margin. previewLeft=%1 viewport=%2")
-            .arg(previewRect.left())
-            .arg(viewportWidth)));
+    QCOMPARE(previewLabel->document()->defaultTextOption().textDirection(), Qt::RightToLeft);
+    QCOMPARE(previewLabel->document()->defaultTextOption().alignment() & Qt::AlignRight, Qt::AlignRight);
+    QCOMPARE(previewLabel->frameShape(), QFrame::NoFrame);
+    QCOMPARE(previewLabel->focusPolicy(), Qt::NoFocus);
 }
 
 void TestMainWindow::problemsPanelShowsHiddenBidiWarnings()
