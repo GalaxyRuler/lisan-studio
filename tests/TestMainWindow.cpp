@@ -374,7 +374,8 @@ void TestMainWindow::projectSearchShowsClickableResultRows()
 
     auto *results = window.findChild<QListWidget *>(QStringLiteral("searchResultsPanel"));
     QVERIFY(results != nullptr);
-    QCOMPARE(results->count(), 1);
+    QCOMPARE(results->count(), 0);
+    QTRY_COMPARE(results->count(), 1);
     auto *resultRow = results->itemWidget(results->item(0));
     QVERIFY(resultRow != nullptr);
     QCOMPARE(resultRow->layoutDirection(), Qt::RightToLeft);

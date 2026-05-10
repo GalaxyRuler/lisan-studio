@@ -10,6 +10,7 @@
 #include <QAction>
 #include <QDockWidget>
 #include <QElapsedTimer>
+#include <QFutureWatcher>
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
@@ -76,9 +77,11 @@ private:
     QAction *cancelRunAction = nullptr;
     QProcess *activeRuntimeProcess = nullptr;
     QTimer *runtimeTimeoutTimer = nullptr;
+    QFutureWatcher<QVector<SearchResultRow>> *activeSearchWatcher = nullptr;
     QElapsedTimer activeRuntimeTimer;
     QString activeRuntimeTitle;
     bool activeRuntimeHandledError = false;
+    int searchGeneration = 0;
     SettingsStore settings;
     RuntimeRunner runtime;
     QString projectRoot;
@@ -96,6 +99,7 @@ private:
     void showOutputPanel();
     void showProblemsPanel();
     void showSearchResultsPanel();
+    void renderSearchResults(const QVector<SearchResultRow> &rows);
     void refreshEditorProblems();
     void addProblem(const QString &severity, const QString &message, const QString &path = QString(), int line = 0);
     void goToEditorLine(int line);

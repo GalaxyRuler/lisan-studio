@@ -31,6 +31,7 @@
 #include <QToolButton>
 #include <QStandardPaths>
 #include <QVBoxLayout>
+#include <QtConcurrent>
 
 #include <algorithm>
 
@@ -797,8 +798,34 @@ void MainWindow::findInProject()
         return;
     }
 
-    SearchService service;
-    const auto rows = service.search(projectRoot, query);
+    const QString root = projectRoot;
+    const int generation = ++searchGeneration;
+    searchResultsPanel->clear();
+    showSearchResultsPanel();
+    setStatus(QString::fromUtf8("جار البحث عن: %1").arg(query));
+
+    auto *watcher = new QFutureWatcher<QVector<SearchResultRow>>(this);
+    activeSearchWatcher = watcher;
+    connect(watcher, &QFutureWatcher<QVector<SearchResultRow>>::finished, this, [this, watcher, generation]() {
+        const QVector<SearchResultRow> rows = watcher->result();
+        watcher->deleteLater();
+        if (activeSearchWatcher == watcher) {
+            activeSearchWatcher = nullptr;
+        }
+        if (generation != searchGeneration) {
+            return;
+        }
+        renderSearchResults(rows);
+        setStatus(QString::fromUtf8("نتائج البحث: %1").arg(rows.size()));
+    });
+    watcher->setFuture(QtConcurrent::run([root, query]() {
+        SearchService service;
+        return service.search(root, query);
+    }));
+}
+
+void MainWindow::renderSearchResults(const QVector<SearchResultRow> &rows)
+{
     searchResultsPanel->clear();
     for (const auto &row : rows) {
         auto *item = new QListWidgetItem(searchResultsPanel);
@@ -842,7 +869,6 @@ void MainWindow::findInProject()
         searchResultsPanel->setItemWidget(item, rowWidget);
     }
     showSearchResultsPanel();
-    setStatus(QString::fromUtf8("نتائج البحث: %1").arg(rows.size()));
 }
 
 void MainWindow::openSearchResult(QListWidgetItem *item)

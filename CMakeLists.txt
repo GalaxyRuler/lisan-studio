@@ -13,7 +13,7 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
 
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Test)
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Test Concurrent)
 
 qt_standard_project_setup()
 
@@ -43,7 +43,7 @@ qt_add_executable(LisanStudio
     resources/resources.qrc
 )
 
-target_link_libraries(LisanStudio PRIVATE acs_core)
+target_link_libraries(LisanStudio PRIVATE acs_core Qt6::Concurrent)
 
 install(TARGETS LisanStudio
     RUNTIME DESTINATION .)
@@ -69,7 +69,7 @@ qt_add_executable(acs_main_window_tests
     tests/TestMainWindow.cpp
 )
 
-target_link_libraries(acs_main_window_tests PRIVATE acs_core Qt6::Test)
+target_link_libraries(acs_main_window_tests PRIVATE acs_core Qt6::Test Qt6::Concurrent)
 
 add_test(NAME acs_editor_tests COMMAND acs_editor_tests)
 add_test(NAME acs_project_runtime_tests COMMAND acs_project_runtime_tests)
