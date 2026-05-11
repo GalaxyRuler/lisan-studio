@@ -386,15 +386,17 @@ void TestMainWindow::projectSearchShowsClickableResultRows()
     QCOMPARE(resultRow->layoutDirection(), Qt::RightToLeft);
     auto *fileLabel = resultRow->findChild<QLabel *>(QStringLiteral("searchResultFileLabel"));
     auto *lineLabel = resultRow->findChild<QLabel *>(QStringLiteral("searchResultLineLabel"));
-    auto *previewLabel = resultRow->findChild<QWidget *>(QStringLiteral("searchResultPreviewText"));
+    auto *previewLabel = resultRow->findChild<QPlainTextEdit *>(QStringLiteral("searchResultPreviewText"));
     QVERIFY(fileLabel != nullptr);
     QVERIFY(lineLabel != nullptr);
     QVERIFY(previewLabel != nullptr);
     QCOMPARE(fileLabel->text(), QStringLiteral("main.apy"));
     QCOMPARE(lineLabel->text(), QString::fromUtf8("السطر 2"));
-    QVERIFY(previewLabel->property("previewText").toString().contains(QString::fromUtf8("اطبع")));
+    QVERIFY(previewLabel->toPlainText().contains(QString::fromUtf8("اطبع")));
     QCOMPARE(fileLabel->alignment() & Qt::AlignRight, Qt::AlignRight);
     QCOMPARE(previewLabel->layoutDirection(), Qt::RightToLeft);
+    QCOMPARE(previewLabel->document()->defaultTextOption().textDirection(), Qt::RightToLeft);
+    QCOMPARE(previewLabel->document()->defaultTextOption().alignment() & Qt::AlignRight, Qt::AlignRight);
     QCOMPARE(QDir::toNativeSeparators(results->item(0)->data(Qt::UserRole).toString()), QDir::toNativeSeparators(filePath));
     QCOMPARE(results->item(0)->data(Qt::UserRole + 1).toInt(), 2);
 
@@ -440,13 +442,13 @@ void TestMainWindow::projectSearchFindsCurrentUnsavedEditorImmediately()
     QVERIFY(resultRow != nullptr);
     auto *fileLabel = resultRow->findChild<QLabel *>(QStringLiteral("searchResultFileLabel"));
     auto *lineLabel = resultRow->findChild<QLabel *>(QStringLiteral("searchResultLineLabel"));
-    auto *previewLabel = resultRow->findChild<QWidget *>(QStringLiteral("searchResultPreviewText"));
+    auto *previewLabel = resultRow->findChild<QPlainTextEdit *>(QStringLiteral("searchResultPreviewText"));
     QVERIFY(fileLabel != nullptr);
     QVERIFY(lineLabel != nullptr);
     QVERIFY(previewLabel != nullptr);
     QCOMPARE(fileLabel->text(), QString::fromUtf8("المحرر الحالي"));
     QCOMPARE(lineLabel->text(), QString::fromUtf8("السطر 3"));
-    QVERIFY(previewLabel->property("previewText").toString().contains(QStringLiteral("adult")));
+    QVERIFY(previewLabel->toPlainText().contains(QStringLiteral("adult")));
     QCOMPARE(results->item(0)->data(Qt::UserRole).toString(), QString());
     QCOMPARE(results->item(0)->data(Qt::UserRole + 1).toInt(), 3);
 }
@@ -482,7 +484,7 @@ void TestMainWindow::projectSearchResultRowsFillRtlViewport()
     QVERIFY(resultRow != nullptr);
     auto *fileLabel = resultRow->findChild<QLabel *>(QStringLiteral("searchResultFileLabel"));
     QVERIFY(fileLabel != nullptr);
-    auto *previewLabel = resultRow->findChild<QWidget *>(QStringLiteral("searchResultPreviewText"));
+    auto *previewLabel = resultRow->findChild<QPlainTextEdit *>(QStringLiteral("searchResultPreviewText"));
     QVERIFY(previewLabel != nullptr);
 
     const QRect rowRect = resultRow->geometry();
@@ -499,6 +501,9 @@ void TestMainWindow::projectSearchResultRowsFillRtlViewport()
             .arg(viewportWidth)));
 
     QCOMPARE(previewLabel->layoutDirection(), Qt::RightToLeft);
+    QCOMPARE(previewLabel->document()->defaultTextOption().textDirection(), Qt::RightToLeft);
+    QCOMPARE(previewLabel->document()->defaultTextOption().alignment() & Qt::AlignRight, Qt::AlignRight);
+    QCOMPARE(previewLabel->frameShape(), QFrame::NoFrame);
     QCOMPARE(previewLabel->focusPolicy(), Qt::NoFocus);
 }
 
@@ -530,10 +535,12 @@ void TestMainWindow::projectSearchPreviewStaysCompactWithLargeEditorFont()
 
     auto *resultRow = results->itemWidget(results->item(0));
     QVERIFY(resultRow != nullptr);
-    auto *previewText = resultRow->findChild<QWidget *>(QStringLiteral("searchResultPreviewText"));
+    auto *previewText = resultRow->findChild<QPlainTextEdit *>(QStringLiteral("searchResultPreviewText"));
     QVERIFY(previewText != nullptr);
-    QVERIFY2(qobject_cast<QPlainTextEdit *>(previewText) == nullptr,
-        "search preview should be painted list text, not an embedded editor control");
+    QCOMPARE(previewText->frameShape(), QFrame::NoFrame);
+    QCOMPARE(previewText->textInteractionFlags(), Qt::NoTextInteraction);
+    QVERIFY2(!previewText->viewport()->autoFillBackground(),
+        "search preview viewport should be transparent, not an embedded editor panel");
     QVERIFY2(previewText->font().pointSize() <= 13,
         qPrintable(QStringLiteral("search preview should cap large editor fonts. preview=%1")
             .arg(previewText->font().pointSize())));
