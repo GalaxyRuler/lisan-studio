@@ -894,7 +894,15 @@ void MainWindow::renderSearchResults(const QVector<SearchResultRow> &rows)
         metaLayout->addWidget(fileLabel, 1);
         metaLayout->addWidget(lineLabel);
 
+        auto *detailLabel = new QLabel(QString::fromUtf8("مطابقة واحدة - انقر للفتح"), rowWidget);
+        detailLabel->setObjectName(QStringLiteral("searchResultDetailLabel"));
+        detailLabel->setLayoutDirection(Qt::RightToLeft);
+        detailLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        detailLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+        detailLabel->setStyleSheet(QStringLiteral("color: #9AA7B6;"));
+
         rowLayout->addLayout(metaLayout);
+        rowLayout->addWidget(detailLabel);
         item->setSizeHint(QSize(rowWidget->sizeHint().width(), 72));
         searchResultsPanel->setItemWidget(item, rowWidget);
     }
