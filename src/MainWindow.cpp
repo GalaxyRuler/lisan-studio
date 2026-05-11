@@ -21,6 +21,7 @@
 #include <QPainter>
 #include <QPaintEvent>
 #include <QPixmap>
+#include <QPointer>
 #include <QPushButton>
 #include <QSplitter>
 #include <QStatusBar>
@@ -36,6 +37,7 @@
 #include <QtConcurrent>
 
 #include <algorithm>
+#include <functional>
 
 class ArabicPlaceholderPlainTextEdit final : public QPlainTextEdit
 {
@@ -781,9 +783,12 @@ void MainWindow::openCommandPalette()
     dialog.setObjectName(QStringLiteral("commandPaletteDialog"));
     dialog.setWindowTitle(QString::fromUtf8("لوحة الأوامر"));
     dialog.setLayoutDirection(Qt::RightToLeft);
-    dialog.resize(560, 360);
+    dialog.resize(640, 420);
 
     auto *layout = new QVBoxLayout(&dialog);
+    layout->setContentsMargins(16, 16, 16, 16);
+    layout->setSpacing(12);
+
     auto *input = new QLineEdit(&dialog);
     input->setObjectName(QStringLiteral("commandPaletteInput"));
     input->setPlaceholderText(QString::fromUtf8("اكتب اسم الأمر..."));
@@ -792,15 +797,195 @@ void MainWindow::openCommandPalette()
     auto *commands = new QListWidget(&dialog);
     commands->setObjectName(QStringLiteral("commandPaletteResults"));
     commands->setLayoutDirection(Qt::RightToLeft);
-    commands->addItem(QString::fromUtf8("ملف جديد                    Ctrl+N"));
-    commands->addItem(QString::fromUtf8("فتح ملف                     Ctrl+O"));
-    commands->addItem(QString::fromUtf8("تشغيل الملف الحالي           F5"));
-    commands->addItem(QString::fromUtf8("بحث في المشروع               Ctrl+Shift+F"));
-    commands->addItem(QString::fromUtf8("فتح الإعدادات                Ctrl+,"));
+    commands->setUniformItemSizes(false);
+
+    struct PaletteCommand {
+        QString id;
+        QString title;
+        QString shortcut;
+        QString keywords;
+        std::function<void()> trigger;
+    };
+
+    const QVector<PaletteCommand> paletteCommands = {
+        {
+            QStringLiteral("new-file"),
+            QString::fromUtf8("ملف جديد"),
+            QStringLiteral("Ctrl+N"),
+            QString::fromUtf8("ملف جديد new file"),
+            [this]() { newFile(); },
+        },
+        {
+            QStringLiteral("open-file"),
+            QString::fromUtf8("فتح ملف"),
+            QStringLiteral("Ctrl+O"),
+            QString::fromUtf8("فتح ملف open file"),
+            [this]() { openFile(); },
+        },
+        {
+            QStringLiteral("open-project"),
+            QString::fromUtf8("فتح مشروع"),
+            QString(),
+            QString::fromUtf8("فتح مشروع مجلد open project folder"),
+            [this]() { openFolder(); },
+        },
+        {
+            QStringLiteral("save-file"),
+            QString::fromUtf8("حفظ"),
+            QStringLiteral("Ctrl+S"),
+            QString::fromUtf8("حفظ save"),
+            [this]() { saveFile(); },
+        },
+        {
+            QStringLiteral("save-as"),
+            QString::fromUtf8("حفظ باسم"),
+            QStringLiteral("Ctrl+Shift+S"),
+            QString::fromUtf8("حفظ باسم save as"),
+            [this]() { saveFileAs(); },
+        },
+        {
+            QStringLiteral("run-current-file"),
+            QString::fromUtf8("تشغيل الملف الحالي"),
+            QStringLiteral("F5"),
+            QString::fromUtf8("تشغيل run current file"),
+            [this]() { runCurrentFile(); },
+        },
+        {
+            QStringLiteral("stop-run"),
+            QString::fromUtf8("إيقاف التشغيل"),
+            QStringLiteral("Shift+F5"),
+            QString::fromUtf8("إيقاف التشغيل stop cancel run"),
+            [this]() { cancelRuntimeProcess(); },
+        },
+        {
+            QStringLiteral("search-project"),
+            QString::fromUtf8("بحث في المشروع"),
+            QStringLiteral("Enter"),
+            QString::fromUtf8("بحث في المشروع search find"),
+            [this]() {
+                if (!commandBox) {
+                    return;
+                }
+                commandBox->setFocus(Qt::ShortcutFocusReason);
+                commandBox->selectAll();
+                if (!commandBox->text().trimmed().isEmpty()) {
+                    findInProject();
+                }
+            },
+        },
+        {
+            QStringLiteral("settings"),
+            QString::fromUtf8("الإعدادات"),
+            QStringLiteral("Ctrl+,"),
+            QString::fromUtf8("الإعدادات settings preferences"),
+            [this]() { openSettings(); },
+        },
+    };
+
+    auto addCommandRow = [&](const PaletteCommand &command) {
+        auto *item = new QListWidgetItem(commands);
+        item->setData(Qt::UserRole, command.id);
+        item->setData(Qt::UserRole + 1, command.title);
+        item->setData(Qt::UserRole + 2, command.shortcut);
+        item->setData(Qt::UserRole + 3, command.keywords);
+        item->setSizeHint(QSize(0, 44));
+
+        auto *row = new QWidget(commands);
+        row->setLayoutDirection(Qt::LeftToRight);
+        auto *rowLayout = new QHBoxLayout(row);
+        rowLayout->setContentsMargins(12, 6, 12, 6);
+        rowLayout->setSpacing(12);
+
+        auto *shortcut = new QLabel(command.shortcut, row);
+        shortcut->setObjectName(QStringLiteral("commandPaletteShortcutLabel"));
+        shortcut->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+        shortcut->setMinimumWidth(120);
+        shortcut->setStyleSheet(QStringLiteral("color: #A7B0BE; font-family: 'Cascadia Code', 'Consolas';"));
+
+        auto *title = new QLabel(command.title, row);
+        title->setObjectName(QStringLiteral("commandPaletteTitleLabel"));
+        title->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        title->setLayoutDirection(Qt::RightToLeft);
+        title->setStyleSheet(QStringLiteral("color: #E8ECF2; font-weight: 600;"));
+
+        rowLayout->addWidget(shortcut);
+        rowLayout->addStretch(1);
+        rowLayout->addWidget(title);
+        commands->setItemWidget(item, row);
+    };
+
+    for (const PaletteCommand &command : paletteCommands) {
+        addCommandRow(command);
+    }
 
     layout->addWidget(input);
     layout->addWidget(commands);
-    dialog.exec();
+
+    QPointer<QDialog> dialogPointer(&dialog);
+    std::function<void()> selectedCommand;
+
+    auto normalized = [](QString text) {
+        return text.trimmed().toCaseFolded();
+    };
+
+    auto firstVisibleRow = [&]() {
+        for (int row = 0; row < commands->count(); ++row) {
+            if (!commands->item(row)->isHidden()) {
+                return row;
+            }
+        }
+        return -1;
+    };
+
+    auto updateFilter = [&]() {
+        const QString query = normalized(input->text());
+        for (int row = 0; row < commands->count(); ++row) {
+            auto *item = commands->item(row);
+            const QString haystack = normalized(
+                item->data(Qt::UserRole + 1).toString()
+                + QLatin1Char(' ')
+                + item->data(Qt::UserRole + 2).toString()
+                + QLatin1Char(' ')
+                + item->data(Qt::UserRole + 3).toString());
+            item->setHidden(!query.isEmpty() && !haystack.contains(query));
+        }
+        commands->setCurrentRow(firstVisibleRow());
+    };
+
+    auto executeCurrent = [&]() {
+        auto *item = commands->currentItem();
+        if (!item || item->isHidden()) {
+            const int row = firstVisibleRow();
+            if (row < 0) {
+                return;
+            }
+            item = commands->item(row);
+            commands->setCurrentItem(item);
+        }
+
+        const QString commandId = item->data(Qt::UserRole).toString();
+        const auto command = std::find_if(paletteCommands.cbegin(), paletteCommands.cend(), [&commandId](const PaletteCommand &candidate) {
+            return candidate.id == commandId;
+        });
+        if (command == paletteCommands.cend()) {
+            return;
+        }
+
+        selectedCommand = command->trigger;
+        dialog.accept();
+    };
+
+    connect(input, &QLineEdit::textChanged, &dialog, updateFilter);
+    connect(input, &QLineEdit::returnPressed, &dialog, executeCurrent);
+    connect(commands, &QListWidget::itemActivated, &dialog, executeCurrent);
+    connect(commands, &QListWidget::itemDoubleClicked, &dialog, executeCurrent);
+
+    updateFilter();
+    input->setFocus(Qt::OtherFocusReason);
+
+    if (dialog.exec() == QDialog::Accepted && dialogPointer && selectedCommand) {
+        selectedCommand();
+    }
 }
 
 void MainWindow::findInProject()
