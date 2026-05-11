@@ -387,7 +387,7 @@ void TestMainWindow::projectSearchShowsClickableResultRows()
     auto *lineLabel = resultRow->findChild<QLabel *>(QStringLiteral("searchResultLineLabel"));
     QVERIFY(fileLabel != nullptr);
     QVERIFY(lineLabel != nullptr);
-    QCOMPARE(fileLabel->text(), QStringLiteral("main.apy"));
+    QCOMPARE(fileLabel->text(), QDir::toNativeSeparators(filePath));
     QCOMPARE(lineLabel->text(), QString::fromUtf8("السطر 2"));
     QCOMPARE(fileLabel->alignment() & Qt::AlignRight, Qt::AlignRight);
     QVERIFY(resultRow->findChild<QWidget *>(QStringLiteral("searchResultPreviewText")) == nullptr);
@@ -496,6 +496,8 @@ void TestMainWindow::projectSearchResultRowsFillRtlViewport()
         qPrintable(QStringLiteral("search result file label should use the available row width. labelWidth=%1 viewport=%2")
             .arg(fileLabel->width())
             .arg(viewportWidth)));
+    QVERIFY2(fileLabel->text().length() > QStringLiteral("main.apy").length(),
+        "search result label should show a wide path-style location, not only a short filename");
 
     QVERIFY2(rowRect.height() <= 40,
         qPrintable(QStringLiteral("search result row should be a compact one-line item. height=%1")

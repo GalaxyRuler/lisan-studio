@@ -878,10 +878,11 @@ void MainWindow::renderSearchResults(const QVector<SearchResultRow> &rows)
         metaLayout->setSpacing(8);
         const QString fileLabelText = row.path.isEmpty()
             ? QString::fromUtf8("المحرر الحالي")
-            : QFileInfo(row.path).fileName();
+            : QDir::toNativeSeparators(row.path);
         auto *fileLabel = new QLabel(fileLabelText, rowWidget);
         fileLabel->setObjectName(QStringLiteral("searchResultFileLabel"));
         fileLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        fileLabel->setLayoutDirection(row.path.isEmpty() ? Qt::RightToLeft : Qt::LeftToRight);
         fileLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
         fileLabel->setStyleSheet(QStringLiteral("color: #E8ECF2; font-weight: 600;"));
         auto *lineLabel = new QLabel(QString::fromUtf8("السطر %1").arg(row.line), rowWidget);
