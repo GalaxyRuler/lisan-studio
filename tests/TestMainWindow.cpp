@@ -17,6 +17,7 @@
 #include <QSpinBox>
 #include <QStatusBar>
 #include <QTabWidget>
+#include <QTimer>
 #include <QToolBar>
 #include <QToolButton>
 
@@ -31,6 +32,7 @@ private slots:
     void exposesPremiumFutureBottomPanelTabs();
     void enforcesRtlDirectionAcrossShellContainers();
     void exposesCommandPaletteAction();
+    void commandPaletteFiltersAndExecutesSelectedCommand();
     void newFileClearsCurrentPathAndEditorText();
     void newFileCreatesANewEditorTab();
     void openingMultipleFilesKeepsEachDocumentInATab();
@@ -289,6 +291,135 @@ void TestMainWindow::exposesCommandPaletteAction()
     QVERIFY(settingsAction != nullptr);
     QCOMPARE(settingsAction->text(), QString::fromUtf8("الإعدادات"));
     QVERIFY(settingsAction->icon().isNull());
+}
+
+void TestMainWindow::commandPaletteFiltersAndExecutesSelectedCommand()
+{
+    MainWindow window;
+    window.show();
+
+    auto *editor = window.findChild<EditorSurface *>(QStringLiteral("editorSurface"));
+    QVERIFY(editor != nullptr);
+    editor->setPlainText(QString::fromUtf8("اطبع(\"قبل\")\n"));
+
+    auto *tabs = window.findChild<QTabWidget *>(QStringLiteral("editorTabs"));
+    QVERIFY(tabs != nullptr);
+    const int beforeTabCount = tabs->count();
+
+    bool sawDialog = false;
+    bool sawRtlDialog = false;
+    bool sawFocusedInput = false;
+    bool sawCommandMetadata = true;
+    bool sawCommandWidgets = true;
+    int commandCount = 0;
+    int visibleRows = 0;
+    QString visibleCommandId;
+
+    QTimer::singleShot(0, this, [&]() {
+        auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+        sawDialog = dialog != nullptr;
+        if (!dialog) {
+            return;
+        }
+        sawRtlDialog = dialog->layoutDirection() == Qt::RightToLeft;
+
+        auto *input = dialog->findChild<QLineEdit *>(QStringLiteral("commandPaletteInput"));
+        auto *commands = dialog->findChild<QListWidget *>(QStringLiteral("commandPaletteResults"));
+        if (!input || !commands) {
+            dialog->reject();
+            return;
+        }
+
+        sawFocusedInput = dialog->focusWidget() == input || input->hasFocus();
+        commandCount = commands->count();
+
+        for (int row = 0; row < commands->count(); ++row) {
+            auto *item = commands->item(row);
+            sawCommandMetadata = sawCommandMetadata
+                && item
+                && !item->data(Qt::UserRole).toString().isEmpty()
+                && !item->data(Qt::UserRole + 1).toString().isEmpty();
+            sawCommandWidgets = sawCommandWidgets && item && commands->itemWidget(item) != nullptr;
+        }
+
+        input->setText(QString::fromUtf8("جديد"));
+        QCoreApplication::processEvents();
+
+        int visibleRow = -1;
+        for (int row = 0; row < commands->count(); ++row) {
+            if (!commands->item(row)->isHidden()) {
+                ++visibleRows;
+                visibleRow = row;
+            }
+        }
+        if (visibleRow >= 0) {
+            visibleCommandId = commands->item(visibleRow)->data(Qt::UserRole).toString();
+        }
+
+        commands->setCurrentRow(visibleRow);
+        QTest::keyClick(input, Qt::Key_Return);
+        if (dialog->isVisible()) {
+            dialog->reject();
+        }
+    });
+
+    QVERIFY(QMetaObject::invokeMethod(&window, "openCommandPalette", Qt::DirectConnection));
+
+    QVERIFY(sawDialog);
+    QVERIFY(sawRtlDialog);
+    QVERIFY(sawFocusedInput);
+    QVERIFY(commandCount >= 9);
+    QVERIFY(sawCommandMetadata);
+    QVERIFY(sawCommandWidgets);
+    QCOMPARE(visibleRows, 1);
+    QCOMPARE(visibleCommandId, QStringLiteral("new-file"));
+    QCOMPARE(tabs->count(), beforeTabCount + 1);
+    QCOMPARE(window.currentEditorPath(), QString());
+    auto *currentEditor = qobject_cast<EditorSurface *>(tabs->currentWidget());
+    QVERIFY(currentEditor != nullptr);
+    QCOMPARE(currentEditor->toPlainText(), QString());
+
+    int doubleClickVisibleRows = 0;
+    QString doubleClickCommandId;
+
+    QTimer::singleShot(0, this, [&]() {
+        auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+        if (!dialog) {
+            return;
+        }
+
+        auto *input = dialog->findChild<QLineEdit *>(QStringLiteral("commandPaletteInput"));
+        auto *commands = dialog->findChild<QListWidget *>(QStringLiteral("commandPaletteResults"));
+        if (!input || !commands) {
+            dialog->reject();
+            return;
+        }
+
+        input->setText(QStringLiteral("new"));
+        QCoreApplication::processEvents();
+
+        int visibleRow = -1;
+        for (int row = 0; row < commands->count(); ++row) {
+            if (!commands->item(row)->isHidden()) {
+                ++doubleClickVisibleRows;
+                visibleRow = row;
+            }
+        }
+        if (visibleRow >= 0) {
+            doubleClickCommandId = commands->item(visibleRow)->data(Qt::UserRole).toString();
+            commands->setCurrentRow(visibleRow);
+            commands->itemDoubleClicked(commands->item(visibleRow));
+        }
+        if (dialog->isVisible()) {
+            dialog->reject();
+        }
+    });
+
+    QVERIFY(QMetaObject::invokeMethod(&window, "openCommandPalette", Qt::DirectConnection));
+
+    QCOMPARE(doubleClickVisibleRows, 1);
+    QCOMPARE(doubleClickCommandId, QStringLiteral("new-file"));
+    QCOMPARE(tabs->count(), beforeTabCount + 2);
 }
 
 void TestMainWindow::newFileClearsCurrentPathAndEditorText()
