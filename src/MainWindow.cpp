@@ -898,11 +898,17 @@ void MainWindow::renderSearchResults(const QVector<SearchResultRow> &rows)
         detailLabel->setObjectName(QStringLiteral("searchResultDetailLabel"));
         detailLabel->setLayoutDirection(Qt::RightToLeft);
         detailLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-        detailLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+        detailLabel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
         detailLabel->setStyleSheet(QStringLiteral("color: #9AA7B6;"));
+        auto *detailLayout = new QHBoxLayout;
+        detailLayout->setDirection(QBoxLayout::RightToLeft);
+        detailLayout->setContentsMargins(0, 0, 0, 0);
+        detailLayout->setSpacing(0);
+        detailLayout->addStretch(1);
+        detailLayout->addWidget(detailLabel);
 
         rowLayout->addLayout(metaLayout);
-        rowLayout->addWidget(detailLabel);
+        rowLayout->addLayout(detailLayout);
         item->setSizeHint(QSize(rowWidget->sizeHint().width(), 72));
         searchResultsPanel->setItemWidget(item, rowWidget);
     }

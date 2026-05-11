@@ -485,7 +485,9 @@ void TestMainWindow::projectSearchResultRowsFillRtlViewport()
     auto *resultRow = results->itemWidget(results->item(0));
     QVERIFY(resultRow != nullptr);
     auto *fileLabel = resultRow->findChild<QLabel *>(QStringLiteral("searchResultFileLabel"));
+    auto *detailLabel = resultRow->findChild<QLabel *>(QStringLiteral("searchResultDetailLabel"));
     QVERIFY(fileLabel != nullptr);
+    QVERIFY(detailLabel != nullptr);
     QVERIFY(resultRow->findChild<QWidget *>(QStringLiteral("searchResultPreviewText")) == nullptr);
 
     const QRect rowRect = resultRow->geometry();
@@ -506,6 +508,16 @@ void TestMainWindow::projectSearchResultRowsFillRtlViewport()
             .arg(viewportWidth)));
     QVERIFY2(fileLabel->text().length() > QStringLiteral("main.apy").length(),
         "search result label should show a wide path-style location, not only a short filename");
+
+    const QRect detailRect(detailLabel->mapTo(results->viewport(), QPoint(0, 0)), detailLabel->size());
+    QVERIFY2(detailRect.right() > viewportWidth - 260,
+        qPrintable(QStringLiteral("search result detail should sit under the right-side metadata. detailRight=%1 viewport=%2")
+            .arg(detailRect.right())
+            .arg(viewportWidth)));
+    QVERIFY2(detailRect.left() > viewportWidth / 2,
+        qPrintable(QStringLiteral("search result detail label should be right-anchored, not full-row left-starting. detailLeft=%1 viewport=%2")
+            .arg(detailRect.left())
+            .arg(viewportWidth)));
 
     QVERIFY2(rowRect.height() >= 72,
         qPrintable(QStringLiteral("search result row should have enough height to read comfortably. height=%1")
