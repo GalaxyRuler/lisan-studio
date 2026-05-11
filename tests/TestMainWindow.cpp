@@ -37,6 +37,8 @@ private slots:
     void newFileCreatesANewEditorTab();
     void openingMultipleFilesKeepsEachDocumentInATab();
     void projectTreeShowsOnlyFileNames();
+    void projectTreeExposesRtlContextActions();
+    void projectTreeOpenActionOpensSelectedFile();
     void projectSearchShowsClickableResultRows();
     void projectSearchFindsCurrentUnsavedEditorImmediately();
     void projectSearchResultRowsFillRtlViewport();
@@ -497,6 +499,66 @@ void TestMainWindow::projectTreeShowsOnlyFileNames()
     QVERIFY(tree->isColumnHidden(1));
     QVERIFY(tree->isColumnHidden(2));
     QVERIFY(tree->isColumnHidden(3));
+}
+
+void TestMainWindow::projectTreeExposesRtlContextActions()
+{
+    MainWindow window;
+
+    auto *tree = window.findChild<QTreeView *>(QStringLiteral("projectTree"));
+    QVERIFY(tree != nullptr);
+    QCOMPARE(tree->contextMenuPolicy(), Qt::CustomContextMenu);
+    QCOMPARE(tree->layoutDirection(), Qt::RightToLeft);
+
+    auto *newFile = window.findChild<QAction *>(QStringLiteral("projectTreeNewFileAction"));
+    auto *newFolder = window.findChild<QAction *>(QStringLiteral("projectTreeNewFolderAction"));
+    auto *open = window.findChild<QAction *>(QStringLiteral("projectTreeOpenAction"));
+    auto *rename = window.findChild<QAction *>(QStringLiteral("projectTreeRenameAction"));
+    auto *deleteAction = window.findChild<QAction *>(QStringLiteral("projectTreeDeleteAction"));
+    auto *reveal = window.findChild<QAction *>(QStringLiteral("projectTreeRevealAction"));
+    auto *refresh = window.findChild<QAction *>(QStringLiteral("projectTreeRefreshAction"));
+
+    QVERIFY(newFile != nullptr);
+    QVERIFY(newFolder != nullptr);
+    QVERIFY(open != nullptr);
+    QVERIFY(rename != nullptr);
+    QVERIFY(deleteAction != nullptr);
+    QVERIFY(reveal != nullptr);
+    QVERIFY(refresh != nullptr);
+
+    QCOMPARE(newFile->text(), QString::fromUtf8("ملف جديد"));
+    QCOMPARE(newFolder->text(), QString::fromUtf8("مجلد جديد"));
+    QCOMPARE(open->text(), QString::fromUtf8("فتح"));
+    QCOMPARE(rename->text(), QString::fromUtf8("إعادة تسمية"));
+    QCOMPARE(deleteAction->text(), QString::fromUtf8("حذف"));
+    QCOMPARE(reveal->text(), QString::fromUtf8("إظهار في مستكشف الملفات"));
+    QCOMPARE(refresh->text(), QString::fromUtf8("تحديث"));
+}
+
+void TestMainWindow::projectTreeOpenActionOpensSelectedFile()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    QDir root(temp.path());
+    const QString filePath = writeFile(root, QStringLiteral("main.apy"), QString::fromUtf8("اطبع(\"من الشجرة\")\n"));
+
+    MainWindow window;
+    QVERIFY(window.openPath(root.absolutePath()));
+
+    auto *tree = window.findChild<QTreeView *>(QStringLiteral("projectTree"));
+    auto *model = qobject_cast<QFileSystemModel *>(tree ? tree->model() : nullptr);
+    auto *open = window.findChild<QAction *>(QStringLiteral("projectTreeOpenAction"));
+    QVERIFY(tree != nullptr);
+    QVERIFY(model != nullptr);
+    QVERIFY(open != nullptr);
+
+    QModelIndex fileIndex;
+    QTRY_VERIFY((fileIndex = model->index(filePath)).isValid());
+    tree->setCurrentIndex(fileIndex);
+
+    open->trigger();
+
+    QCOMPARE(QDir::toNativeSeparators(window.currentEditorPath()), QDir::toNativeSeparators(filePath));
 }
 
 void TestMainWindow::projectSearchShowsClickableResultRows()

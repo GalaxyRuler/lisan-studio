@@ -53,6 +53,14 @@ private slots:
     void openSearchResult(QListWidgetItem *item);
     void openProblemResult(QListWidgetItem *item);
     void openSelectedProjectFile(const QModelIndex &index);
+    void showProjectTreeContextMenu(const QPoint &pos);
+    void createProjectTreeFile();
+    void createProjectTreeFolder();
+    void openProjectTreeItem();
+    void renameProjectTreeItem();
+    void deleteProjectTreeItem();
+    void revealProjectTreeItem();
+    void refreshProjectTree();
     void openSettings();
 
 private:
@@ -75,6 +83,13 @@ private:
     QAction *lintAction = nullptr;
     QAction *formatAction = nullptr;
     QAction *cancelRunAction = nullptr;
+    QAction *projectTreeNewFileAction = nullptr;
+    QAction *projectTreeNewFolderAction = nullptr;
+    QAction *projectTreeOpenAction = nullptr;
+    QAction *projectTreeRenameAction = nullptr;
+    QAction *projectTreeDeleteAction = nullptr;
+    QAction *projectTreeRevealAction = nullptr;
+    QAction *projectTreeRefreshAction = nullptr;
     QProcess *activeRuntimeProcess = nullptr;
     QTimer *runtimeTimeoutTimer = nullptr;
     QFutureWatcher<QVector<SearchResultRow>> *activeSearchWatcher = nullptr;
@@ -82,6 +97,7 @@ private:
     QString activeRuntimeTitle;
     QString activeRuntimeStdout;
     QString activeRuntimeStderr;
+    QModelIndex projectTreeContextIndex;
     bool activeRuntimeHandledError = false;
     int searchGeneration = 0;
     SettingsStore settings;
@@ -92,6 +108,11 @@ private:
     void setStatus(const QString &text);
     bool loadProject(const QString &path);
     bool openEditorFile(const QString &path);
+    QModelIndex activeProjectTreeIndex() const;
+    QString activeProjectTreePath() const;
+    QString activeProjectTreeFolderPath() const;
+    bool isValidProjectChildName(const QString &name) const;
+    void clearEditorsForDeletedPath(const QString &path);
     EditorSurface *createEditorTab(const QString &title);
     void applyEditorFont(EditorSurface *surface);
     void setCurrentEditor(EditorSurface *surface);
