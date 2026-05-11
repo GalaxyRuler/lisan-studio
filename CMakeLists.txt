@@ -26,6 +26,8 @@ add_library(acs_core
     src/ProjectModel.cpp
     src/RuntimeRunner.h
     src/RuntimeRunner.cpp
+    src/RuntimeProblemParser.h
+    src/RuntimeProblemParser.cpp
     src/SearchService.h
     src/SearchService.cpp
     src/SettingsStore.h
