@@ -1,5 +1,7 @@
 #include "MainWindow.h"
 
+#include "RuntimeProblemParser.h"
+
 #include <QApplication>
 #include <QComboBox>
 #include <QDialog>
@@ -705,7 +707,9 @@ void MainWindow::appendRuntimeStdout()
     if (!activeRuntimeProcess) {
         return;
     }
-    appendRuntimeOutput(QString::fromUtf8("stdout"), QString::fromUtf8(activeRuntimeProcess->readAllStandardOutput()));
+    const QString text = QString::fromUtf8(activeRuntimeProcess->readAllStandardOutput());
+    activeRuntimeStdout.append(text);
+    appendRuntimeOutput(QString::fromUtf8("stdout"), text);
 }
 
 void MainWindow::appendRuntimeStderr()
@@ -713,7 +717,9 @@ void MainWindow::appendRuntimeStderr()
     if (!activeRuntimeProcess) {
         return;
     }
-    appendRuntimeOutput(QString::fromUtf8("stderr"), QString::fromUtf8(activeRuntimeProcess->readAllStandardError()));
+    const QString text = QString::fromUtf8(activeRuntimeProcess->readAllStandardError());
+    activeRuntimeStderr.append(text);
+    appendRuntimeOutput(QString::fromUtf8("stderr"), text);
 }
 
 void MainWindow::finishRuntimeProcess(int exitCode, QProcess::ExitStatus exitStatus)
@@ -730,11 +736,16 @@ void MainWindow::finishRuntimeProcess(int exitCode, QProcess::ExitStatus exitSta
         .arg(activeRuntimeTimer.isValid() ? activeRuntimeTimer.elapsed() : 0);
     appendRuntimeOutput(QString::fromUtf8("النظام"), finalText);
     if (exitCode != 0) {
+        const RuntimeProblemDetail detail = parseRuntimeProblemDetail(
+            activeRuntimeStderr.isEmpty() ? activeRuntimeStdout : activeRuntimeStderr,
+            activeRuntimeTitle,
+            exitCode);
         addProblem(
             QString::fromUtf8("خطأ"),
-            QString::fromUtf8("%1 انتهى برمز خروج %2").arg(activeRuntimeTitle).arg(exitCode),
+            detail.message,
             activeRuntimeProcess->property("runFilePath").toString(),
-            0);
+            detail.line);
+        showProblemsPanel();
     }
     completeRuntimeProcess(QString::fromUtf8("%1 انتهى: %2").arg(activeRuntimeTitle).arg(exitCode));
 }
@@ -1519,12 +1530,58 @@ void MainWindow::addProblem(const QString &severity, const QString &message, con
     }
 
     const QString fileName = path.isEmpty() ? QString::fromUtf8("المحرر الحالي") : QFileInfo(path).fileName();
-    const QString lineText = line > 0 ? QString::fromUtf8(" - السطر %1").arg(line) : QString();
+    const int effectiveLine = line > 0 ? line : ((!path.isEmpty() && QFileInfo(path).exists()) ? 1 : 0);
+    const QString lineText = effectiveLine > 0 ? QString::fromUtf8(" - السطر %1").arg(effectiveLine) : QString();
     auto *item = new QListWidgetItem(QStringLiteral("%1: %2%3 - %4").arg(severity, fileName, lineText, message), problemsPanel);
     item->setData(Qt::UserRole, path);
-    item->setData(Qt::UserRole + 1, line);
-    item->setToolTip(path.isEmpty() ? message : QDir::toNativeSeparators(path));
+    item->setData(Qt::UserRole + 1, effectiveLine);
+    item->setData(Qt::UserRole + 2, severity);
+    item->setData(Qt::UserRole + 3, message);
+    item->setToolTip(path.isEmpty()
+        ? message
+        : QStringLiteral("%1\n%2").arg(QDir::toNativeSeparators(path), message));
     item->setForeground(severity == QString::fromUtf8("خطأ") ? QColor(249, 112, 102) : QColor(123, 223, 242));
+    item->setSizeHint(QSize(0, 74));
+
+    auto *row = new QWidget(problemsPanel);
+    row->setObjectName(QStringLiteral("problemRow"));
+    row->setLayoutDirection(Qt::RightToLeft);
+    auto *rowLayout = new QVBoxLayout(row);
+    rowLayout->setContentsMargins(12, 8, 12, 8);
+    rowLayout->setSpacing(4);
+
+    auto *topLine = new QWidget(row);
+    topLine->setLayoutDirection(Qt::RightToLeft);
+    auto *topLayout = new QHBoxLayout(topLine);
+    topLayout->setContentsMargins(0, 0, 0, 0);
+    topLayout->setSpacing(8);
+
+    auto *severityLabel = new QLabel(severity, topLine);
+    severityLabel->setObjectName(QStringLiteral("problemSeverityLabel"));
+    severityLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    severityLabel->setStyleSheet(severity == QString::fromUtf8("خطأ")
+        ? QStringLiteral("color: #F97066; font-weight: 700;")
+        : QStringLiteral("color: #7BDFF2; font-weight: 700;"));
+
+    auto *locationLabel = new QLabel(QStringLiteral("%1%2").arg(fileName, lineText), topLine);
+    locationLabel->setObjectName(QStringLiteral("problemLocationLabel"));
+    locationLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    locationLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    locationLabel->setStyleSheet(QStringLiteral("color: #AEC6FF; font-weight: 600;"));
+
+    topLayout->addWidget(severityLabel);
+    topLayout->addWidget(locationLabel, 1);
+
+    auto *messageLabel = new QLabel(message, row);
+    messageLabel->setObjectName(QStringLiteral("problemMessageLabel"));
+    messageLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    messageLabel->setWordWrap(false);
+    messageLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    messageLabel->setStyleSheet(QStringLiteral("color: #D6DEE9;"));
+
+    rowLayout->addWidget(topLine);
+    rowLayout->addWidget(messageLabel);
+    problemsPanel->setItemWidget(item, row);
 }
 
 void MainWindow::goToEditorLine(int line)
@@ -1595,6 +1652,8 @@ void MainWindow::runRuntimeAction(RuntimeAction action, const QString &title, bo
     const RuntimeCommand command = runtime.buildCommand(action, runFilePath, workingDirectory);
     activeRuntimeTitle = title;
     activeRuntimeHandledError = false;
+    activeRuntimeStdout.clear();
+    activeRuntimeStderr.clear();
     showOutputPanel();
     outputPanel->setPlainText(QStringLiteral("[%1]\n%2\n%3\n%4\n\n%5\n")
         .arg(title)

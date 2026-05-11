@@ -80,6 +80,8 @@ private:
     QFutureWatcher<QVector<SearchResultRow>> *activeSearchWatcher = nullptr;
     QElapsedTimer activeRuntimeTimer;
     QString activeRuntimeTitle;
+    QString activeRuntimeStdout;
+    QString activeRuntimeStderr;
     bool activeRuntimeHandledError = false;
     int searchGeneration = 0;
     SettingsStore settings;

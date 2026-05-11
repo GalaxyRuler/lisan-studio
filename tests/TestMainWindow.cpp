@@ -42,6 +42,8 @@ private slots:
     void projectSearchResultRowsFillRtlViewport();
     void projectSearchResultRowsHaveReadableHeight();
     void problemsPanelShowsHiddenBidiWarnings();
+    void problemsPanelOpensHiddenBidiDiagnosticLine();
+    void problemsPanelShowsRuntimeFailureRows();
     void outputPanelIsVisibleForRunFeedback();
     void outputPlaceholderPaintsFromRight();
     void untitledEditorBufferMaterializesForRunWithoutSaveDialog();
@@ -719,6 +721,100 @@ void TestMainWindow::problemsPanelShowsHiddenBidiWarnings()
     QVERIFY(problems->item(0)->text().contains(QStringLiteral("RIGHT-TO-LEFT OVERRIDE")));
     QCOMPARE(QDir::toNativeSeparators(problems->item(0)->data(Qt::UserRole).toString()), QDir::toNativeSeparators(filePath));
     QCOMPARE(problems->item(0)->data(Qt::UserRole + 1).toInt(), 2);
+
+    auto *row = problems->itemWidget(problems->item(0));
+    QVERIFY(row != nullptr);
+    auto *severity = row->findChild<QLabel *>(QStringLiteral("problemSeverityLabel"));
+    auto *location = row->findChild<QLabel *>(QStringLiteral("problemLocationLabel"));
+    auto *message = row->findChild<QLabel *>(QStringLiteral("problemMessageLabel"));
+    QVERIFY(severity != nullptr);
+    QVERIFY(location != nullptr);
+    QVERIFY(message != nullptr);
+    QCOMPARE(severity->text(), QString::fromUtf8("تحذير"));
+    QVERIFY(location->text().contains(QStringLiteral("main.apy")));
+    QVERIFY(location->text().contains(QString::fromUtf8("السطر 2")));
+    QVERIFY(message->text().contains(QStringLiteral("RIGHT-TO-LEFT OVERRIDE")));
+    QCOMPARE(problems->item(0)->data(Qt::UserRole + 2).toString(), QString::fromUtf8("تحذير"));
+    QVERIFY(problems->item(0)->data(Qt::UserRole + 3).toString().contains(QString::fromUtf8("تحكم اتجاه مخفي")));
+}
+
+void TestMainWindow::problemsPanelOpensHiddenBidiDiagnosticLine()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    QDir root(temp.path());
+    const QString filePath = writeFile(
+        root,
+        QStringLiteral("main.apy"),
+        QString::fromUtf8("اطبع(\"سليم\")\n") + QChar(0x202E) + QString::fromUtf8("اطبع(\"مخفي\")\n"));
+
+    MainWindow window;
+    QVERIFY(window.openPath(filePath));
+
+    auto *problems = window.findChild<QListWidget *>(QStringLiteral("problemsPanel"));
+    QVERIFY(problems != nullptr);
+    QCOMPARE(problems->count(), 1);
+
+    auto *editor = window.findChild<EditorSurface *>(QStringLiteral("editorSurface"));
+    QVERIFY(editor != nullptr);
+    QTextCursor cursor = editor->textCursor();
+    cursor.movePosition(QTextCursor::Start);
+    editor->setTextCursor(cursor);
+    QCOMPARE(editor->textCursor().blockNumber(), 0);
+
+    problems->itemClicked(problems->item(0));
+
+    QCOMPARE(window.currentEditorPath(), filePath);
+    QCOMPARE(editor->textCursor().blockNumber(), 1);
+}
+
+void TestMainWindow::problemsPanelShowsRuntimeFailureRows()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+
+    MainWindow window;
+    QVERIFY(window.openPath(temp.path()));
+    QVERIFY(QMetaObject::invokeMethod(&window, "newFile", Qt::DirectConnection));
+
+    auto *editor = window.findChild<EditorSurface *>(QStringLiteral("editorSurface"));
+    QVERIFY(editor != nullptr);
+    editor->setPlainText(QString::fromUtf8("اطبع(\"فشل تشغيل مقصود\")\n"));
+
+    QVERIFY(QMetaObject::invokeMethod(&window, "runCurrentFile", Qt::DirectConnection));
+
+    auto *problems = window.findChild<QListWidget *>(QStringLiteral("problemsPanel"));
+    QVERIFY(problems != nullptr);
+    QTRY_VERIFY_WITH_TIMEOUT(problems->count() >= 1, 5000);
+
+    auto *item = problems->item(problems->count() - 1);
+    QVERIFY(item != nullptr);
+    QCOMPARE(item->data(Qt::UserRole + 2).toString(), QString::fromUtf8("خطأ"));
+    QVERIFY(item->data(Qt::UserRole + 3).toString().contains(QString::fromUtf8("تعذر بدء")));
+    QVERIFY(item->data(Qt::UserRole).toString().endsWith(QStringLiteral("current-buffer.apy")));
+    QCOMPARE(item->data(Qt::UserRole + 1).toInt(), 1);
+
+    auto *row = problems->itemWidget(item);
+    QVERIFY(row != nullptr);
+    auto *severity = row->findChild<QLabel *>(QStringLiteral("problemSeverityLabel"));
+    auto *location = row->findChild<QLabel *>(QStringLiteral("problemLocationLabel"));
+    auto *message = row->findChild<QLabel *>(QStringLiteral("problemMessageLabel"));
+    QVERIFY(severity != nullptr);
+    QVERIFY(location != nullptr);
+    QVERIFY(message != nullptr);
+    QCOMPARE(severity->text(), QString::fromUtf8("خطأ"));
+    QVERIFY(location->text().contains(QStringLiteral("current-buffer.apy")));
+    QVERIFY(location->text().contains(QString::fromUtf8("السطر 1")));
+    QVERIFY(message->text().contains(QString::fromUtf8("تعذر بدء")));
+
+    problems->itemClicked(item);
+
+    QVERIFY(window.currentEditorPath().endsWith(QStringLiteral("current-buffer.apy")));
+    auto *tabs = window.findChild<QTabWidget *>(QStringLiteral("editorTabs"));
+    QVERIFY(tabs != nullptr);
+    auto *currentEditor = qobject_cast<EditorSurface *>(tabs->currentWidget());
+    QVERIFY(currentEditor != nullptr);
+    QCOMPARE(currentEditor->textCursor().blockNumber(), 0);
 }
 
 void TestMainWindow::outputPanelIsVisibleForRunFeedback()

@@ -1,6 +1,7 @@
 #include <QtTest/QtTest>
 
 #include "ProjectModel.h"
+#include "RuntimeProblemParser.h"
 #include "RuntimeRunner.h"
 #include "SearchService.h"
 #include "SettingsStore.h"
@@ -17,6 +18,7 @@ private slots:
     void runtimeRunnerCanUseExplicitProjectWorkingDirectory();
     void runtimeRunnerUsesIsolatedUtf8PythonEnvironment();
     void runtimeRunnerReportsMissingBundledPythonDiagnostics();
+    void runtimeProblemParserExtractsArabicSyntaxLine();
     void settingsStorePersistsArabicFontAndRecentProject();
 };
 
@@ -143,6 +145,21 @@ void TestProjectSearchRuntime::runtimeRunnerReportsMissingBundledPythonDiagnosti
     QVERIFY(!diagnostics.packageAvailable);
     QCOMPARE(diagnostics.packageVersion, QString());
     QVERIFY(diagnostics.statusText.contains(QString::fromUtf8("غير متوفر")));
+}
+
+void TestProjectSearchRuntime::runtimeProblemParserExtractsArabicSyntaxLine()
+{
+    const QString stderrText = QString::fromUtf8(
+        "تتبع_الأخطاء (المكدس الأحدث آخرا):\n"
+        "  ملف \"C:\\Users\\Admin\\AppData\\Local\\LisanStudio\\runtime\\python\\Lib\\site-packages\\arabicpython\\translate.py\", سطر 89, في translate\n"
+        "خطأ_صياغة: حرف تحكم باتجاه النص غير مسموح خارج النصوص الحرفية: U+202E (RIGHT-TO-LEFT OVERRIDE)، السطر 11، العمود 15. راجع https://trojansource.codes لمعرفة السبب.\n");
+
+    const RuntimeProblemDetail detail = parseRuntimeProblemDetail(stderrText, QString::fromUtf8("تشغيل"), 1);
+
+    QCOMPARE(detail.line, 11);
+    QVERIFY(detail.message.contains(QString::fromUtf8("خطأ_صياغة")));
+    QVERIFY(detail.message.contains(QStringLiteral("RIGHT-TO-LEFT OVERRIDE")));
+    QVERIFY(detail.message.contains(QString::fromUtf8("رمز الخروج 1")));
 }
 
 void TestProjectSearchRuntime::settingsStorePersistsArabicFontAndRecentProject()
