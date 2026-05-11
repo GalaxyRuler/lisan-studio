@@ -73,75 +73,6 @@ private:
     QString placeholder;
 };
 
-class SearchResultPreviewText final : public QPlainTextEdit
-{
-public:
-    explicit SearchResultPreviewText(QWidget *parent = nullptr)
-        : QPlainTextEdit(parent)
-    {
-        setObjectName(QStringLiteral("searchResultPreviewText"));
-        setReadOnly(true);
-        setFrameShape(QFrame::NoFrame);
-        setFocusPolicy(Qt::NoFocus);
-        setTextInteractionFlags(Qt::NoTextInteraction);
-        setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-        setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-        setLineWrapMode(QPlainTextEdit::NoWrap);
-        setLayoutDirection(Qt::RightToLeft);
-        setContentsMargins(0, 0, 0, 0);
-        setViewportMargins(0, 0, 0, 0);
-        setAttribute(Qt::WA_TranslucentBackground, true);
-        viewport()->setAttribute(Qt::WA_TranslucentBackground, true);
-        viewport()->setAutoFillBackground(false);
-        document()->setDocumentMargin(0);
-        setStyleSheet(QStringLiteral(
-            "QPlainTextEdit#searchResultPreviewText {"
-            "background: transparent;"
-            "border: none;"
-            "color: #B8C2D1;"
-            "padding: 0px;"
-            "}"
-            "QPlainTextEdit#searchResultPreviewText > QWidget {"
-            "background: transparent;"
-            "}"));
-
-        QTextOption option = document()->defaultTextOption();
-        option.setTextDirection(Qt::RightToLeft);
-        option.setAlignment(Qt::AlignRight);
-        option.setWrapMode(QTextOption::NoWrap);
-        document()->setDefaultTextOption(option);
-        refreshHeight();
-    }
-
-    void setPreviewText(const QString &text)
-    {
-        setPlainText(text);
-        document()->setModified(false);
-        moveCursor(QTextCursor::Start);
-        refreshHeight();
-    }
-
-protected:
-    void changeEvent(QEvent *event) override
-    {
-        if (event->type() == QEvent::FontChange) {
-            refreshHeight();
-        }
-        QPlainTextEdit::changeEvent(event);
-    }
-
-private:
-    int previewHeight() const
-    {
-        return qBound(18, fontMetrics().lineSpacing() + 1, 22);
-    }
-
-    void refreshHeight()
-    {
-        setFixedHeight(previewHeight());
-    }
-};
-
 class MenuPopupFrame final : public QFrame
 {
 public:
@@ -222,19 +153,6 @@ static QString resolvedArabicEditorFontFamily(const QString &configuredFamily)
         return configuredFamily;
     }
     return arabicEditorFontFamilies().first();
-}
-
-static QFont compactSearchPreviewFont(const QFont &sourceFont)
-{
-    constexpr int MaxSearchPreviewPointSize = 13;
-    QFont previewFont = sourceFont;
-    if (previewFont.pointSize() > MaxSearchPreviewPointSize || previewFont.pointSize() <= 0) {
-        previewFont.setPointSize(MaxSearchPreviewPointSize);
-    }
-    if (previewFont.pointSizeF() > MaxSearchPreviewPointSize) {
-        previewFont.setPointSizeF(MaxSearchPreviewPointSize);
-    }
-    return previewFont;
 }
 
 MainWindow::MainWindow(QWidget *parent)
@@ -943,7 +861,9 @@ void MainWindow::renderSearchResults(const QVector<SearchResultRow> &rows)
         auto *item = new QListWidgetItem(searchResultsPanel);
         item->setData(Qt::UserRole, row.path);
         item->setData(Qt::UserRole + 1, row.line);
-        item->setToolTip(QDir::toNativeSeparators(row.path));
+        item->setData(Qt::UserRole + 2, row.preview);
+        item->setToolTip(QString::fromUtf8("%1\n%2")
+            .arg(QDir::toNativeSeparators(row.path.isEmpty() ? currentEditorPath() : row.path), row.preview));
         item->setText(QString::fromUtf8("%1، السطر %2").arg(QFileInfo(row.path).fileName()).arg(row.line));
 
         auto *rowWidget = new QWidget(searchResultsPanel);
@@ -971,13 +891,7 @@ void MainWindow::renderSearchResults(const QVector<SearchResultRow> &rows)
         metaLayout->addWidget(fileLabel);
         metaLayout->addWidget(lineLabel);
 
-        auto *previewText = new SearchResultPreviewText(rowWidget);
-        previewText->setFont(compactSearchPreviewFont(editor ? editor->font() : font()));
-        previewText->setPreviewText(row.preview);
-        previewText->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-
         rowLayout->addLayout(metaLayout);
-        rowLayout->addWidget(previewText);
         item->setSizeHint(rowWidget->sizeHint());
         searchResultsPanel->setItemWidget(item, rowWidget);
     }
