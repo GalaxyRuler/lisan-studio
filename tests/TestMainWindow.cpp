@@ -117,8 +117,6 @@ void TestMainWindow::usesSingleRtlTopCommandBarWithMenuButtons()
         QStringLiteral("topMenuFileButton"),
         QStringLiteral("topMenuEditButton"),
         QStringLiteral("topMenuViewButton"),
-        QStringLiteral("topMenuRunButton"),
-        QStringLiteral("topMenuSearchButton"),
         QStringLiteral("topMenuToolsButton"),
         QStringLiteral("topMenuHelpButton"),
     };
@@ -126,8 +124,6 @@ void TestMainWindow::usesSingleRtlTopCommandBarWithMenuButtons()
         QStringLiteral("fileMenu"),
         QStringLiteral("editMenu"),
         QStringLiteral("viewMenu"),
-        QStringLiteral("runMenu"),
-        QStringLiteral("searchMenu"),
         QStringLiteral("toolsMenu"),
         QStringLiteral("helpMenu"),
     };
@@ -135,8 +131,6 @@ void TestMainWindow::usesSingleRtlTopCommandBarWithMenuButtons()
         QString::fromUtf8("ملف"),
         QString::fromUtf8("تحرير"),
         QString::fromUtf8("عرض"),
-        QString::fromUtf8("تشغيل"),
-        QString::fromUtf8("بحث"),
         QString::fromUtf8("أدوات"),
         QString::fromUtf8("مساعدة"),
     };
@@ -175,6 +169,20 @@ void TestMainWindow::usesSingleRtlTopCommandBarWithMenuButtons()
     QVERIFY(runButton != nullptr);
     QCOMPARE(runButton->toolButtonStyle(), Qt::ToolButtonTextBesideIcon);
     QCOMPARE(runButton->text(), QString::fromUtf8("تشغيل"));
+    QCOMPARE(runButton->defaultAction()->shortcut(), QKeySequence(QStringLiteral("F5")));
+    QVERIFY(!runButton->icon().isNull());
+    const QImage runIcon = runButton->icon().pixmap(24, 24).toImage();
+    bool hasReadablePlayPixel = false;
+    for (int y = 0; y < runIcon.height() && !hasReadablePlayPixel; ++y) {
+        for (int x = 0; x < runIcon.width(); ++x) {
+            const QColor color = runIcon.pixelColor(x, y);
+            if (color.alpha() > 0 && color.lightness() > 150) {
+                hasReadablePlayPixel = true;
+                break;
+            }
+        }
+    }
+    QVERIFY(hasReadablePlayPixel);
 
     auto *commandBox = window.findChild<QLineEdit *>(QStringLiteral("commandBox"));
     QVERIFY(commandBox != nullptr);
@@ -193,6 +201,8 @@ void TestMainWindow::usesSingleRtlTopCommandBarWithMenuButtons()
         QStringLiteral("topSearchButton"),
         QStringLiteral("topCommandPaletteButton"),
         QStringLiteral("topSettingsButton"),
+        QStringLiteral("topMenuRunButton"),
+        QStringLiteral("topMenuSearchButton"),
     };
     for (const QString &buttonName : retiredToolbarButtonNames) {
         QVERIFY2(window.findChild<QToolButton *>(buttonName) == nullptr, qPrintable(buttonName));

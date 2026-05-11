@@ -14,6 +14,7 @@
 #include <QHBoxLayout>
 #include <QHideEvent>
 #include <QInputDialog>
+#include <QIcon>
 #include <QListWidget>
 #include <QListWidgetItem>
 #include <QMessageBox>
@@ -153,6 +154,25 @@ static QString resolvedArabicEditorFontFamily(const QString &configuredFamily)
         return configuredFamily;
     }
     return arabicEditorFontFamilies().first();
+}
+
+static QIcon lightPlayIcon()
+{
+    QPixmap pixmap(28, 28);
+    pixmap.fill(Qt::transparent);
+
+    QPainter painter(&pixmap);
+    painter.setRenderHint(QPainter::Antialiasing, true);
+    const QPolygonF triangle({
+        QPointF(10.0, 7.0),
+        QPointF(10.0, 21.0),
+        QPointF(21.0, 14.0),
+    });
+    painter.setBrush(QColor(QStringLiteral("#D6E4FF")));
+    painter.setPen(QPen(QColor(QStringLiteral("#7BDFF2")), 1.5));
+    painter.drawPolygon(triangle);
+
+    return QIcon(pixmap);
 }
 
 MainWindow::MainWindow(QWidget *parent)
@@ -328,8 +348,6 @@ void MainWindow::buildUi()
     auto *fileMenu = makeMenuPanel(QStringLiteral("fileMenu"));
     auto *editMenu = makeMenuPanel(QStringLiteral("editMenu"));
     auto *viewMenu = makeMenuPanel(QStringLiteral("viewMenu"));
-    auto *runMenu = makeMenuPanel(QStringLiteral("runMenu"));
-    auto *searchMenu = makeMenuPanel(QStringLiteral("searchMenu"));
     auto *toolsMenu = makeMenuPanel(QStringLiteral("toolsMenu"));
     auto *helpMenu = makeMenuPanel(QStringLiteral("helpMenu"));
 
@@ -373,8 +391,6 @@ void MainWindow::buildUi()
     addMenuButton(QStringLiteral("topMenuFileButton"), QString::fromUtf8("ملف"), fileMenu);
     addMenuButton(QStringLiteral("topMenuEditButton"), QString::fromUtf8("تحرير"), editMenu);
     addMenuButton(QStringLiteral("topMenuViewButton"), QString::fromUtf8("عرض"), viewMenu);
-    addMenuButton(QStringLiteral("topMenuRunButton"), QString::fromUtf8("تشغيل"), runMenu);
-    addMenuButton(QStringLiteral("topMenuSearchButton"), QString::fromUtf8("بحث"), searchMenu);
     addMenuButton(QStringLiteral("topMenuToolsButton"), QString::fromUtf8("أدوات"), toolsMenu);
     addMenuButton(QStringLiteral("topMenuHelpButton"), QString::fromUtf8("مساعدة"), helpMenu);
 
@@ -402,10 +418,14 @@ void MainWindow::buildUi()
 
     auto *saveAction = makeAction(style()->standardIcon(QStyle::SP_DialogSaveButton), QString::fromUtf8("حفظ"), &MainWindow::saveFile);
     auto *openProjectAction = makeAction(style()->standardIcon(QStyle::SP_DirOpenIcon), QString::fromUtf8("فتح مشروع"), &MainWindow::openFolder);
-    runAction = makeAction(style()->standardIcon(QStyle::SP_MediaPlay), QString::fromUtf8("تشغيل"), &MainWindow::runCurrentFile);
+    runAction = makeAction(lightPlayIcon(), QString::fromUtf8("تشغيل"), &MainWindow::runCurrentFile);
     runAction->setObjectName(QStringLiteral("runAction"));
+    runAction->setShortcut(QKeySequence(QStringLiteral("F5")));
+    runAction->setShortcutContext(Qt::ApplicationShortcut);
     cancelRunAction = makeAction(style()->standardIcon(QStyle::SP_MediaStop), QString::fromUtf8("إيقاف"), &MainWindow::cancelRuntimeProcess);
     cancelRunAction->setObjectName(QStringLiteral("cancelRunAction"));
+    cancelRunAction->setShortcut(QKeySequence(QStringLiteral("Shift+F5")));
+    cancelRunAction->setShortcutContext(Qt::ApplicationShortcut);
     cancelRunAction->setEnabled(false);
     lintAction = makeAction(style()->standardIcon(QStyle::SP_MessageBoxInformation), QString::fromUtf8("فحص"), &MainWindow::lintCurrentFile);
     lintAction->setObjectName(QStringLiteral("lintAction"));
@@ -416,7 +436,6 @@ void MainWindow::buildUi()
     commandPaletteAction->setShortcuts({QKeySequence(QStringLiteral("Ctrl+Shift+P"))});
     auto *settingsAction = makeAction(QIcon(), QString::fromUtf8("الإعدادات"), &MainWindow::openSettings);
     settingsAction->setObjectName(QStringLiteral("settingsAction"));
-    auto *searchAction = makeAction(style()->standardIcon(QStyle::SP_FileDialogContentsView), QString::fromUtf8("بحث"), &MainWindow::findInProject);
 
     addTopButton(QStringLiteral("topRunButton"), runAction, "primaryAction", Qt::ToolButtonTextBesideIcon);
 
@@ -463,13 +482,10 @@ void MainWindow::buildUi()
     });
     commandPaletteAction->setIconVisibleInMenu(false);
     connect(addTextOnlyMenuAction(viewMenu, QString::fromUtf8("لوحة الأوامر")), &QAction::triggered, this, &MainWindow::openCommandPalette);
-    connect(addTextOnlyMenuAction(searchMenu, QString::fromUtf8("بحث في المشروع")), &QAction::triggered, this, &MainWindow::findInProject);
     connect(addTextOnlyMenuAction(toolsMenu, QString::fromUtf8("فحص")), &QAction::triggered, this, &MainWindow::lintCurrentFile);
     connect(addTextOnlyMenuAction(toolsMenu, QString::fromUtf8("تنسيق")), &QAction::triggered, this, &MainWindow::formatCurrentFile);
     settingsAction->setIconVisibleInMenu(false);
     connect(addTextOnlyMenuAction(toolsMenu, QString::fromUtf8("الإعدادات")), &QAction::triggered, this, &MainWindow::openSettings);
-    connect(addTextOnlyMenuAction(runMenu, QString::fromUtf8("تشغيل الملف الحالي"), QKeySequence(QStringLiteral("F5"))), &QAction::triggered, this, &MainWindow::runCurrentFile);
-    connect(addTextOnlyMenuAction(runMenu, QString::fromUtf8("إيقاف التشغيل"), QKeySequence(QStringLiteral("Shift+F5"))), &QAction::triggered, this, &MainWindow::cancelRuntimeProcess);
     connect(addTextOnlyMenuAction(helpMenu, QString::fromUtf8("عن استوديو لسان")), &QAction::triggered, this, [this]() {
         QMessageBox::information(this, QString::fromUtf8("عن استوديو لسان"), QString::fromUtf8("استوديو لسان\nبيئة عربية أصلية لملفات .apy"));
     });
