@@ -492,6 +492,10 @@ void TestMainWindow::projectSearchResultRowsFillRtlViewport()
         qPrintable(QStringLiteral("RTL search result title should sit near the right edge. labelRight=%1 viewport=%2")
             .arg(labelRect.right())
             .arg(viewportWidth)));
+    QVERIFY2(fileLabel->width() > viewportWidth * 0.55,
+        qPrintable(QStringLiteral("search result file label should use the available row width. labelWidth=%1 viewport=%2")
+            .arg(fileLabel->width())
+            .arg(viewportWidth)));
 
     QVERIFY2(rowRect.height() <= 40,
         qPrintable(QStringLiteral("search result row should be a compact one-line item. height=%1")

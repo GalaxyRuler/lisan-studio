@@ -882,13 +882,14 @@ void MainWindow::renderSearchResults(const QVector<SearchResultRow> &rows)
         auto *fileLabel = new QLabel(fileLabelText, rowWidget);
         fileLabel->setObjectName(QStringLiteral("searchResultFileLabel"));
         fileLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        fileLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
         fileLabel->setStyleSheet(QStringLiteral("color: #E8ECF2; font-weight: 600;"));
         auto *lineLabel = new QLabel(QString::fromUtf8("السطر %1").arg(row.line), rowWidget);
         lineLabel->setObjectName(QStringLiteral("searchResultLineLabel"));
         lineLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        lineLabel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
         lineLabel->setStyleSheet(QStringLiteral("color: #AEC6FF;"));
-        metaLayout->addStretch(1);
-        metaLayout->addWidget(fileLabel);
+        metaLayout->addWidget(fileLabel, 1);
         metaLayout->addWidget(lineLabel);
 
         rowLayout->addLayout(metaLayout);
