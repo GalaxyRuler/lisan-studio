@@ -73,47 +73,73 @@ private:
     QString placeholder;
 };
 
-class SearchResultPreviewText final : public QPlainTextEdit
+class SearchResultPreviewText final : public QWidget
 {
 public:
     explicit SearchResultPreviewText(QWidget *parent = nullptr)
-        : QPlainTextEdit(parent)
+        : QWidget(parent)
     {
         setObjectName(QStringLiteral("searchResultPreviewText"));
-        setReadOnly(true);
-        setFrameShape(QFrame::NoFrame);
         setFocusPolicy(Qt::NoFocus);
-        setTextInteractionFlags(Qt::NoTextInteraction);
-        setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-        setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-        setLineWrapMode(QPlainTextEdit::NoWrap);
+        setAttribute(Qt::WA_TransparentForMouseEvents, true);
         setLayoutDirection(Qt::RightToLeft);
         setContentsMargins(0, 0, 0, 0);
-        setViewportMargins(0, 0, 0, 0);
-        setStyleSheet(QStringLiteral(
-            "QPlainTextEdit#searchResultPreviewText {"
-            "background: transparent;"
-            "border: none;"
-            "color: #9AA7B6;"
-            "padding: 0px;"
-            "}"));
-        viewport()->setAutoFillBackground(false);
-        document()->setDocumentMargin(0);
-
-        QTextOption option = document()->defaultTextOption();
-        option.setTextDirection(Qt::RightToLeft);
-        option.setAlignment(Qt::AlignRight);
-        option.setWrapMode(QTextOption::NoWrap);
-        document()->setDefaultTextOption(option);
-        setFixedHeight(fontMetrics().lineSpacing() + 4);
+        refreshHeight();
     }
 
     void setPreviewText(const QString &text)
     {
-        setPlainText(text);
-        document()->setModified(false);
-        setFixedHeight(fontMetrics().lineSpacing() + 4);
+        previewText = text;
+        setProperty("previewText", previewText);
+        update();
     }
+
+    QSize sizeHint() const override
+    {
+        return QSize(320, previewHeight());
+    }
+
+protected:
+    void changeEvent(QEvent *event) override
+    {
+        if (event->type() == QEvent::FontChange) {
+            refreshHeight();
+        }
+        QWidget::changeEvent(event);
+    }
+
+    void paintEvent(QPaintEvent *) override
+    {
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::TextAntialiasing, true);
+        painter.setClipRect(rect());
+        painter.setFont(font());
+        painter.setPen(QColor(184, 194, 209));
+
+        QTextOption option;
+        option.setTextDirection(Qt::RightToLeft);
+        option.setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        option.setWrapMode(QTextOption::NoWrap);
+
+        const QString displayText = fontMetrics().elidedText(
+            previewText,
+            Qt::ElideLeft,
+            qMax(0, width()));
+        painter.drawText(QRectF(rect()), displayText, option);
+    }
+
+private:
+    int previewHeight() const
+    {
+        return qBound(18, fontMetrics().lineSpacing() + 1, 22);
+    }
+
+    void refreshHeight()
+    {
+        setFixedHeight(previewHeight());
+    }
+
+    QString previewText;
 };
 
 class MenuPopupFrame final : public QFrame
@@ -924,8 +950,8 @@ void MainWindow::renderSearchResults(const QVector<SearchResultRow> &rows)
         rowWidget->setObjectName(QStringLiteral("searchResultRow"));
         rowWidget->setLayoutDirection(Qt::RightToLeft);
         auto *rowLayout = new QVBoxLayout(rowWidget);
-        rowLayout->setContentsMargins(12, 8, 12, 8);
-        rowLayout->setSpacing(4);
+        rowLayout->setContentsMargins(12, 4, 12, 4);
+        rowLayout->setSpacing(1);
 
         auto *metaLayout = new QHBoxLayout;
         metaLayout->setDirection(QBoxLayout::RightToLeft);
