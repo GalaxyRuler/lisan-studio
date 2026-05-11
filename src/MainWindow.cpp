@@ -869,9 +869,10 @@ void MainWindow::renderSearchResults(const QVector<SearchResultRow> &rows)
         auto *rowWidget = new QWidget(searchResultsPanel);
         rowWidget->setObjectName(QStringLiteral("searchResultRow"));
         rowWidget->setLayoutDirection(Qt::RightToLeft);
+        rowWidget->setMinimumHeight(72);
         auto *rowLayout = new QVBoxLayout(rowWidget);
-        rowLayout->setContentsMargins(12, 4, 12, 4);
-        rowLayout->setSpacing(1);
+        rowLayout->setContentsMargins(16, 16, 16, 16);
+        rowLayout->setSpacing(0);
 
         auto *metaLayout = new QHBoxLayout;
         metaLayout->setDirection(QBoxLayout::RightToLeft);
@@ -894,7 +895,7 @@ void MainWindow::renderSearchResults(const QVector<SearchResultRow> &rows)
         metaLayout->addWidget(lineLabel);
 
         rowLayout->addLayout(metaLayout);
-        item->setSizeHint(rowWidget->sizeHint());
+        item->setSizeHint(QSize(rowWidget->sizeHint().width(), 72));
         searchResultsPanel->setItemWidget(item, rowWidget);
     }
     showSearchResultsPanel();

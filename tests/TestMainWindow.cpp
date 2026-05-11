@@ -38,7 +38,7 @@ private slots:
     void projectSearchShowsClickableResultRows();
     void projectSearchFindsCurrentUnsavedEditorImmediately();
     void projectSearchResultRowsFillRtlViewport();
-    void projectSearchPreviewStaysCompactWithLargeEditorFont();
+    void projectSearchResultRowsHaveReadableHeight();
     void problemsPanelShowsHiddenBidiWarnings();
     void outputPanelIsVisibleForRunFeedback();
     void outputPlaceholderPaintsFromRight();
@@ -499,12 +499,12 @@ void TestMainWindow::projectSearchResultRowsFillRtlViewport()
     QVERIFY2(fileLabel->text().length() > QStringLiteral("main.apy").length(),
         "search result label should show a wide path-style location, not only a short filename");
 
-    QVERIFY2(rowRect.height() <= 40,
-        qPrintable(QStringLiteral("search result row should be a compact one-line item. height=%1")
+    QVERIFY2(rowRect.height() >= 72,
+        qPrintable(QStringLiteral("search result row should have enough height to read comfortably. height=%1")
             .arg(rowRect.height())));
 }
 
-void TestMainWindow::projectSearchPreviewStaysCompactWithLargeEditorFont()
+void TestMainWindow::projectSearchResultRowsHaveReadableHeight()
 {
     QTemporaryDir temp;
     QVERIFY(temp.isValid());
@@ -533,8 +533,8 @@ void TestMainWindow::projectSearchPreviewStaysCompactWithLargeEditorFont()
     auto *resultRow = results->itemWidget(results->item(0));
     QVERIFY(resultRow != nullptr);
     QVERIFY(resultRow->findChild<QWidget *>(QStringLiteral("searchResultPreviewText")) == nullptr);
-    QVERIFY2(resultRow->height() <= 40,
-        qPrintable(QStringLiteral("search result row should remain compact. height=%1")
+    QVERIFY2(resultRow->height() >= 72,
+        qPrintable(QStringLiteral("search result row should remain readable at larger editor fonts. height=%1")
             .arg(resultRow->height())));
 }
 
