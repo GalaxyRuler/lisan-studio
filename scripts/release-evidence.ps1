@@ -163,7 +163,8 @@ $knownIssuesPath = Join-Path $releaseDir "KNOWN_ISSUES.md"
 # Lisan Studio $ReleaseLabel Known Issues
 
 - Private beta only; no public distribution yet.
-- No Git UI, AI panel, auto-update, or plugin system in this beta.
+- Deferred features: Git UI, AI panel, auto-update, and plugin system are not included in this beta.
+- Manual QA is not complete until the installed-app checklist is recorded.
 - Manual Arabic editor torture validation is still required before tagging.
 - `windeployqt6` may warn that Qt translations and DirectX shader compiler DLLs are unavailable in this local toolchain; these are tracked as non-blocking for the current private beta smoke.
 "@ | Set-Content -LiteralPath $knownIssuesPath -Encoding UTF8
@@ -206,6 +207,18 @@ $validationLines = @(
     "Branch: $gitBranch",
     "Commit: $gitCommit",
     "",
+    "## Handoff Summary",
+    "",
+    "This evidence bundle is the automated private beta handoff record for the Lisan Studio MSI. It proves the package, MSI smoke, installed runtime smoke, checksum, and screenshot flow completed, but it does not claim that human manual QA is complete.",
+    "",
+    "## Isolation And Runner Boundary",
+    "",
+    "- GUI, MSI, installed-app, and release-evidence validation belongs in LisanStudio-QA through Homelab.",
+    "- Do not use active WHITEDRAGON for GUI automation, MSI install/uninstall, installed-app validation, registry mutation, or destructive validation.",
+    "- Homelab core stays generic; Lisan Studio owns this release evidence workflow in the project repo.",
+    "",
+    "## Automated Validation Completed",
+    "",
     "## Gate Results",
     "",
     $stepLines,
@@ -217,6 +230,25 @@ $validationLines = @(
     "- Checksums: $checksumsPath",
     "- Known issues: $knownIssuesPath",
     "- Screenshot: $screenshot",
+    "",
+    "## Manual QA Required",
+    "",
+    "Manual QA is not complete until the installed-app checklist is recorded.",
+    "Generate the checklist from an existing release bundle with:",
+    "",
+    '```powershell',
+    '.\scripts\beta-manual-check.ps1',
+    '```',
+    "",
+    'The manual pass must cover Start Menu launch, Desktop shortcut launch, Arabic mixed-direction editing, project open, current `.apy` run output, RTL layout, settings persistence, uninstall, and reinstall.',
+    "",
+    "## Deferred Features",
+    "",
+    "- Git UI",
+    "- AI panel",
+    "- public distribution",
+    "- auto-update",
+    "- plugin system",
     "",
     "## Installed Product State",
     "",

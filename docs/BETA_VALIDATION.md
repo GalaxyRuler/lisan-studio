@@ -43,6 +43,17 @@ The release evidence script produces:
 - `artifacts\release\0.1.0-beta\KNOWN_ISSUES.md`
 - `artifacts\release\0.1.0-beta\screenshots\main-window.png`
 
+To generate a human manual QA checklist from an existing release evidence
+bundle without launching the app or installing the MSI, run:
+
+```powershell
+.\scripts\beta-manual-check.ps1
+```
+
+The checklist is written under `artifacts\beta-manual-check\` and starts with
+`ManualQaStatus` set to `NotStarted`. Automated evidence does not mean the
+manual installed-app pass is complete.
+
 The automated Qt editor torture tests verify:
 
 - Lisan Studio branding and bundled logo resource
@@ -90,6 +101,7 @@ samples\torture-project
 - run the current `.apy` file and confirm stdout/stderr, exit code, elapsed time, and cancel behavior are readable
 - open Settings, verify runtime diagnostics, change the editor font setting, and reopen the app
 - uninstall and confirm app payload files and shortcuts are removed
+- reinstall from the same beta MSI without manual PATH or Python setup
 - confirm user settings under the Qt app config location are not treated as MSI payload
 
 ## Blockers
