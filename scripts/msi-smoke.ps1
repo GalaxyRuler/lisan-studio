@@ -90,6 +90,12 @@ $requiredPayloadFiles = @(
     (Join-Path $InstallRoot "licenses\Python-LICENSE.txt"),
     (Join-Path $InstallRoot "licenses\lughat-althuban-LICENSE"),
     (Join-Path $InstallRoot "licenses\qt6-base\LGPL-3.0-only.txt"),
+    (Join-Path $InstallRoot "libgcc_s_seh-1.dll"),
+    (Join-Path $InstallRoot "libstdc++-6.dll"),
+    (Join-Path $InstallRoot "libwinpthread-1.dll"),
+    (Join-Path $InstallRoot "libicuin78.dll"),
+    (Join-Path $InstallRoot "libicuuc78.dll"),
+    (Join-Path $InstallRoot "libicudt78.dll"),
     (Join-Path $InstallRoot "runtime\python\python.exe")
 )
 

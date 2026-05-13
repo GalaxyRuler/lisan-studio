@@ -1,0 +1,34 @@
+{
+    "schemaVersion": 1,
+    "id": "lisanstudio-metadata-checks",
+    "runnerClass": "container",
+    "purpose": "Project-owned dry-run container/headless metadata profile for Lisan Studio. It advertises safe inspection checks only; real Qt/MSYS2/WiX builds remain Windows/VM-owned until a deliberate container image is selected.",
+    "execution": {
+        "mode": "project-owned",
+        "liveExecution": "dry-run-only",
+        "containerImage": "",
+        "containerImageStatus": "pending",
+        "containerImageTodo": "Choose or build a project-owned image with the exact Qt/MSYS2/WiX-equivalent toolchain before enabling live container execution.",
+        "networkMode": "none",
+        "commands": [
+            {
+                "name": "metadata-files-present",
+                "run": "test -f .codex/homelab-runner.json && test -f CMakeLists.txt && test -d scripts && test -d tests && test -d qa"
+            },
+            {
+                "name": "project-owned-profiles-present",
+                "run": "test -f qa/homelab/lisanstudio-metadata-checks.json && test -f qa/vm/profiles/lisanstudio-msi-smoke.json"
+            }
+        ]
+    },
+    "artifacts": [
+        "homelab-container-summary.json",
+        "homelab-container-summary.md"
+    ],
+    "requiredArtifacts": [],
+    "notes": [
+        "No secrets, credentials, tokens, .env values, private keys, certificates, or production config are declared here.",
+        "The profile intentionally avoids dependency installation and live build/test execution.",
+        "Use LisanStudio-QA for Windows GUI, MSI, installed-app, registry-touching, screenshot, and release-evidence validation."
+    ]
+}

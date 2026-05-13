@@ -1,0 +1,38 @@
+﻿{
+    "schemaVersion":  1,
+    "projectName":  "LisanStudio",
+    "homelabRootEnv":  "CODEX_HOMELAB_ROOT",
+    "homelabRootFallback":  "C:\\Users\\Admin\\Documents\\Codex\\Homelab\\codex-isolated-test-runners",
+    "allowedClasses":  [
+                           "container",
+                           "headless",
+                           "windows-gui",
+                           "desktop-msi",
+                           "vm-gui"
+                       ],
+    "preferredRoutes":  {
+                            "cli":  "container",
+                            "headless":  "container",
+                            "windowsGui":  "remote-windows-runner",
+                            "installedDesktopQa":  "project-vm"
+                        },
+    "profiles":  {
+                     "metadataChecks":  {
+                                            "class":  "container",
+                                            "profilePath":  "qa\\homelab\\lisanstudio-metadata-checks.json",
+                                            "approvalRequired":  false
+                                        },
+                     "desktopMsiSmoke":  {
+                                             "class":  "vm-gui",
+                                             "profilePath":  "qa\\vm\\profiles\\lisanstudio-msi-smoke.json",
+                                             "approvalRequired":  true
+                                         }
+                 },
+    "forbidden":  [
+                      "Do not run GUI smoke tests on active WHITEDRAGON",
+                      "Do not install or uninstall MSI packages on active WHITEDRAGON",
+                      "Do not store project-specific runner profiles in Homelab core",
+                      "Do not add vm-mutating routes unless explicitly approved later",
+                      "Do not route GUI, MSI, installer, registry-mutating, destructive, or noisy validation to the active WHITEDRAGON desktop by default"
+                  ]
+}

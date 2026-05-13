@@ -3,20 +3,225 @@ param(
     [string]$PythonRoot = "C:\Users\Admin\AppData\Local\Programs\Python\Python313",
     [string]$Configuration = "Release",
     [string]$ProductVersion = "0.1.0",
+    [string]$BashPath = "C:\msys64\usr\bin\bash.exe",
+    [string]$WindeployQtPath = "C:\msys64\ucrt64\bin\windeployqt6.exe",
+    [string]$WixPath = "C:\Program Files\WiX Toolset v7.0\bin\wix.exe",
+    [string]$QtLicenseRoot = "C:\msys64\ucrt64\share\licenses\qt6-base",
     [switch]$SkipMsi
 )
 
 $ErrorActionPreference = "Stop"
 
+function Convert-ToMsysPath {
+    param([string]$WindowsPath)
+
+    $resolved = (Resolve-Path -LiteralPath $WindowsPath).Path
+    $drive = $resolved.Substring(0, 1).ToLowerInvariant()
+    $rest = $resolved.Substring(2).Replace('\', '/')
+    return "/$drive$rest"
+}
+
+function Invoke-NativeToolAllowingStderr {
+    param(
+        [Parameter(Mandatory = $true)][string]$FilePath,
+        [Parameter(Mandatory = $true)][string[]]$Arguments,
+        [string]$DisplayName = (Split-Path -Leaf $FilePath)
+    )
+
+    $previousErrorActionPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'Continue'
+        $output = & $FilePath @Arguments 2>&1
+        $exitCode = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+    }
+
+    if ($output) {
+        $output | Write-Output
+    }
+    if ($exitCode -ne 0) {
+        throw "$DisplayName exited with code $exitCode."
+    }
+}
+
+function Copy-DirectoryContents {
+    param(
+        [Parameter(Mandatory = $true)][string]$Source,
+        [Parameter(Mandatory = $true)][string]$Destination
+    )
+
+    New-Item -ItemType Directory -Force -Path $Destination | Out-Null
+    $sourceRoot = (Resolve-Path -LiteralPath $Source).Path.TrimEnd('\')
+    $files = @(Get-ChildItem -LiteralPath $sourceRoot -Recurse -Force -File |
+        Where-Object {
+            $_.FullName -notmatch '\\__pycache__\\' -and
+            $_.Extension -notin @('.pyc', '.pyo')
+        })
+    foreach ($file in $files) {
+        $relativePath = $file.FullName.Substring($sourceRoot.Length).TrimStart('\')
+        $destinationPath = Join-Path $Destination $relativePath
+        $destinationParent = Split-Path -Parent $destinationPath
+        New-Item -ItemType Directory -Force -Path $destinationParent | Out-Null
+        Copy-Item -LiteralPath $file.FullName -Destination $destinationPath -Force
+    }
+
+    Write-Output "Copied $($files.Count) files from $Source to $Destination"
+}
+
+function Install-ApythonRuntimeOffline {
+    param(
+        [Parameter(Mandatory = $true)][string]$SourceRoot,
+        [Parameter(Mandatory = $true)][string]$DestinationSitePackages
+    )
+
+    $eggInfo = Join-Path $SourceRoot "lughat_althuban.egg-info"
+    $pkgInfo = Join-Path $eggInfo "PKG-INFO"
+    if (-not (Test-Path -LiteralPath $pkgInfo)) {
+        throw "Apython package metadata missing: $pkgInfo"
+    }
+
+    $requiredSourceFilesByPackage = @{
+        arabicpython = @("__init__.py", "cli.py")
+        arabicpython_kernel = @("__init__.py")
+    }
+
+    foreach ($packageName in @("arabicpython", "arabicpython_kernel")) {
+        $sourcePackage = Join-Path $SourceRoot $packageName
+        if (-not (Test-Path -LiteralPath $sourcePackage)) {
+            throw "Apython package source missing: $sourcePackage"
+        }
+
+        foreach ($requiredSourceFile in $requiredSourceFilesByPackage[$packageName]) {
+            $requiredSourcePath = Join-Path $sourcePackage $requiredSourceFile
+            if (-not (Test-Path -LiteralPath $requiredSourcePath)) {
+                throw "Apython package source file missing: $requiredSourcePath"
+            }
+        }
+
+        $destinationPackage = Join-Path $DestinationSitePackages $packageName
+        if (Test-Path -LiteralPath $destinationPackage) {
+            Remove-Item -LiteralPath $destinationPackage -Recurse -Force
+        }
+        Copy-DirectoryContents -Source $sourcePackage -Destination $destinationPackage
+
+        foreach ($requiredSourceFile in $requiredSourceFilesByPackage[$packageName]) {
+            $requiredDestinationPath = Join-Path $destinationPackage $requiredSourceFile
+            if (-not (Test-Path -LiteralPath $requiredDestinationPath)) {
+                throw "Apython package destination file missing after copy: $requiredDestinationPath"
+            }
+        }
+    }
+
+    $metadata = Get-Content -Raw -LiteralPath $pkgInfo
+    if ($metadata -notmatch '(?m)^Version:\s*(?<Version>[^\r\n]+)') {
+        throw "Apython package metadata does not declare a Version: $pkgInfo"
+    }
+
+    $version = $Matches.Version.Trim()
+    $distInfo = Join-Path $DestinationSitePackages "lughat_althuban-$version.dist-info"
+    if (Test-Path -LiteralPath $distInfo) {
+        Remove-Item -LiteralPath $distInfo -Recurse -Force
+    }
+    New-Item -ItemType Directory -Force -Path $distInfo | Out-Null
+
+    Set-Content -LiteralPath (Join-Path $distInfo "METADATA") -Value $metadata -Encoding UTF8
+    foreach ($metadataFile in @("entry_points.txt", "top_level.txt")) {
+        $sourceMetadataFile = Join-Path $eggInfo $metadataFile
+        if (Test-Path -LiteralPath $sourceMetadataFile) {
+            Copy-Item -LiteralPath $sourceMetadataFile -Destination (Join-Path $distInfo $metadataFile) -Force
+        }
+    }
+    @"
+Wheel-Version: 1.0
+Generator: LisanStudio package.ps1 offline runtime staging
+Root-Is-Purelib: true
+Tag: py3-none-any
+"@ | Set-Content -LiteralPath (Join-Path $distInfo "WHEEL") -Encoding ASCII
+    "package.ps1" | Set-Content -LiteralPath (Join-Path $distInfo "INSTALLER") -Encoding ASCII
+    "" | Set-Content -LiteralPath (Join-Path $distInfo "RECORD") -Encoding ASCII
+}
+
+function Assert-StagedApythonRuntime {
+    param(
+        [Parameter(Mandatory = $true)][string]$PythonExe,
+        [Parameter(Mandatory = $true)][string]$SitePackages
+    )
+
+    foreach ($requiredFile in @(
+            (Join-Path $SitePackages "arabicpython\__init__.py"),
+            (Join-Path $SitePackages "arabicpython\cli.py"),
+            (Join-Path $SitePackages "arabicpython_kernel\__init__.py")
+        )) {
+        if (-not (Test-Path -LiteralPath $requiredFile)) {
+            throw "Staged Apython runtime file missing: $requiredFile"
+        }
+    }
+
+    $runtimeCheck = @"
+import importlib.metadata as md
+import importlib.util
+import pathlib
+
+site = pathlib.Path(r'''$SitePackages''').resolve()
+for package in ('arabicpython', 'arabicpython_kernel'):
+    spec = importlib.util.find_spec(package)
+    if spec is None or spec.origin is None:
+        raise SystemExit(f'{package} import spec missing')
+    origin = pathlib.Path(spec.origin).resolve()
+    if site != origin and site not in origin.parents:
+        raise SystemExit(f'{package} imported from outside staged runtime: {origin}')
+    print(f'{package} {origin}')
+print('lughat-althuban', md.version('lughat-althuban'))
+"@
+
+    & $PythonExe -I -c $runtimeCheck
+}
+
+function Copy-RequiredNativeRuntimeDlls {
+    param(
+        [Parameter(Mandatory = $true)][string]$BashPath,
+        [Parameter(Mandatory = $true)][string]$TargetExecutable,
+        [Parameter(Mandatory = $true)][string]$SourceBinDirectory,
+        [Parameter(Mandatory = $true)][string]$DestinationDirectory
+    )
+
+    $targetExecutableUnix = Convert-ToMsysPath -WindowsPath $TargetExecutable
+    $lddOutput = & $BashPath -lc "export PATH=/ucrt64/bin:/usr/bin:`$PATH; ldd '$targetExecutableUnix'"
+    if ($LASTEXITCODE -ne 0) {
+        throw "ldd failed for native runtime dependency scan: $TargetExecutable"
+    }
+
+    $dllNames = New-Object System.Collections.Generic.HashSet[string] ([StringComparer]::OrdinalIgnoreCase)
+    foreach ($line in $lddOutput) {
+        if ($line -match '=>\s+/ucrt64/bin/(?<Name>[^ \t]+\.dll)') {
+            [void]$dllNames.Add($Matches.Name)
+        }
+    }
+
+    foreach ($requiredDllName in @("libgcc_s_seh-1.dll", "libstdc++-6.dll", "libwinpthread-1.dll")) {
+        [void]$dllNames.Add($requiredDllName)
+    }
+
+    foreach ($dllName in ($dllNames | Sort-Object)) {
+        $sourceDll = Join-Path $SourceBinDirectory $dllName
+        if (-not (Test-Path -LiteralPath $sourceDll)) {
+            throw "Required native runtime DLL missing: $sourceDll"
+        }
+        Copy-Item -LiteralPath $sourceDll -Destination (Join-Path $DestinationDirectory $dllName) -Force
+    }
+}
+
 $repo = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $stage = Join-Path $repo "stage"
 $artifacts = Join-Path $repo "artifacts"
 $build = Join-Path $repo "build"
-$bash = "C:\msys64\usr\bin\bash.exe"
-$windeployqt = "C:\msys64\ucrt64\bin\windeployqt6.exe"
-$wix = "C:\Program Files\WiX Toolset v7.0\bin\wix.exe"
+$bash = $BashPath
+$windeployqt = $WindeployQtPath
+$nativeRuntimeBin = Split-Path -Parent $windeployqt
+$wix = $WixPath
 $wxs = Join-Path $repo "packaging\wix\LisanStudio.wxs"
-$qtLicenseRoot = "C:\msys64\ucrt64\share\licenses\qt6-base"
+$repoUnix = Convert-ToMsysPath -WindowsPath $repo
 
 if (-not (Test-Path $bash)) { throw "MSYS2 bash not found: $bash" }
 if (-not (Test-Path $windeployqt)) { throw "windeployqt6 not found: $windeployqt" }
@@ -24,7 +229,7 @@ if (-not (Test-Path $ApythonRoot)) { throw "ApythonRoot not found: $ApythonRoot"
 if (-not (Test-Path $PythonRoot)) { throw "PythonRoot not found: $PythonRoot" }
 if (-not (Test-Path $qtLicenseRoot)) { throw "Qt license folder not found: $qtLicenseRoot" }
 
-& (Join-Path $PSScriptRoot "validate.ps1")
+& (Join-Path $PSScriptRoot "validate.ps1") -BashPath $bash
 
 if (Test-Path $stage) {
     Remove-Item -LiteralPath $stage -Recurse -Force
@@ -39,11 +244,16 @@ New-Item -ItemType Directory -Force -Path $stage | Out-Null
 & $bash -lc @"
 set -euo pipefail
 export PATH=/ucrt64/bin:/usr/bin:/c/Windows/System32:/c/Windows:/c/Windows/System32/Wbem:`$PATH
-cd /c/Users/Admin/arabic-code-studio-qt
+cd "$repoUnix"
 cmake --install build --prefix stage
 "@
 
-& $windeployqt --release --no-translations (Join-Path $stage "LisanStudio.exe")
+Invoke-NativeToolAllowingStderr -FilePath $windeployqt -Arguments @(
+    '--release',
+    '--no-translations',
+    (Join-Path $stage "LisanStudio.exe")
+) -DisplayName 'windeployqt6.exe'
+Copy-RequiredNativeRuntimeDlls -BashPath $bash -TargetExecutable (Join-Path $stage "LisanStudio.exe") -SourceBinDirectory $nativeRuntimeBin -DestinationDirectory $stage
 
 $runtimeRoot = Join-Path $stage "runtime\python"
 Copy-Item -Path $PythonRoot -Destination $runtimeRoot -Recurse -Force
@@ -60,19 +270,13 @@ $sitePackages = Join-Path $runtimeRoot "Lib\site-packages"
 if (Test-Path $sitePackages) {
     Get-ChildItem -LiteralPath $sitePackages -Force |
         Where-Object {
-            $_.Name -notmatch '^(pip|setuptools|wheel|pkg_resources)(-|$)' -and
-            $_.Name -ne "_distutils_hack" -and
+            $_.Name -notmatch '^pip(-|$)' -and
             $_.Name -ne "distutils-precedence.pth"
         } |
         Remove-Item -Recurse -Force
 }
 
-& $python -m pip install --upgrade pip wheel setuptools
-
-$wheelhouse = Join-Path $stage "runtime\wheelhouse"
-New-Item -ItemType Directory -Force -Path $wheelhouse | Out-Null
-& $python -m pip wheel --no-deps --wheel-dir $wheelhouse $ApythonRoot
-& $python -m pip install --no-deps --no-index --find-links $wheelhouse lughat-althuban
+Install-ApythonRuntimeOffline -SourceRoot $ApythonRoot -DestinationSitePackages $sitePackages
 
 $editableMarkers = Get-ChildItem -LiteralPath $sitePackages -Force -ErrorAction SilentlyContinue |
     Where-Object { $_.Name -like "__editable__*" -or $_.Name -like "apython-*.dist-info" }
@@ -80,7 +284,7 @@ if ($editableMarkers) {
     throw "Staged runtime still contains editable/local apython markers."
 }
 
-& $python -c "import importlib.metadata as md, importlib.util; assert importlib.util.find_spec('arabicpython'); print('lughat-althuban', md.version('lughat-althuban'))"
+Assert-StagedApythonRuntime -PythonExe $python -SitePackages $sitePackages
 
 Copy-Item -LiteralPath (Join-Path $repo "README.md") -Destination (Join-Path $stage "README.md") -Force
 Copy-Item -LiteralPath (Join-Path $repo "docs\RELEASE_NOTES.md") -Destination (Join-Path $stage "RELEASE_NOTES.md") -Force

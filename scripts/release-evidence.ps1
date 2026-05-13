@@ -1,6 +1,12 @@
 param(
     [string]$ProductVersion = "0.1.0",
-    [string]$ReleaseLabel = "0.1.0-beta"
+    [string]$ReleaseLabel = "0.1.0-beta",
+    [string]$ApythonRoot = "C:\Users\Admin\apython",
+    [string]$PythonRoot = "C:\Users\Admin\AppData\Local\Programs\Python\Python313",
+    [string]$BashPath = "C:\msys64\usr\bin\bash.exe",
+    [string]$WindeployQtPath = "C:\msys64\ucrt64\bin\windeployqt6.exe",
+    [string]$WixPath = "C:\Program Files\WiX Toolset v7.0\bin\wix.exe",
+    [string]$QtLicenseRoot = "C:\msys64\ucrt64\share\licenses\qt6-base"
 )
 
 $ErrorActionPreference = "Stop"
@@ -23,9 +29,12 @@ function Invoke-LoggedStep {
 
     $logPath = Join-Path $logsDir "$Name.log"
     $started = Get-Date
+    $outputLines = [System.Collections.Generic.List[string]]::new()
     try {
-        $output = & $Command 2>&1
-        $output | Set-Content -LiteralPath $logPath -Encoding UTF8
+        & $Command 2>&1 | ForEach-Object {
+            [void]$outputLines.Add($_.ToString())
+        }
+        $outputLines | Set-Content -LiteralPath $logPath -Encoding UTF8
         [PSCustomObject]@{
             Name = $Name
             Status = "PASS"
@@ -34,7 +43,12 @@ function Invoke-LoggedStep {
             Log = $logPath
         }
     } catch {
-        @($_.Exception.Message, "", $_.ScriptStackTrace) | Set-Content -LiteralPath $logPath -Encoding UTF8
+        if ($outputLines.Count -gt 0) {
+            $outputLines | Set-Content -LiteralPath $logPath -Encoding UTF8
+        } else {
+            @() | Set-Content -LiteralPath $logPath -Encoding UTF8
+        }
+        @("", "ERROR: $($_.Exception.Message)", "", $_.ScriptStackTrace) | Add-Content -LiteralPath $logPath -Encoding UTF8
         throw
     }
 }
@@ -120,7 +134,16 @@ public static class LisanReleaseWindowOps {
 }
 
 $steps = @()
-$steps += Invoke-LoggedStep -Name "package" -Command { & (Join-Path $PSScriptRoot "package.ps1") -ProductVersion $ProductVersion }
+$steps += Invoke-LoggedStep -Name "package" -Command {
+    & (Join-Path $PSScriptRoot "package.ps1") `
+        -ProductVersion $ProductVersion `
+        -ApythonRoot $ApythonRoot `
+        -PythonRoot $PythonRoot `
+        -BashPath $BashPath `
+        -WindeployQtPath $WindeployQtPath `
+        -WixPath $WixPath `
+        -QtLicenseRoot $QtLicenseRoot
+}
 $steps += Invoke-LoggedStep -Name "msi-smoke-keep-installed" -Command { & (Join-Path $PSScriptRoot "msi-smoke.ps1") -KeepInstalled }
 
 if (-not (Test-Path -LiteralPath $msiPath)) {
@@ -145,9 +168,22 @@ $knownIssuesPath = Join-Path $releaseDir "KNOWN_ISSUES.md"
 - `windeployqt6` may warn that Qt translations and DirectX shader compiler DLLs are unavailable in this local toolchain; these are tracked as non-blocking for the current private beta smoke.
 "@ | Set-Content -LiteralPath $knownIssuesPath -Encoding UTF8
 
-$gitCommit = (& git -C $repo rev-parse --short HEAD).Trim()
-$gitBranch = (& git -C $repo branch --show-current).Trim()
-$gitStatus = (& git -C $repo status --short) -join "`n"
+$gitCommit = 'unavailable'
+$gitBranch = 'unavailable'
+$gitStatus = 'Git metadata unavailable in this workspace.'
+try {
+    $isInsideWorkTree = (& git -C $repo rev-parse --is-inside-work-tree 2>$null)
+    if ($LASTEXITCODE -eq 0 -and $isInsideWorkTree.Trim() -eq 'true') {
+        $gitCommit = (& git -C $repo rev-parse --short HEAD).Trim()
+        $gitBranch = (& git -C $repo branch --show-current).Trim()
+        $gitStatusOutput = (& git -C $repo status --short 2>$null)
+        if ($LASTEXITCODE -eq 0) {
+            $gitStatus = if ($gitStatusOutput) { $gitStatusOutput -join "`n" } else { 'Clean working tree' }
+        }
+    }
+} catch {
+    $gitStatus = "Git metadata unavailable: $($_.Exception.Message)"
+}
 $products = @(Get-LisanInstalledProducts)
 $msiHash = ($hashRows | Where-Object { $_.Path -eq $msiPath }).Hash
 $validationLog = Join-Path $releaseDir "VALIDATION_LOG.md"

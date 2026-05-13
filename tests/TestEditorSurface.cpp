@@ -237,12 +237,21 @@ void TestEditorSurface::emptyEditorPlaceholderPaintsFromRight()
     image.fill(Qt::transparent);
     editor.render(&image);
 
-    auto countVisibleTextPixels = [&image](const QRect &rect) {
+    const QRect content = editor.viewport()->geometry();
+    const QColor background = image.pixelColor(content.center().x(), content.bottom() - 8);
+    auto differsFromBackground = [&background](const QColor &color) {
+        const int delta = qAbs(color.red() - background.red())
+            + qAbs(color.green() - background.green())
+            + qAbs(color.blue() - background.blue());
+        return color.alpha() > 0 && delta > 30;
+    };
+
+    auto countVisibleTextPixels = [&image, &differsFromBackground](const QRect &rect) {
         int count = 0;
         for (int y = rect.top(); y <= rect.bottom(); ++y) {
             for (int x = rect.left(); x <= rect.right(); ++x) {
                 const QColor color = image.pixelColor(x, y);
-                if (color.lightness() > 110 && color.alpha() > 0) {
+                if (differsFromBackground(color)) {
                     ++count;
                 }
             }
@@ -250,16 +259,18 @@ void TestEditorSurface::emptyEditorPlaceholderPaintsFromRight()
         return count;
     };
 
-    const QRect content = editor.viewport()->geometry();
     const QRect leftBand(content.left() + 12, content.top() + 8, 240, 40);
     const QRect rightBand(content.right() - 300, content.top() + 8, 240, 40);
     const int leftPixels = countVisibleTextPixels(leftBand);
     const int rightPixels = countVisibleTextPixels(rightBand);
 
-    QVERIFY2(rightPixels > leftPixels * 2,
-        qPrintable(QStringLiteral("Empty Arabic placeholder should be painted near the right writing edge. left=%1 right=%2")
+    QVERIFY2(rightPixels > 20 && rightPixels > leftPixels * 2,
+        qPrintable(QStringLiteral("Empty Arabic placeholder should be painted near the right writing edge. left=%1 right=%2 background=%3,%4,%5")
             .arg(leftPixels)
-            .arg(rightPixels)));
+            .arg(rightPixels)
+            .arg(background.red())
+            .arg(background.green())
+            .arg(background.blue())));
 }
 
 QTEST_MAIN(TestEditorSurface)

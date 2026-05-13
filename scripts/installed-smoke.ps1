@@ -7,6 +7,10 @@ $ErrorActionPreference = "Stop"
 
 $app = Join-Path $InstallRoot "LisanStudio.exe"
 $python = Join-Path $InstallRoot "runtime\python\python.exe"
+$repo = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+$smokeArtifactDir = Join-Path $repo "artifacts\msi-smoke"
+New-Item -ItemType Directory -Force -Path $smokeArtifactDir | Out-Null
+$appSmokeDiagnosticsPath = Join-Path $smokeArtifactDir "app-smoke-diagnostics.json"
 
 if (-not (Test-Path $app)) {
     throw "Installed app not found: $app"
@@ -40,32 +44,99 @@ $env:PYTHONNOUSERSITE = "1"
 $env:PYTHONUTF8 = "1"
 $env:PYTHONIOENCODING = "utf-8"
 
-$runtimeOutput = & $python -m arabicpython.cli $sampleFile 2>&1
-if ($LASTEXITCODE -ne 0) {
-    $runtimeOutput | Write-Output
-    throw "Bundled runtime failed with exit code $LASTEXITCODE"
+$runtimeStdoutPath = Join-Path $sampleRoot "runtime.stdout.log"
+$runtimeStderrPath = Join-Path $sampleRoot "runtime.stderr.log"
+$runtimeProcess = Start-Process -FilePath $python `
+    -ArgumentList @("-m", "arabicpython.cli", $sampleFile) `
+    -RedirectStandardOutput $runtimeStdoutPath `
+    -RedirectStandardError $runtimeStderrPath `
+    -Wait `
+    -PassThru `
+    -WindowStyle Hidden
+
+$runtimeOutput = if (Test-Path -LiteralPath $runtimeStdoutPath) {
+    Get-Content -Raw -LiteralPath $runtimeStdoutPath -Encoding UTF8
+} else {
+    ""
 }
-if (($runtimeOutput -join "`n") -notmatch [regex]::Escape($expected)) {
-    $runtimeOutput | Write-Output
+$runtimeError = if (Test-Path -LiteralPath $runtimeStderrPath) {
+    Get-Content -Raw -LiteralPath $runtimeStderrPath -Encoding UTF8
+} else {
+    ""
+}
+
+if ($runtimeProcess.ExitCode -ne 0) {
+    if ($runtimeOutput) { $runtimeOutput | Write-Output }
+    if ($runtimeError) { $runtimeError | Write-Output }
+    throw "Bundled runtime failed with exit code $($runtimeProcess.ExitCode)"
+}
+if ($runtimeOutput -notmatch [regex]::Escape($expected)) {
+    if ($runtimeOutput) { $runtimeOutput | Write-Output }
+    if ($runtimeError) { $runtimeError | Write-Output }
     throw "Bundled runtime output did not contain expected Arabic text"
 }
 
-$projectProcess = Start-Process -FilePath $app -ArgumentList @($sampleRoot, "--smoke-exit-ms", "$SmokeExitMs") -PassThru -WindowStyle Hidden
-if (-not $projectProcess.WaitForExit($SmokeExitMs + 10000)) {
-    Stop-Process -Id $projectProcess.Id -Force
-    throw "Installed app did not exit after project smoke timeout"
-}
-if ($projectProcess.ExitCode -ne 0) {
-    throw "Installed app project smoke exited with code $($projectProcess.ExitCode)"
+function Get-AppSmokeProcessDiagnostic {
+    param(
+        [Parameter(Mandatory = $true)][System.Diagnostics.Process]$Process,
+        [Parameter(Mandatory = $true)][string]$Phase,
+        [Parameter(Mandatory = $true)][string[]]$Arguments
+    )
+
+    $Process.Refresh()
+    $processInfo = Get-CimInstance -ClassName Win32_Process -Filter "ProcessId = $($Process.Id)" -ErrorAction SilentlyContinue
+    [ordered]@{
+        phase = $Phase
+        capturedAt = (Get-Date).ToString('o')
+        processId = $Process.Id
+        hasExited = $Process.HasExited
+        exitCode = if ($Process.HasExited) { $Process.ExitCode } else { $null }
+        mainWindowTitle = if ($Process.HasExited) { $null } else { $Process.MainWindowTitle }
+        responding = if ($Process.HasExited) { $null } else { $Process.Responding }
+        startInfoArguments = $Arguments
+        executablePath = if ($processInfo) { $processInfo.ExecutablePath } else { $null }
+        commandLine = if ($processInfo) { $processInfo.CommandLine } else { $null }
+        creationDate = if ($processInfo) { $processInfo.CreationDate } else { $null }
+    }
 }
 
-$fileProcess = Start-Process -FilePath $app -ArgumentList @($sampleFile, "--smoke-exit-ms", "$SmokeExitMs") -PassThru -WindowStyle Hidden
-if (-not $fileProcess.WaitForExit($SmokeExitMs + 10000)) {
-    Stop-Process -Id $fileProcess.Id -Force
-    throw "Installed app did not exit after file smoke timeout"
+function Wait-AppSmokeProcess {
+    param(
+        [Parameter(Mandatory = $true)][System.Diagnostics.Process]$Process,
+        [Parameter(Mandatory = $true)][string]$Phase,
+        [Parameter(Mandatory = $true)][string[]]$Arguments,
+        [Parameter(Mandatory = $true)][string]$DiagnosticsPath,
+        [Parameter(Mandatory = $true)][int]$TimeoutMs
+    )
+
+    if (-not $Process.WaitForExit($TimeoutMs)) {
+        $diagnostic = Get-AppSmokeProcessDiagnostic -Process $Process -Phase $Phase -Arguments $Arguments
+        $diagnostic | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $DiagnosticsPath -Encoding UTF8
+        Stop-Process -Id $Process.Id -Force
+        throw "Installed app did not exit after $Phase smoke timeout. Diagnostic: $DiagnosticsPath"
+    }
+    if ($Process.ExitCode -ne 0) {
+        throw "Installed app $Phase smoke exited with code $($Process.ExitCode)"
+    }
 }
-if ($fileProcess.ExitCode -ne 0) {
-    throw "Installed app file smoke exited with code $($fileProcess.ExitCode)"
+
+$previousSmokeExitEnv = $env:LISAN_STUDIO_SMOKE_EXIT_MS
+try {
+    $env:LISAN_STUDIO_SMOKE_EXIT_MS = "$SmokeExitMs"
+
+    $projectArguments = @($sampleRoot, "--smoke-exit-ms", "$SmokeExitMs")
+    $projectProcess = Start-Process -FilePath $app -ArgumentList $projectArguments -PassThru
+    Wait-AppSmokeProcess -Process $projectProcess -Phase "project" -Arguments $projectArguments -DiagnosticsPath $appSmokeDiagnosticsPath -TimeoutMs ($SmokeExitMs + 10000)
+
+    $fileArguments = @($sampleFile, "--smoke-exit-ms", "$SmokeExitMs")
+    $fileProcess = Start-Process -FilePath $app -ArgumentList $fileArguments -PassThru
+    Wait-AppSmokeProcess -Process $fileProcess -Phase "file" -Arguments $fileArguments -DiagnosticsPath $appSmokeDiagnosticsPath -TimeoutMs ($SmokeExitMs + 10000)
+} finally {
+    if ($null -eq $previousSmokeExitEnv) {
+        Remove-Item Env:\LISAN_STUDIO_SMOKE_EXIT_MS -ErrorAction SilentlyContinue
+    } else {
+        $env:LISAN_STUDIO_SMOKE_EXIT_MS = $previousSmokeExitEnv
+    }
 }
 
 $sitePackages = Join-Path $InstallRoot "runtime\python\Lib\site-packages"
@@ -79,6 +150,6 @@ if ($editableMarkers) {
     App = $app
     Runtime = $python
     SampleProject = $sampleRoot
-    RuntimeOutput = ($runtimeOutput -join "`n")
+    RuntimeOutput = $runtimeOutput
     EditableMarkers = 0
 }
