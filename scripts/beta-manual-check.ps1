@@ -2,6 +2,7 @@ param(
     [string]$ReleaseLabel = "0.1.0-beta",
     [string]$ReleaseDir = "",
     [string]$MsiPath = "",
+    [string]$GuestMsiPath = "",
     [string]$OutputRoot = "",
     [string]$RunId = "",
     [switch]$Json
@@ -15,6 +16,9 @@ if ([string]::IsNullOrWhiteSpace($ReleaseDir)) {
 }
 if ([string]::IsNullOrWhiteSpace($MsiPath)) {
     $MsiPath = Join-Path $repo "artifacts\LisanStudio-$ReleaseLabel.msi"
+}
+if ([string]::IsNullOrWhiteSpace($GuestMsiPath)) {
+    $GuestMsiPath = "C:\CodexRunner\work\arabic-code-studio-qt\artifacts\LisanStudio-$ReleaseLabel.msi"
 }
 if ([string]::IsNullOrWhiteSpace($OutputRoot)) {
     $OutputRoot = Join-Path $repo "artifacts\beta-manual-check"
@@ -123,6 +127,7 @@ function New-ManualQaWordDocument {
         [Parameter(Mandatory = $true)][string]$GeneratedAt,
         [Parameter(Mandatory = $true)][string]$Repository,
         [Parameter(Mandatory = $true)][string]$ManualQaStatus,
+        [Parameter(Mandatory = $true)][string]$GuestMsiPath,
         [Parameter(Mandatory = $true)][object[]]$Artifacts,
         [Parameter(Mandatory = $true)][object[]]$Checklist
     )
@@ -177,6 +182,7 @@ function New-ManualQaWordDocument {
         $summaryRows = @(
             @('Release Label', $ReleaseLabel),
             @('Manual QA Status', $ManualQaStatus),
+            @('Guest MSI Path', $GuestMsiPath),
             @('Reviewer', ''),
             @('Review Date', ''),
             @('Overall Decision', '')
@@ -269,6 +275,7 @@ $markdownLines = @(
     "Generated: $generatedAt",
     "Repository: $repo",
     "Manual QA Status: $manualQaStatus",
+    "Guest MSI Path: $GuestMsiPath",
     "",
     "This report is an installed-app checklist for a human beta pass. It does not launch the app, install or uninstall MSI packages, run GUI automation, mutate Hyper-V, or use active WHITEDRAGON for validation.",
     "",
@@ -291,6 +298,7 @@ New-ManualQaWordDocument `
     -GeneratedAt $generatedAt `
     -Repository $repo `
     -ManualQaStatus $manualQaStatus `
+    -GuestMsiPath $GuestMsiPath `
     -Artifacts $artifacts `
     -Checklist $checklist
 
@@ -300,6 +308,7 @@ $result = [PSCustomObject]@{
     releaseLabel = $ReleaseLabel
     releaseDir = $ReleaseDir
     msiPath = $MsiPath
+    guestMsiPath = $GuestMsiPath
     outputDirectory = $outputDirectory
     markdownPath = $markdownPath
     wordPath = $wordPath

@@ -103,6 +103,7 @@ try {
             'Reviewer',
             'Review Date',
             'Overall Decision',
+            'Guest MSI Path',
             'Reviewer Instructions',
             'Use Result values: Pass, Fail, Blocked, or NotApplicable.',
             'Existing Release Evidence',

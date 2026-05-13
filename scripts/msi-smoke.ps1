@@ -52,6 +52,56 @@ function Get-InstalledLisanProductCodes {
     }
 }
 
+function Get-LisanUninstallRegistryEntries {
+    $uninstallRoots = @(
+        'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall',
+        'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall',
+        'HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall'
+    )
+
+    foreach ($root in $uninstallRoots) {
+        if (-not (Test-Path -LiteralPath $root)) {
+            continue
+        }
+        foreach ($key in @(Get-ChildItem -LiteralPath $root -ErrorAction SilentlyContinue)) {
+            $entry = Get-ItemProperty -LiteralPath $key.PSPath -ErrorAction SilentlyContinue
+            if ($entry.DisplayName -eq 'Lisan Studio') {
+                [PSCustomObject]@{
+                    RegistryPath = $key.Name
+                    DisplayName = [string]$entry.DisplayName
+                    DisplayVersion = [string]$entry.DisplayVersion
+                    Publisher = [string]$entry.Publisher
+                    InstallLocation = [string]$entry.InstallLocation
+                    DisplayIcon = [string]$entry.DisplayIcon
+                    UninstallString = [string]$entry.UninstallString
+                    QuietUninstallString = [string]$entry.QuietUninstallString
+                }
+            }
+        }
+    }
+}
+
+function Assert-LisanUninstallRegistryEntry {
+    $entries = @(Get-LisanUninstallRegistryEntries)
+    if ($entries.Count -eq 0) {
+        throw 'Windows Apps uninstall entry missing for Lisan Studio.'
+    }
+
+    foreach ($entry in $entries) {
+        if (-not $entry.DisplayVersion) {
+            throw "Windows Apps uninstall entry missing DisplayVersion: $($entry.RegistryPath)"
+        }
+        if ($entry.UninstallString -notmatch 'msiexec(\.exe)?') {
+            throw "UninstallString should reference msiexec: $($entry.RegistryPath)"
+        }
+        if ($entry.QuietUninstallString -notmatch 'msiexec(\.exe)?') {
+            throw "QuietUninstallString should reference msiexec: $($entry.RegistryPath)"
+        }
+    }
+
+    return $entries
+}
+
 Get-Process LisanStudio,ArabicCodeStudioQt -ErrorAction SilentlyContinue | Stop-Process -Force
 
 foreach ($productCode in @(Get-InstalledLisanProductCodes)) {
@@ -110,6 +160,7 @@ if (-not (Test-Path -LiteralPath $startMenuShortcut)) {
 if (-not (Test-Path -LiteralPath $desktopShortcut)) {
     throw "Desktop shortcut missing: $desktopShortcut"
 }
+$uninstallRegistryEntries = @(Assert-LisanUninstallRegistryEntry)
 
 & (Join-Path $PSScriptRoot "installed-smoke.ps1") -InstallRoot $InstallRoot
 
@@ -131,6 +182,10 @@ if (-not $KeepInstalled) {
     if (Test-Path -LiteralPath $desktopShortcut) {
         throw "Uninstall left Desktop shortcut behind: $desktopShortcut"
     }
+    $remainingUninstallRegistryEntries = @(Get-LisanUninstallRegistryEntries)
+    if ($remainingUninstallRegistryEntries.Count -gt 0) {
+        throw "Uninstall left Windows Apps uninstall entry behind: $($remainingUninstallRegistryEntries.RegistryPath -join ', ')"
+    }
 }
 
 [PSCustomObject]@{
@@ -142,4 +197,5 @@ if (-not $KeepInstalled) {
     UninstallLog = $uninstallLog
     StartMenuShortcut = $startMenuShortcut
     DesktopShortcut = $desktopShortcut
+    UninstallRegistryEntries = $uninstallRegistryEntries
 }
