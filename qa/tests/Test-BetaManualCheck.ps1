@@ -55,6 +55,9 @@ try {
     if (-not (Test-Path -LiteralPath $result.jsonPath)) {
         throw "Missing generated JSON report: $($result.jsonPath)"
     }
+    if (-not $result.wordPath -or -not (Test-Path -LiteralPath $result.wordPath)) {
+        throw "Missing generated Word report: $($result.wordPath)"
+    }
 
     $markdown = Get-Content -Raw -LiteralPath $result.markdownPath
     foreach ($requiredText in @(
@@ -77,6 +80,32 @@ try {
     }
     if ($markdown -match '\$\(@\{') {
         throw 'Manual QA markdown should render plain artifact paths, not PowerShell object expressions.'
+    }
+
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $docxExtractRoot = Join-Path $tempRoot 'docx-extract'
+    [System.IO.Compression.ZipFile]::ExtractToDirectory($result.wordPath, $docxExtractRoot)
+    $documentXmlPath = Join-Path $docxExtractRoot 'word\document.xml'
+    if (-not (Test-Path -LiteralPath $documentXmlPath)) {
+        throw 'Generated Word report should contain word/document.xml.'
+    }
+    $documentXml = Get-Content -Raw -LiteralPath $documentXmlPath
+    foreach ($requiredDocxText in @(
+            'Lisan Studio 0.1.0-beta Manual Beta QA',
+            'Manual QA Status',
+            'Existing Release Evidence',
+            'Manual Installed-App Checklist',
+            'Start Menu launch opens Lisan Studio',
+            'Run current `.apy` shows readable UTF-8 Arabic output',
+            'NotRecorded',
+            'Reviewer Notes'
+        )) {
+        if ($documentXml -notmatch [regex]::Escape($requiredDocxText)) {
+            throw "Generated Word report missing required text: $requiredDocxText"
+        }
+    }
+    if ($documentXml -notmatch '<w:tbl>') {
+        throw 'Generated Word report should use Word tables for artifacts and checklist items.'
     }
 
     $json = Get-Content -Raw -LiteralPath $result.jsonPath | ConvertFrom-Json

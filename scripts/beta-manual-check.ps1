@@ -43,6 +43,140 @@ function New-ArtifactStatus {
     }
 }
 
+function ConvertTo-DocxXmlText {
+    param([AllowNull()][string]$Value)
+
+    if ($null -eq $Value) {
+        return ''
+    }
+    return [System.Security.SecurityElement]::Escape($Value)
+}
+
+function New-DocxParagraphXml {
+    param(
+        [string]$Text,
+        [ValidateSet('Title', 'Heading1', 'Normal')]
+        [string]$Style = 'Normal'
+    )
+
+    $styleXml = ''
+    if ($Style -ne 'Normal') {
+        $styleXml = '<w:pPr><w:pStyle w:val="' + $Style + '"/></w:pPr>'
+    }
+    return '<w:p>' + $styleXml + '<w:r><w:t xml:space="preserve">' + (ConvertTo-DocxXmlText $Text) + '</w:t></w:r></w:p>'
+}
+
+function New-DocxTableXml {
+    param(
+        [string[]]$Headers,
+        [object[]]$Rows
+    )
+
+    $xml = New-Object System.Collections.Generic.List[string]
+    [void]$xml.Add('<w:tbl><w:tblPr><w:tblStyle w:val="TableGrid"/><w:tblW w:w="0" w:type="auto"/></w:tblPr>')
+    [void]$xml.Add('<w:tr>')
+    foreach ($header in $Headers) {
+        [void]$xml.Add('<w:tc><w:tcPr><w:tcW w:w="2400" w:type="dxa"/></w:tcPr><w:p><w:r><w:b/><w:t xml:space="preserve">' + (ConvertTo-DocxXmlText $header) + '</w:t></w:r></w:p></w:tc>')
+    }
+    [void]$xml.Add('</w:tr>')
+
+    foreach ($row in $Rows) {
+        [void]$xml.Add('<w:tr>')
+        foreach ($cell in @($row)) {
+            [void]$xml.Add('<w:tc><w:tcPr><w:tcW w:w="2400" w:type="dxa"/></w:tcPr><w:p><w:r><w:t xml:space="preserve">' + (ConvertTo-DocxXmlText ([string]$cell)) + '</w:t></w:r></w:p></w:tc>')
+        }
+        [void]$xml.Add('</w:tr>')
+    }
+
+    [void]$xml.Add('</w:tbl>')
+    return ($xml -join '')
+}
+
+function New-ManualQaWordDocument {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string]$ReleaseLabel,
+        [Parameter(Mandatory = $true)][string]$GeneratedAt,
+        [Parameter(Mandatory = $true)][string]$Repository,
+        [Parameter(Mandatory = $true)][string]$ManualQaStatus,
+        [Parameter(Mandatory = $true)][object[]]$Artifacts,
+        [Parameter(Mandatory = $true)][object[]]$Checklist
+    )
+
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+
+    $tempDocxRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("lisan-beta-docx-" + [System.Guid]::NewGuid().ToString('N'))
+    $wordDir = Join-Path $tempDocxRoot 'word'
+    $relsDir = Join-Path $tempDocxRoot '_rels'
+    $docPropsDir = Join-Path $tempDocxRoot 'docProps'
+    New-Item -ItemType Directory -Force -Path $wordDir, $relsDir, $docPropsDir | Out-Null
+
+    try {
+        @'
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+  <Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>
+  <Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>
+</Types>
+'@ | Set-Content -LiteralPath (Join-Path $tempDocxRoot '[Content_Types].xml') -Encoding UTF8
+
+        @'
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
+  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/>
+</Relationships>
+'@ | Set-Content -LiteralPath (Join-Path $relsDir '.rels') -Encoding UTF8
+
+        @'
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/></w:style>
+  <w:style w:type="paragraph" w:styleId="Title"><w:name w:val="Title"/><w:basedOn w:val="Normal"/><w:pPr><w:jc w:val="center"/></w:pPr><w:rPr><w:b/><w:sz w:val="32"/></w:rPr></w:style>
+  <w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading 1"/><w:basedOn w:val="Normal"/><w:rPr><w:b/><w:sz w:val="24"/></w:rPr></w:style>
+  <w:style w:type="table" w:styleId="TableGrid"><w:name w:val="Table Grid"/><w:tblPr><w:tblBorders><w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:left w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:right w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:insideH w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:insideV w:val="single" w:sz="4" w:space="0" w:color="auto"/></w:tblBorders></w:tblPr></w:style>
+</w:styles>
+'@ | Set-Content -LiteralPath (Join-Path $wordDir 'styles.xml') -Encoding UTF8
+
+        $artifactRows = @($Artifacts | ForEach-Object {
+            $state = if ($_.exists) { 'Present' } else { 'Missing' }
+            @($_.name, $state, $_.path, $_.purpose)
+        })
+        $checklistRows = @($Checklist | ForEach-Object {
+            @($_.item, $_.status, $_.notes)
+        })
+        $body = @(
+            (New-DocxParagraphXml -Text "Lisan Studio $ReleaseLabel Manual Beta QA" -Style Title),
+            (New-DocxParagraphXml -Text "Generated: $GeneratedAt"),
+            (New-DocxParagraphXml -Text "Repository: $Repository"),
+            (New-DocxParagraphXml -Text "Manual QA Status: $ManualQaStatus"),
+            (New-DocxParagraphXml -Text "This Word document is for the human installed-app beta pass. It does not launch the app, install or uninstall MSI packages, run GUI automation, mutate Hyper-V, or use active WHITEDRAGON for validation."),
+            (New-DocxParagraphXml -Text 'Existing Release Evidence' -Style Heading1),
+            (New-DocxTableXml -Headers @('Artifact', 'State', 'Path', 'Purpose') -Rows $artifactRows),
+            (New-DocxParagraphXml -Text 'Manual Installed-App Checklist' -Style Heading1),
+            (New-DocxTableXml -Headers @('Item', 'Result', 'Reviewer Notes') -Rows $checklistRows),
+            (New-DocxParagraphXml -Text 'Completion Rule' -Style Heading1),
+            (New-DocxParagraphXml -Text 'Manual QA is not complete until every applicable checklist item is marked Pass, Fail, or Blocked and any failures are recorded with artifact paths or screenshots.')
+        ) -join ''
+        $documentXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>' + $body + '<w:sectPr><w:pgSz w:w="12240" w:h="15840"/><w:pgMar w:top="720" w:right="720" w:bottom="720" w:left="720" w:header="720" w:footer="720" w:gutter="0"/></w:sectPr></w:body></w:document>'
+        $documentXml | Set-Content -LiteralPath (Join-Path $wordDir 'document.xml') -Encoding UTF8
+
+        $created = (Get-Date).ToUniversalTime().ToString('s') + 'Z'
+        ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?><cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:dcmitype="http://purl.org/dc/dcmitype/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><dc:title>Lisan Studio Manual Beta QA</dc:title><dc:creator>Codex</dc:creator><dcterms:created xsi:type="dcterms:W3CDTF">' + $created + '</dcterms:created></cp:coreProperties>') |
+            Set-Content -LiteralPath (Join-Path $docPropsDir 'core.xml') -Encoding UTF8
+
+        if (Test-Path -LiteralPath $Path) {
+            Remove-Item -LiteralPath $Path -Force
+        }
+        [System.IO.Compression.ZipFile]::CreateFromDirectory($tempDocxRoot, $Path)
+    } finally {
+        Remove-Item -LiteralPath $tempDocxRoot -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
 $artifactSpecs = @(
     @{ Name = "MSI"; Path = $MsiPath; Purpose = "Private beta installer package" },
     @{ Name = "Validation log"; Path = (Join-Path $ReleaseDir "VALIDATION_LOG.md"); Purpose = "Automated validation evidence" },
@@ -83,6 +217,7 @@ $manualQaStatus = "NotStarted"
 $generatedAt = Get-Date -Format "yyyy-MM-dd HH:mm:ss zzz"
 $markdownPath = Join-Path $outputDirectory "manual-beta-qa.md"
 $jsonPath = Join-Path $outputDirectory "manual-beta-qa.json"
+$wordPath = Join-Path $outputDirectory "manual-beta-qa.docx"
 
 $artifactLines = $artifacts | ForEach-Object {
     $state = if ($_.exists) { "present" } else { "missing" }
@@ -113,6 +248,14 @@ $markdownLines = @(
     "Manual QA is not complete until every applicable checklist item is marked and any failures are recorded with artifact paths or screenshots."
 )
 $markdownLines | Set-Content -LiteralPath $markdownPath -Encoding UTF8
+New-ManualQaWordDocument `
+    -Path $wordPath `
+    -ReleaseLabel $ReleaseLabel `
+    -GeneratedAt $generatedAt `
+    -Repository $repo `
+    -ManualQaStatus $manualQaStatus `
+    -Artifacts $artifacts `
+    -Checklist $checklist
 
 $result = [PSCustomObject]@{
     ok = $true
@@ -122,6 +265,7 @@ $result = [PSCustomObject]@{
     msiPath = $MsiPath
     outputDirectory = $outputDirectory
     markdownPath = $markdownPath
+    wordPath = $wordPath
     jsonPath = $jsonPath
     manualQaStatus = $manualQaStatus
     artifacts = $artifacts

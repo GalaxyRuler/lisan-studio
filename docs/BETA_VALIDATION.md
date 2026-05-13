@@ -51,8 +51,10 @@ bundle without launching the app or installing the MSI, run:
 ```
 
 The checklist is written under `artifacts\beta-manual-check\` and starts with
-`ManualQaStatus` set to `NotStarted`. Automated evidence does not mean the
-manual installed-app pass is complete.
+`ManualQaStatus` set to `NotStarted`. Human reviewers should use the generated
+`manual-beta-qa.docx` first; the Markdown and JSON files are kept for diffable
+traceability. Automated evidence does not mean the manual installed-app pass is
+complete.
 
 The automated Qt editor torture tests verify:
 

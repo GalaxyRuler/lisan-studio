@@ -26,7 +26,7 @@
 - WiX MSI packaging path for `LisanStudio-0.1.0-beta.msi`.
 - MSI install/uninstall smoke script for private beta validation.
 - Release evidence script for checksums, validation log, known issues, and screenshot capture.
-- Manual beta checklist script for recording the installed-app handoff pass from an existing release evidence bundle.
+- Manual beta checklist script for recording the installed-app handoff pass as a Word document, with Markdown and JSON traceability files.
 
 ## Deferred
 
