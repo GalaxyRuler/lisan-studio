@@ -55,13 +55,19 @@ function ConvertTo-DocxXmlText {
 function New-DocxParagraphXml {
     param(
         [string]$Text,
-        [ValidateSet('Title', 'Heading1', 'Normal')]
+        [ValidateSet('Title', 'Subtitle', 'Heading1', 'Instruction', 'Normal')]
         [string]$Style = 'Normal'
     )
 
     $styleXml = ''
     if ($Style -ne 'Normal') {
-        $styleXml = '<w:pPr><w:pStyle w:val="' + $Style + '"/></w:pPr>'
+        $styleId = switch ($Style) {
+            'Title' { 'LisanTitle' }
+            'Subtitle' { 'LisanSubtitle' }
+            'Heading1' { 'LisanHeading1' }
+            'Instruction' { 'LisanInstruction' }
+        }
+        $styleXml = '<w:pPr><w:pStyle w:val="' + $styleId + '"/><w:spacing w:after="120"/></w:pPr>'
     }
     return '<w:p>' + $styleXml + '<w:r><w:t xml:space="preserve">' + (ConvertTo-DocxXmlText $Text) + '</w:t></w:r></w:p>'
 }
@@ -69,23 +75,41 @@ function New-DocxParagraphXml {
 function New-DocxTableXml {
     param(
         [string[]]$Headers,
-        [object[]]$Rows
+        [object[]]$Rows,
+        [int[]]$ColumnWidths = @()
     )
 
+    if ($ColumnWidths.Count -ne $Headers.Count) {
+        $ColumnWidths = @(1..$Headers.Count | ForEach-Object { 2400 })
+    }
+
     $xml = New-Object System.Collections.Generic.List[string]
-    [void]$xml.Add('<w:tbl><w:tblPr><w:tblStyle w:val="TableGrid"/><w:tblW w:w="0" w:type="auto"/></w:tblPr>')
+    [void]$xml.Add('<w:tbl><w:tblPr><w:tblStyle w:val="TableGrid"/><w:tblW w:w="0" w:type="auto"/><w:tblCellMar><w:top w:w="80" w:type="dxa"/><w:left w:w="80" w:type="dxa"/><w:bottom w:w="80" w:type="dxa"/><w:right w:w="80" w:type="dxa"/></w:tblCellMar></w:tblPr>')
+    [void]$xml.Add('<w:tblGrid>')
+    foreach ($width in $ColumnWidths) {
+        [void]$xml.Add('<w:gridCol w:w="' + $width + '"/>')
+    }
+    [void]$xml.Add('</w:tblGrid>')
     [void]$xml.Add('<w:tr>')
-    foreach ($header in $Headers) {
-        [void]$xml.Add('<w:tc><w:tcPr><w:tcW w:w="2400" w:type="dxa"/></w:tcPr><w:p><w:r><w:b/><w:t xml:space="preserve">' + (ConvertTo-DocxXmlText $header) + '</w:t></w:r></w:p></w:tc>')
+    for ($index = 0; $index -lt $Headers.Count; ++$index) {
+        $header = $Headers[$index]
+        $width = $ColumnWidths[$index]
+        [void]$xml.Add('<w:tc><w:tcPr><w:tcW w:w="' + $width + '" w:type="dxa"/><w:shd w:fill="1F4E79" w:val="clear"/><w:tcMar><w:top w:w="90" w:type="dxa"/><w:left w:w="90" w:type="dxa"/><w:bottom w:w="90" w:type="dxa"/><w:right w:w="90" w:type="dxa"/></w:tcMar></w:tcPr><w:p><w:r><w:b/><w:color w:val="FFFFFF"/><w:t xml:space="preserve">' + (ConvertTo-DocxXmlText $header) + '</w:t></w:r></w:p></w:tc>')
     }
     [void]$xml.Add('</w:tr>')
 
+    $rowIndex = 0
     foreach ($row in $Rows) {
+        $fill = if (($rowIndex % 2) -eq 0) { 'FFFFFF' } else { 'EAF2F8' }
         [void]$xml.Add('<w:tr>')
-        foreach ($cell in @($row)) {
-            [void]$xml.Add('<w:tc><w:tcPr><w:tcW w:w="2400" w:type="dxa"/></w:tcPr><w:p><w:r><w:t xml:space="preserve">' + (ConvertTo-DocxXmlText ([string]$cell)) + '</w:t></w:r></w:p></w:tc>')
+        $cells = @($row)
+        for ($index = 0; $index -lt $Headers.Count; ++$index) {
+            $cell = if ($index -lt $cells.Count) { [string]$cells[$index] } else { '' }
+            $width = $ColumnWidths[$index]
+            [void]$xml.Add('<w:tc><w:tcPr><w:tcW w:w="' + $width + '" w:type="dxa"/><w:shd w:fill="' + $fill + '" w:val="clear"/><w:tcMar><w:top w:w="90" w:type="dxa"/><w:left w:w="90" w:type="dxa"/><w:bottom w:w="90" w:type="dxa"/><w:right w:w="90" w:type="dxa"/></w:tcMar></w:tcPr><w:p><w:r><w:t xml:space="preserve">' + (ConvertTo-DocxXmlText $cell) + '</w:t></w:r></w:p></w:tc>')
         }
         [void]$xml.Add('</w:tr>')
+        ++$rowIndex
     }
 
     [void]$xml.Add('</w:tbl>')
@@ -134,9 +158,11 @@ function New-ManualQaWordDocument {
         @'
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
-  <w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/></w:style>
-  <w:style w:type="paragraph" w:styleId="Title"><w:name w:val="Title"/><w:basedOn w:val="Normal"/><w:pPr><w:jc w:val="center"/></w:pPr><w:rPr><w:b/><w:sz w:val="32"/></w:rPr></w:style>
-  <w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading 1"/><w:basedOn w:val="Normal"/><w:rPr><w:b/><w:sz w:val="24"/></w:rPr></w:style>
+  <w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:rPr><w:rFonts w:ascii="Aptos" w:hAnsi="Aptos"/><w:sz w:val="21"/></w:rPr></w:style>
+  <w:style w:type="paragraph" w:styleId="LisanTitle"><w:name w:val="Lisan Title"/><w:basedOn w:val="Normal"/><w:pPr><w:jc w:val="center"/><w:shd w:fill="1F4E79" w:val="clear"/><w:spacing w:before="120" w:after="120"/></w:pPr><w:rPr><w:b/><w:color w:val="FFFFFF"/><w:sz w:val="36"/></w:rPr></w:style>
+  <w:style w:type="paragraph" w:styleId="LisanSubtitle"><w:name w:val="Lisan Subtitle"/><w:basedOn w:val="Normal"/><w:pPr><w:jc w:val="center"/><w:spacing w:after="180"/></w:pPr><w:rPr><w:color w:val="365F91"/><w:sz w:val="22"/></w:rPr></w:style>
+  <w:style w:type="paragraph" w:styleId="LisanHeading1"><w:name w:val="Lisan Heading 1"/><w:basedOn w:val="Normal"/><w:pPr><w:spacing w:before="220" w:after="100"/></w:pPr><w:rPr><w:b/><w:color w:val="1F4E79"/><w:sz w:val="26"/></w:rPr></w:style>
+  <w:style w:type="paragraph" w:styleId="LisanInstruction"><w:name w:val="Lisan Instruction"/><w:basedOn w:val="Normal"/><w:pPr><w:shd w:fill="EAF2F8" w:val="clear"/><w:spacing w:before="80" w:after="120"/></w:pPr><w:rPr><w:color w:val="1F4E79"/><w:sz w:val="21"/></w:rPr></w:style>
   <w:style w:type="table" w:styleId="TableGrid"><w:name w:val="Table Grid"/><w:tblPr><w:tblBorders><w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:left w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:right w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:insideH w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:insideV w:val="single" w:sz="4" w:space="0" w:color="auto"/></w:tblBorders></w:tblPr></w:style>
 </w:styles>
 '@ | Set-Content -LiteralPath (Join-Path $wordDir 'styles.xml') -Encoding UTF8
@@ -146,22 +172,33 @@ function New-ManualQaWordDocument {
             @($_.name, $state, $_.path, $_.purpose)
         })
         $checklistRows = @($Checklist | ForEach-Object {
-            @($_.item, $_.status, $_.notes)
+            @($_.item, $_.status, $_.notes, '')
         })
+        $summaryRows = @(
+            @('Release Label', $ReleaseLabel),
+            @('Manual QA Status', $ManualQaStatus),
+            @('Reviewer', ''),
+            @('Review Date', ''),
+            @('Overall Decision', '')
+        )
         $body = @(
             (New-DocxParagraphXml -Text "Lisan Studio $ReleaseLabel Manual Beta QA" -Style Title),
+            (New-DocxParagraphXml -Text 'Private Beta Review Packet' -Style Subtitle),
+            (New-DocxParagraphXml -Text 'Review Summary' -Style Heading1),
+            (New-DocxTableXml -Headers @('Field', 'Value') -Rows $summaryRows -ColumnWidths @(2600, 10600)),
+            (New-DocxParagraphXml -Text 'Reviewer Instructions' -Style Heading1),
+            (New-DocxParagraphXml -Text 'Use Result values: Pass, Fail, Blocked, or NotApplicable. Add concise reviewer notes for every Fail or Blocked item and include an evidence or screenshot path when one exists.' -Style Instruction),
             (New-DocxParagraphXml -Text "Generated: $GeneratedAt"),
             (New-DocxParagraphXml -Text "Repository: $Repository"),
-            (New-DocxParagraphXml -Text "Manual QA Status: $ManualQaStatus"),
-            (New-DocxParagraphXml -Text "This Word document is for the human installed-app beta pass. It does not launch the app, install or uninstall MSI packages, run GUI automation, mutate Hyper-V, or use active WHITEDRAGON for validation."),
+            (New-DocxParagraphXml -Text "This packet is for the human installed-app beta pass. It does not launch the app, install or uninstall MSI packages, run GUI automation, mutate Hyper-V, or use active WHITEDRAGON for validation."),
             (New-DocxParagraphXml -Text 'Existing Release Evidence' -Style Heading1),
-            (New-DocxTableXml -Headers @('Artifact', 'State', 'Path', 'Purpose') -Rows $artifactRows),
+            (New-DocxTableXml -Headers @('Artifact', 'State', 'Path', 'Purpose') -Rows $artifactRows -ColumnWidths @(1700, 1100, 7700, 2700)),
             (New-DocxParagraphXml -Text 'Manual Installed-App Checklist' -Style Heading1),
-            (New-DocxTableXml -Headers @('Item', 'Result', 'Reviewer Notes') -Rows $checklistRows),
+            (New-DocxTableXml -Headers @('Checklist Item', 'Result', 'Reviewer Notes', 'Evidence / Screenshot') -Rows $checklistRows -ColumnWidths @(5600, 1500, 3600, 2500)),
             (New-DocxParagraphXml -Text 'Completion Rule' -Style Heading1),
-            (New-DocxParagraphXml -Text 'Manual QA is not complete until every applicable checklist item is marked Pass, Fail, or Blocked and any failures are recorded with artifact paths or screenshots.')
+            (New-DocxParagraphXml -Text 'Manual QA is not complete until every applicable checklist item is marked Pass, Fail, Blocked, or NotApplicable and any failures are recorded with artifact paths or screenshots.' -Style Instruction)
         ) -join ''
-        $documentXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>' + $body + '<w:sectPr><w:pgSz w:w="12240" w:h="15840"/><w:pgMar w:top="720" w:right="720" w:bottom="720" w:left="720" w:header="720" w:footer="720" w:gutter="0"/></w:sectPr></w:body></w:document>'
+        $documentXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>' + $body + '<w:sectPr><w:pgSz w:w="15840" w:h="12240" w:orient="landscape"/><w:pgMar w:top="720" w:right="720" w:bottom="720" w:left="720" w:header="720" w:footer="720" w:gutter="0"/></w:sectPr></w:body></w:document>'
         $documentXml | Set-Content -LiteralPath (Join-Path $wordDir 'document.xml') -Encoding UTF8
 
         $created = (Get-Date).ToUniversalTime().ToString('s') + 'Z'

@@ -90,15 +90,28 @@ try {
         throw 'Generated Word report should contain word/document.xml.'
     }
     $documentXml = Get-Content -Raw -LiteralPath $documentXmlPath
+    $stylesXmlPath = Join-Path $docxExtractRoot 'word\styles.xml'
+    if (-not (Test-Path -LiteralPath $stylesXmlPath)) {
+        throw 'Generated Word report should contain word/styles.xml.'
+    }
+    $stylesXml = Get-Content -Raw -LiteralPath $stylesXmlPath
     foreach ($requiredDocxText in @(
             'Lisan Studio 0.1.0-beta Manual Beta QA',
+            'Private Beta Review Packet',
             'Manual QA Status',
+            'Review Summary',
+            'Reviewer',
+            'Review Date',
+            'Overall Decision',
+            'Reviewer Instructions',
+            'Use Result values: Pass, Fail, Blocked, or NotApplicable.',
             'Existing Release Evidence',
             'Manual Installed-App Checklist',
             'Start Menu launch opens Lisan Studio',
             'Run current `.apy` shows readable UTF-8 Arabic output',
             'NotRecorded',
-            'Reviewer Notes'
+            'Reviewer Notes',
+            'Evidence / Screenshot'
         )) {
         if ($documentXml -notmatch [regex]::Escape($requiredDocxText)) {
             throw "Generated Word report missing required text: $requiredDocxText"
@@ -106,6 +119,23 @@ try {
     }
     if ($documentXml -notmatch '<w:tbl>') {
         throw 'Generated Word report should use Word tables for artifacts and checklist items.'
+    }
+    foreach ($requiredProfessionalXml in @(
+            '<w:pgSz w:w="15840" w:h="12240" w:orient="landscape"/>',
+            '<w:tblGrid>',
+            '<w:shd w:fill="1F4E79"',
+            '<w:shd w:fill="EAF2F8"',
+            '<w:tcMar>',
+            '<w:spacing w:after="120"',
+            'w:val="LisanTitle"',
+            'w:val="LisanSubtitle"',
+            'w:val="LisanHeading1"',
+            'w:val="LisanInstruction"'
+        )) {
+        if ($documentXml -notmatch [regex]::Escape($requiredProfessionalXml) -and
+            $stylesXml -notmatch [regex]::Escape($requiredProfessionalXml)) {
+            throw "Generated Word report missing professional formatting XML: $requiredProfessionalXml"
+        }
     }
 
     $json = Get-Content -Raw -LiteralPath $result.jsonPath | ConvertFrom-Json
