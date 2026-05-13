@@ -88,15 +88,23 @@ function Assert-LisanUninstallRegistryEntry {
     }
 
     foreach ($entry in $entries) {
-        if (-not $entry.DisplayVersion) {
-            throw "Windows Apps uninstall entry missing DisplayVersion: $($entry.RegistryPath)"
-        }
         if ($entry.UninstallString -notmatch 'msiexec(\.exe)?') {
             throw "UninstallString should reference msiexec: $($entry.RegistryPath)"
         }
-        if ($entry.QuietUninstallString -notmatch 'msiexec(\.exe)?') {
-            throw "QuietUninstallString should reference msiexec: $($entry.RegistryPath)"
-        }
+    }
+
+    $projectEntry = @($entries | Where-Object { $_.RegistryPath -like '*\Uninstall\LisanStudio' }) | Select-Object -First 1
+    if (-not $projectEntry) {
+        throw 'Windows Apps project uninstall entry missing: HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\LisanStudio'
+    }
+    if (-not $projectEntry.DisplayVersion) {
+        throw "Windows Apps project uninstall entry missing DisplayVersion: $($projectEntry.RegistryPath)"
+    }
+    if ($projectEntry.QuietUninstallString -notmatch 'msiexec(\.exe)?') {
+        throw "QuietUninstallString should reference msiexec: $($projectEntry.RegistryPath)"
+    }
+    if ($projectEntry.InstallLocation -and -not $projectEntry.InstallLocation.StartsWith($InstallRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "InstallLocation should point at the Lisan install root: $($projectEntry.InstallLocation)"
     }
 
     return $entries

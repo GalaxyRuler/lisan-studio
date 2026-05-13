@@ -29,8 +29,11 @@ foreach ($requiredToken in @(
         'UninstallString',
         'QuietUninstallString',
         'Windows Apps uninstall entry missing',
+        'Windows Apps project uninstall entry missing',
+        'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\LisanStudio',
         'UninstallString should reference msiexec',
         'QuietUninstallString should reference msiexec',
+        'InstallLocation should point at the Lisan install root',
         'UninstallRegistryEntries'
     )) {
     if ($source -notmatch [regex]::Escape($requiredToken)) {
