@@ -41,6 +41,11 @@ if ($source -match 'Copy-Item\s+-ToSession\s+\$session\s+-LiteralPath\s+\$hostAp
 }
 
 foreach ($requiredToken in @(
+        'host-progress.jsonl',
+        'function Write-SmokeProgress',
+        'scheduled-task-poll',
+        'Copying project item into guest workspace.',
+        'Copying guest path back to host.',
         'New-Item -ItemType Directory -Force -Path $GuestApythonRoot',
         '$hostApythonContents = Join-Path $hostApythonRoot ''*''',
         'Copy-Item -ToSession $session -Path $hostApythonContents -Destination $guestApythonRoot',

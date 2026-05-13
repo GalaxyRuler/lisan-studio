@@ -552,6 +552,34 @@ if (-not $OutputDirectory) {
 New-Item -ItemType Directory -Force -Path $OutputDirectory | Out-Null
 $resolvedOutputDirectory = (Resolve-Path -LiteralPath $OutputDirectory).Path
 $resultPath = Join-Path $resolvedOutputDirectory 'msi-gui-smoke-result.json'
+$progressPath = Join-Path $resolvedOutputDirectory 'host-progress.jsonl'
+
+function Write-SmokeProgress {
+    param(
+        [string]$Stage,
+        [string]$Message,
+        [object]$Data = $null
+    )
+
+    try {
+        $entry = [ordered]@{
+            timestamp = (Get-Date).ToString('o')
+            stage = $Stage
+            message = $Message
+        }
+        if ($null -ne $Data) {
+            $entry.data = $Data
+        }
+        $entry | ConvertTo-Json -Depth 8 -Compress | Add-Content -LiteralPath $progressPath -Encoding UTF8
+    } catch {
+        # Progress breadcrumbs must never hide the real smoke failure.
+    }
+}
+
+Write-SmokeProgress -Stage 'init' -Message 'MSI/GUI smoke host-side progress initialized.' -Data ([ordered]@{
+        outputDirectory = $resolvedOutputDirectory
+        targetVmName = $packet.vmName
+    })
 
 if ($effectiveDryRun) {
     $intentPath = Join-Path $resolvedOutputDirectory 'msi-gui-smoke-intent.json'
@@ -632,6 +660,7 @@ if (-not (Get-IsAdministrator)) {
 }
 
 try {
+    Write-SmokeProgress -Stage 'credential' -Message 'Loading LisanStudio-QA guest credential metadata.'
     $credentialInfo = Get-LisanQaCredential
     $hostApythonRoot = Get-HostApythonRoot
     $hostRepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
@@ -644,9 +673,19 @@ try {
     $guestRunnerResultPath = Join-Path $guestArtifactDirectory 'interactive-smoke-result.json'
     $guestRunnerContent = Get-GuestInteractiveSmokeRunnerContent
 
+    Write-SmokeProgress -Stage 'pssession' -Message 'Opening PowerShell Direct session to LisanStudio-QA.' -Data ([ordered]@{
+            guestCredentialUserName = $credentialInfo.userName
+        })
     $session = New-PSSession -VMName 'LisanStudio-QA' -Credential $credentialInfo.credential
+    Write-SmokeProgress -Stage 'pssession' -Message 'PowerShell Direct session opened.'
     $taskName = $null
     try {
+        Write-SmokeProgress -Stage 'guest-reset' -Message 'Preparing guest work, artifact, and log directories.' -Data ([ordered]@{
+                guestRepoRoot = $guestRepoRoot
+                guestApythonRoot = $guestApythonRoot
+                guestArtifactDirectory = $guestArtifactDirectory
+                guestLogDirectory = $guestLogDirectory
+            })
         Invoke-Command -Session $session -ArgumentList $guestRepoRoot, $guestApythonRoot, $guestArtifactDirectory, $guestLogDirectory -ScriptBlock {
             param(
                 [string]$GuestRepoRoot,
@@ -677,6 +716,7 @@ try {
             New-Item -ItemType Directory -Force -Path $GuestRepoRoot | Out-Null
             New-Item -ItemType Directory -Force -Path $GuestApythonRoot | Out-Null
         } | Out-Null
+        Write-SmokeProgress -Stage 'guest-reset' -Message 'Guest directories are ready.'
 
         $transferItems = @(
             '.gitignore',
@@ -698,19 +738,34 @@ try {
         foreach ($item in $transferItems) {
             $sourcePath = Join-Path $hostRepoRoot $item
             if (-not (Test-Path -LiteralPath $sourcePath)) {
+                Write-SmokeProgress -Stage 'stage-repo' -Message 'Skipping missing transfer item.' -Data ([ordered]@{
+                        item = $item
+                    })
                 continue
             }
 
+            Write-SmokeProgress -Stage 'stage-repo' -Message 'Copying project item into guest workspace.' -Data ([ordered]@{
+                    item = $item
+                })
             if ((Get-Item -LiteralPath $sourcePath).PSIsContainer) {
                 Copy-Item -ToSession $session -LiteralPath $sourcePath -Destination $guestRepoRoot -Recurse -Force
             } else {
                 Copy-Item -ToSession $session -LiteralPath $sourcePath -Destination (Join-Path $guestRepoRoot $item) -Force
             }
+            Write-SmokeProgress -Stage 'stage-repo' -Message 'Copied project item into guest workspace.' -Data ([ordered]@{
+                    item = $item
+                })
         }
 
         $hostApythonContents = Join-Path $hostApythonRoot '*'
+        Write-SmokeProgress -Stage 'stage-apython' -Message 'Copying apython payload into guest workspace.' -Data ([ordered]@{
+                hostApythonRoot = $hostApythonRoot
+                guestApythonRoot = $guestApythonRoot
+            })
         Copy-Item -ToSession $session -Path $hostApythonContents -Destination $guestApythonRoot -Recurse -Force
+        Write-SmokeProgress -Stage 'stage-apython' -Message 'Copied apython payload into guest workspace.'
 
+        Write-SmokeProgress -Stage 'stage-apython' -Message 'Verifying guest apython payload shape.'
         Invoke-Command -Session $session -ArgumentList $guestApythonRoot -ScriptBlock {
             param([string]$GuestApythonRoot)
 
@@ -728,7 +783,9 @@ try {
                 }
             }
         } | Out-Null
+        Write-SmokeProgress -Stage 'stage-apython' -Message 'Guest apython payload shape verified.'
 
+        Write-SmokeProgress -Stage 'scheduled-task' -Message 'Registering one-shot interactive scheduled task.'
         $taskSetup = Invoke-Command -Session $session -ArgumentList $guestRunnerScriptPath, $guestRunnerContent, $guestRunnerResultPath, $guestRepoRoot, $guestApythonRoot, $guestArtifactDirectory, $guestLogDirectory, $credentialInfo.userName -ScriptBlock {
             param(
                 [string]$GuestRunnerScriptPath,
@@ -819,10 +876,18 @@ try {
         }
 
         $taskName = $taskSetup.taskName
+        Write-SmokeProgress -Stage 'scheduled-task' -Message 'Interactive scheduled task started.' -Data ([ordered]@{
+                taskName = $taskName
+                taskResultPath = $taskSetup.taskResultPath
+                interactiveUserName = $taskSetup.interactiveUserName
+                interactiveSessionId = $taskSetup.interactiveSessionId
+                scheduledTaskUserName = $taskSetup.scheduledTaskUserName
+            })
         $guestSmoke = $null
         $pollSnapshot = $null
         $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
         $timeout = [TimeSpan]::FromHours(2)
+        $nextProgressAt = [TimeSpan]::Zero
         while ($stopwatch.Elapsed -lt $timeout) {
             $pollSnapshot = Invoke-Command -Session $session -ArgumentList $taskSetup.taskName, $taskSetup.taskResultPath -ScriptBlock {
                 param(
@@ -852,6 +917,16 @@ try {
                 break
             }
 
+            if ($stopwatch.Elapsed -ge $nextProgressAt) {
+                Write-SmokeProgress -Stage 'scheduled-task-poll' -Message 'Interactive scheduled task is still running.' -Data ([ordered]@{
+                        elapsedSeconds = [int]$stopwatch.Elapsed.TotalSeconds
+                        taskName = $taskSetup.taskName
+                        taskState = $pollSnapshot.taskState
+                        lastTaskResult = $pollSnapshot.lastTaskResult
+                        resultExists = $pollSnapshot.resultExists
+                    })
+                $nextProgressAt = $stopwatch.Elapsed.Add([TimeSpan]::FromMinutes(1))
+            }
             Start-Sleep -Seconds 5
         }
 
@@ -862,6 +937,9 @@ try {
 
         $hostGuestArtifactsDirectory = Join-Path $resolvedOutputDirectory 'guest-artifacts'
         New-Item -ItemType Directory -Force -Path $hostGuestArtifactsDirectory | Out-Null
+        Write-SmokeProgress -Stage 'copy-back' -Message 'Copying guest artifacts back to host.' -Data ([ordered]@{
+                hostGuestArtifactsDirectory = $hostGuestArtifactsDirectory
+            })
 
         foreach ($guestPath in @(
                 $guestSmoke.smokeSummaryPath,
@@ -876,7 +954,13 @@ try {
                 continue
             }
 
+            Write-SmokeProgress -Stage 'copy-back' -Message 'Copying guest path back to host.' -Data ([ordered]@{
+                    guestPath = $guestPath
+                })
             Copy-Item -FromSession $session -LiteralPath $guestPath -Destination $hostGuestArtifactsDirectory -Recurse -Force
+            Write-SmokeProgress -Stage 'copy-back' -Message 'Copied guest path back to host.' -Data ([ordered]@{
+                    guestPath = $guestPath
+                })
         }
 
         $hostSummaryCopyPath = Join-Path $resolvedOutputDirectory 'smoke-summary.copy.json'
@@ -910,6 +994,10 @@ try {
             artifacts = $guestSmoke.artifacts
         }
         $result | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $resultPath -Encoding UTF8
+        Write-SmokeProgress -Stage 'complete' -Message 'MSI/GUI smoke completed.' -Data ([ordered]@{
+                ok = [bool]$guestSmoke.ok
+                resultPath = $resultPath
+            })
         if ($Json) {
             $result | ConvertTo-Json -Depth 12
         } else {
@@ -927,5 +1015,6 @@ try {
         }
     }
 } catch {
+    Write-SmokeProgress -Stage 'failure' -Message $_.Exception.Message
     Write-FailureAndExit -Message $_.Exception.Message -AsJson:$Json -EffectiveDryRun:$effectiveDryRun -ResultPath $resultPath
 }
