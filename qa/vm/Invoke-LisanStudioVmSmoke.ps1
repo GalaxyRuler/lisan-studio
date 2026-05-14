@@ -576,6 +576,40 @@ function Write-SmokeProgress {
     }
 }
 
+function Copy-GuestSmokeArtifacts {
+    param(
+        [Parameter(Mandatory = $true)]$Session,
+        [Parameter(Mandatory = $true)][string[]]$GuestPaths,
+        [Parameter(Mandatory = $true)][string]$Destination
+    )
+
+    New-Item -ItemType Directory -Force -Path $Destination | Out-Null
+    foreach ($guestPath in $GuestPaths) {
+        if ([string]::IsNullOrWhiteSpace([string]$guestPath)) {
+            continue
+        }
+
+        $guestPathExists = Invoke-Command -Session $Session -ArgumentList $guestPath -ScriptBlock {
+            param([string]$GuestPath)
+            Test-Path -LiteralPath $GuestPath
+        }
+        if (-not $guestPathExists) {
+            Write-SmokeProgress -Stage 'copy-back' -Message 'Guest artifact path did not exist.' -Data ([ordered]@{
+                    guestPath = $guestPath
+                })
+            continue
+        }
+
+        Write-SmokeProgress -Stage 'copy-back' -Message 'Copying guest path back to host.' -Data ([ordered]@{
+                guestPath = $guestPath
+            })
+        Copy-Item -FromSession $Session -LiteralPath $guestPath -Destination $Destination -Recurse -Force
+        Write-SmokeProgress -Stage 'copy-back' -Message 'Copied guest path back to host.' -Data ([ordered]@{
+                guestPath = $guestPath
+            })
+    }
+}
+
 Write-SmokeProgress -Stage 'init' -Message 'MSI/GUI smoke host-side progress initialized.' -Data ([ordered]@{
         outputDirectory = $resolvedOutputDirectory
         targetVmName = $packet.vmName
@@ -935,6 +969,36 @@ try {
 
         if (-not $guestSmoke) {
             $stateText = if ($pollSnapshot) { "$($pollSnapshot.taskState) / $($pollSnapshot.lastTaskResult)" } else { 'unknown' }
+            $hostGuestArtifactsDirectory = Join-Path $resolvedOutputDirectory 'guest-artifacts'
+            Write-SmokeProgress -Stage 'scheduled-task-timeout' -Message 'Interactive smoke task timed out; collecting partial guest evidence before failing.' -Data ([ordered]@{
+                    taskName = $taskSetup.taskName
+                    lastKnownState = $stateText
+                    hostGuestArtifactsDirectory = $hostGuestArtifactsDirectory
+                })
+            Invoke-Command -Session $session -ArgumentList $taskSetup.taskName, $guestArtifactDirectory -ScriptBlock {
+                param(
+                    [string]$TaskName,
+                    [string]$GuestArtifactDirectory
+                )
+
+                New-Item -ItemType Directory -Force -Path $GuestArtifactDirectory | Out-Null
+                Get-CimInstance Win32_Process |
+                    Where-Object {
+                        $_.Name -in @('powershell.exe', 'pwsh.exe', 'cmake.exe', 'ninja.exe', 'g++.exe', 'c++.exe', 'LisanStudio.exe', 'msiexec.exe', 'wix.exe') -or
+                        ([string]$_.CommandLine -like '*arabic-code-studio-qt*') -or
+                        ([string]$_.CommandLine -like '*LisanStudio*')
+                    } |
+                    Select-Object ProcessId, ParentProcessId, Name, CreationDate, CommandLine |
+                    ConvertTo-Json -Depth 4 |
+                    Set-Content -LiteralPath (Join-Path $GuestArtifactDirectory 'timeout-process-snapshot.json') -Encoding UTF8
+
+                Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+            } | Out-Null
+            Copy-GuestSmokeArtifacts -Session $session -GuestPaths @(
+                $guestArtifactDirectory,
+                $guestLogDirectory,
+                $guestRunnerResultPath
+            ) -Destination $hostGuestArtifactsDirectory
             throw "Timed out waiting for interactive smoke task '$($taskSetup.taskName)' to finish in LisanStudio-QA. Last known state: $stateText"
         }
 
@@ -944,7 +1008,7 @@ try {
                 hostGuestArtifactsDirectory = $hostGuestArtifactsDirectory
             })
 
-        foreach ($guestPath in @(
+        Copy-GuestSmokeArtifacts -Session $session -GuestPaths @(
                 $guestSmoke.smokeSummaryPath,
                 $guestSmoke.smokeSummaryMarkdownPath,
                 $guestSmoke.guestArtifactDirectory,
@@ -952,19 +1016,7 @@ try {
                 $guestSmoke.artifacts.releaseDir,
                 $guestSmoke.artifacts.msiSmokeDir,
                 $guestSmoke.artifacts.packagedMsi
-            )) {
-            if ([string]::IsNullOrWhiteSpace([string]$guestPath)) {
-                continue
-            }
-
-            Write-SmokeProgress -Stage 'copy-back' -Message 'Copying guest path back to host.' -Data ([ordered]@{
-                    guestPath = $guestPath
-                })
-            Copy-Item -FromSession $session -LiteralPath $guestPath -Destination $hostGuestArtifactsDirectory -Recurse -Force
-            Write-SmokeProgress -Stage 'copy-back' -Message 'Copied guest path back to host.' -Data ([ordered]@{
-                    guestPath = $guestPath
-                })
-        }
+            ) -Destination $hostGuestArtifactsDirectory
 
         $hostSummaryCopyPath = Join-Path $resolvedOutputDirectory 'smoke-summary.copy.json'
         $guestSmoke | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $hostSummaryCopyPath -Encoding UTF8
@@ -1013,6 +1065,7 @@ try {
             if ($taskName) {
                 Invoke-Command -Session $session -ArgumentList $taskName -ScriptBlock {
                     param([string]$TaskName)
+                    Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
                     Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction SilentlyContinue
                 } | Out-Null
             }
