@@ -23,6 +23,8 @@ foreach ($requiredMainToken in @(
         'qEnvironmentVariableIntValue',
         'const auto openRequestedPath',
         'QTimer::singleShot(0, &window',
+        'QTimer::singleShot(smokeExitMs, &app',
+        'app.quit()',
         'window.close()',
         'QCoreApplication::exit(0)',
         'std::thread',

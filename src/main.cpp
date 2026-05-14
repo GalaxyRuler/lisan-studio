@@ -54,8 +54,9 @@ int main(int argc, char *argv[])
     window.show();
 
     if (smokeExitMs >= 0) {
-        QTimer::singleShot(smokeExitMs, &window, [&window]() {
+        QTimer::singleShot(smokeExitMs, &app, [&app, &window]() {
             window.close();
+            app.quit();
             QCoreApplication::exit(0);
         });
     }
