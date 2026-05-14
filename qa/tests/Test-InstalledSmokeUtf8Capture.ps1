@@ -25,6 +25,7 @@ foreach ($requiredToken in @(
         'runtime.stderr.log',
         'app-smoke-diagnostics.json',
         'Get-CimInstance -ClassName Win32_Process',
+        'Stop-Process -Id $Process.Id -Force -ErrorAction SilentlyContinue',
         '-RedirectStandardOutput $runtimeStdoutPath',
         '-RedirectStandardError $runtimeStderrPath',
         'Get-Content -Raw -LiteralPath $runtimeStdoutPath -Encoding UTF8',

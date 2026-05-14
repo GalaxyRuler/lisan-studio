@@ -112,7 +112,7 @@ function Wait-AppSmokeProcess {
     if (-not $Process.WaitForExit($TimeoutMs)) {
         $diagnostic = Get-AppSmokeProcessDiagnostic -Process $Process -Phase $Phase -Arguments $Arguments
         $diagnostic | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $DiagnosticsPath -Encoding UTF8
-        Stop-Process -Id $Process.Id -Force
+        Stop-Process -Id $Process.Id -Force -ErrorAction SilentlyContinue
         throw "Installed app did not exit after $Phase smoke timeout. Diagnostic: $DiagnosticsPath"
     }
     if ($Process.ExitCode -ne 0) {
