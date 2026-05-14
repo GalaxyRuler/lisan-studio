@@ -602,7 +602,7 @@ if ($effectiveDryRun) {
         }
         plannedSmokePhases = @(
             'Confirm isolated QA target and approval packet integrity.',
-            'Copy the active arabic-code-studio-qt workspace and required apython payload to C:\CodexRunner\work through Copy-Item -ToSession.',
+            'Copy the active arabic-code-studio-qt workspace and required apython payload to a per-run directory under C:\CodexRunner\work through Copy-Item -ToSession.',
             'Require a logged-on LISAN-QA\codexqa desktop session before GUI-sensitive work begins.',
             'Register and start a one-shot interactive scheduled task in the guest desktop session.',
             'Run scripts\validate.ps1 first through the interactive scheduled task to verify the Qt build and tests.',
@@ -665,8 +665,9 @@ try {
     $hostApythonRoot = Get-HostApythonRoot
     $hostRepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
     $guestArtifactLeaf = Split-Path -Leaf $resolvedOutputDirectory
-    $guestRepoRoot = 'C:\CodexRunner\work\arabic-code-studio-qt'
-    $guestApythonRoot = 'C:\CodexRunner\work\apython'
+    $guestWorkRoot = Join-Path 'C:\CodexRunner\work' $guestArtifactLeaf
+    $guestRepoRoot = Join-Path $guestWorkRoot 'arabic-code-studio-qt'
+    $guestApythonRoot = Join-Path $guestWorkRoot 'apython'
     $guestArtifactDirectory = Join-Path 'C:\CodexRunner\artifacts' $guestArtifactLeaf
     $guestLogDirectory = Join-Path 'C:\CodexRunner\logs' $guestArtifactLeaf
     $guestRunnerScriptPath = 'C:\CodexRunner\work\Invoke-LisanStudioVmSmokeInteractive.ps1'
@@ -976,6 +977,7 @@ try {
             approvalPacketPath = (Resolve-Path -LiteralPath $ApprovalPacketPath).Path
             guestCredentialPath = $credentialInfo.path
             guestCredentialUserName = $credentialInfo.userName
+            guestWorkRoot = $guestWorkRoot
             guestRepoRoot = $guestRepoRoot
             guestApythonRoot = $guestApythonRoot
             guestSummaryPath = $guestSmoke.smokeSummaryPath
