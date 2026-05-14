@@ -665,7 +665,9 @@ try {
     $hostApythonRoot = Get-HostApythonRoot
     $hostRepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
     $guestArtifactLeaf = Split-Path -Leaf $resolvedOutputDirectory
-    $guestWorkRoot = Join-Path 'C:\CodexRunner\work' $guestArtifactLeaf
+    $guestLaneLeaf = Split-Path -Leaf (Split-Path -Parent $resolvedOutputDirectory)
+    $guestWorkLeaf = "$guestLaneLeaf-$guestArtifactLeaf"
+    $guestWorkRoot = Join-Path 'C:\CodexRunner\work' $guestWorkLeaf
     $guestRepoRoot = Join-Path $guestWorkRoot 'arabic-code-studio-qt'
     $guestApythonRoot = Join-Path $guestWorkRoot 'apython'
     $guestArtifactDirectory = Join-Path 'C:\CodexRunner\artifacts' $guestArtifactLeaf
@@ -977,6 +979,7 @@ try {
             approvalPacketPath = (Resolve-Path -LiteralPath $ApprovalPacketPath).Path
             guestCredentialPath = $credentialInfo.path
             guestCredentialUserName = $credentialInfo.userName
+            guestWorkLeaf = $guestWorkLeaf
             guestWorkRoot = $guestWorkRoot
             guestRepoRoot = $guestRepoRoot
             guestApythonRoot = $guestApythonRoot
