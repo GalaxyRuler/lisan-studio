@@ -61,18 +61,24 @@ try {
 
     $markdown = Get-Content -Raw -LiteralPath $result.markdownPath
     foreach ($requiredText in @(
-            '# Lisan Studio 0.1.0-beta Manual Beta QA',
+            '# Lisan Studio 0.1.0-beta Manual QA Review Packet',
             'Manual QA Status: NotStarted',
-            '## Existing Release Evidence',
-            '## Manual Installed-App Checklist',
-            '| Item | Result | Notes |',
-            '| --- | --- | --- |',
+            '## 1. Automated Evidence Summary',
+            '## 2. Reviewer Instructions',
+            '## 3. Manual Installed-App QA Checklist',
+            '## 4. Beta Blocker Watchlist',
+            '## 5. Final Review Decision',
+            '| # | Area | Test | Expected Result | Result | Reviewer Notes | Evidence / Screenshot |',
+            '| --- | --- | --- | --- | --- | --- | --- |',
             ('- [present] MSI: `{0}` - Private beta installer package' -f $msiPath),
-            '| Start Menu launch opens Lisan Studio | NotRecorded |  |',
-            '| Desktop shortcut launch opens Lisan Studio | NotRecorded |  |',
-            '| Arabic mixed-direction edit, save, close, and reopen preserves text | NotRecorded |  |',
-            '| Run current `.apy` shows readable UTF-8 Arabic output | NotRecorded |  |',
-            '| Uninstall removes app payload and shortcuts | NotRecorded |  |'
+            '| 1 | Launch | Start Menu launch opens Lisan Studio | App opens without crash and shows Lisan Studio branding | Not Recorded |  |  |',
+            '| 2 | Launch | Desktop shortcut launch opens Lisan Studio | Shortcut targets the installed LisanStudio.exe, not any legacy app | Not Recorded |  |  |',
+            '| 5 | Editing | Arabic mixed-direction edit, save, close, and reopen preserves text | Arabic, English, numbers, paths, and punctuation survive save/reopen without corruption | Not Recorded |  |  |',
+            '| 9 | Runtime | Run current `.apy` shows readable UTF-8 Arabic output | Output panel shows Arabic text without mojibake | Not Recorded |  |  |',
+            '| 12 | Installer | Uninstall removes app payload and shortcuts | Installed payload and shortcuts are removed; user settings are not treated as MSI payload | Not Recorded |  |  |',
+            '| Arabic output mojibake | Arabic text appears as garbled characters in the output panel. |',
+            '| Ready for private beta handoff | No blocking manual QA failures found |  |',
+            '| Blocked | One or more beta blockers must be fixed before handoff |  |'
         )) {
         if ($markdown -notmatch [regex]::Escape($requiredText)) {
             throw "Manual QA markdown missing required text: $requiredText"
@@ -96,23 +102,33 @@ try {
     }
     $stylesXml = Get-Content -Raw -LiteralPath $stylesXmlPath
     foreach ($requiredDocxText in @(
-            'Lisan Studio 0.1.0-beta Manual Beta QA',
-            'Private Beta Review Packet',
+            'Lisan Studio 0.1.0-beta',
+            'Manual QA Review Packet',
+            'Product',
+            'Private Beta - Manual Installed-App QA',
+            'Target Environment',
+            'LisanStudio-QA (isolated VM)',
+            'Validation Boundary',
             'Manual QA Status',
-            'Review Summary',
             'Reviewer',
             'Review Date',
             'Overall Decision',
             'Guest MSI Path',
+            '1. Automated Evidence Summary',
             'Reviewer Instructions',
-            'Use Result values: Pass, Fail, Blocked, or NotApplicable.',
-            'Existing Release Evidence',
-            'Manual Installed-App Checklist',
+            'For each checklist item, record exactly one result: Pass, Fail, Blocked, or Not Applicable.',
+            '3. Manual Installed-App QA Checklist',
+            'Expected Result',
             'Start Menu launch opens Lisan Studio',
             'Run current `.apy` shows readable UTF-8 Arabic output',
-            'NotRecorded',
+            'Not Recorded',
             'Reviewer Notes',
-            'Evidence / Screenshot'
+            'Evidence / Screenshot',
+            '4. Beta Blocker Watchlist',
+            'Arabic output mojibake',
+            '5. Final Review Decision',
+            'Ready for private beta handoff',
+            'Follow-up Issue Links or File Paths'
         )) {
         if ($documentXml -notmatch [regex]::Escape($requiredDocxText)) {
             throw "Generated Word report missing required text: $requiredDocxText"
@@ -146,9 +162,12 @@ try {
     if ($json.checklist.Count -lt 13) {
         throw 'Manual QA JSON should record every installed-app checklist item.'
     }
-    $unrecordedItems = @($json.checklist | Where-Object { $_.status -ne 'NotRecorded' -or -not $_.item })
+    $unrecordedItems = @($json.checklist | Where-Object { $_.status -ne 'Not Recorded' -or -not $_.test -or -not $_.area -or -not $_.expectedResult })
     if ($unrecordedItems.Count -ne 0) {
-        throw 'Manual QA JSON checklist items should start with item text and status=NotRecorded.'
+        throw 'Manual QA JSON checklist items should start with area, test, expectedResult, and status=Not Recorded.'
+    }
+    if ($json.blockerWatchlist.Count -lt 10) {
+        throw 'Manual QA JSON should record the standard beta blocker watchlist.'
     }
     $missing = @($json.artifacts | Where-Object { -not $_.exists })
     if ($missing.Count -ne 0) {

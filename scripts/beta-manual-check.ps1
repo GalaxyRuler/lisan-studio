@@ -129,7 +129,8 @@ function New-ManualQaWordDocument {
         [Parameter(Mandatory = $true)][string]$ManualQaStatus,
         [Parameter(Mandatory = $true)][string]$GuestMsiPath,
         [Parameter(Mandatory = $true)][object[]]$Artifacts,
-        [Parameter(Mandatory = $true)][object[]]$Checklist
+        [Parameter(Mandatory = $true)][object[]]$Checklist,
+        [Parameter(Mandatory = $true)][object[]]$BlockerWatchlist
     )
 
     Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -176,33 +177,62 @@ function New-ManualQaWordDocument {
             $state = if ($_.exists) { 'Present' } else { 'Missing' }
             @($_.name, $state, $_.path, $_.purpose)
         })
+        $rowNumber = 0
         $checklistRows = @($Checklist | ForEach-Object {
-            @($_.item, $_.status, $_.notes, '')
+            ++$rowNumber
+            @($rowNumber, $_.area, $_.test, $_.expectedResult, $_.status, $_.notes, '')
+        })
+        $blockerRows = @($BlockerWatchlist | ForEach-Object {
+            @($_.status, $_.category, $_.description)
         })
         $summaryRows = @(
-            @('Release Label', $ReleaseLabel),
+            @('Product', 'Lisan Studio'),
+            @('Version', $ReleaseLabel),
+            @('Review Type', 'Private Beta - Manual Installed-App QA'),
+            @('Target Environment', 'LisanStudio-QA (isolated VM)'),
+            @('Validation Boundary', 'GUI / MSI / installed-app validation must NOT run on active WHITEDRAGON'),
             @('Manual QA Status', $ManualQaStatus),
-            @('Guest MSI Path', $GuestMsiPath),
             @('Reviewer', ''),
             @('Review Date', ''),
             @('Overall Decision', '')
         )
         $body = @(
-            (New-DocxParagraphXml -Text "Lisan Studio $ReleaseLabel Manual Beta QA" -Style Title),
-            (New-DocxParagraphXml -Text 'Private Beta Review Packet' -Style Subtitle),
-            (New-DocxParagraphXml -Text 'Review Summary' -Style Heading1),
+            (New-DocxParagraphXml -Text "Lisan Studio $ReleaseLabel" -Style Title),
+            (New-DocxParagraphXml -Text 'Manual QA Review Packet' -Style Subtitle),
             (New-DocxTableXml -Headers @('Field', 'Value') -Rows $summaryRows -ColumnWidths @(2600, 10600)),
+            (New-DocxParagraphXml -Text '1. Automated Evidence Summary' -Style Heading1),
+            (New-DocxParagraphXml -Text 'The automated validation lane has already completed its run through the isolated Homelab lane inside the LisanStudio-QA VM. No manual re-execution of automated checks is required. The table below lists all artifacts produced and confirmed present at their respective paths.'),
+            (New-DocxTableXml -Headers @('Artifact', 'Status', 'Path / Location', 'Purpose') -Rows $artifactRows -ColumnWidths @(1700, 1100, 7700, 2700)),
             (New-DocxParagraphXml -Text 'Reviewer Instructions' -Style Heading1),
-            (New-DocxParagraphXml -Text 'Use Result values: Pass, Fail, Blocked, or NotApplicable. Add concise reviewer notes for every Fail or Blocked item and include an evidence or screenshot path when one exists.' -Style Instruction),
+            (New-DocxParagraphXml -Text 'Perform all testing exclusively inside the LisanStudio-QA isolated VM. Do not install, run, or uninstall the MSI on active WHITEDRAGON.'),
+            (New-DocxParagraphXml -Text 'Locate the beta MSI at the path listed in Section 1 and install it fresh before beginning the checklist.'),
+            (New-DocxParagraphXml -Text 'For each checklist item, record exactly one result: Pass, Fail, Blocked, or Not Applicable. For any Fail or Blocked result, provide a clear note and include the file path or filename of any screenshot or log evidence.' -Style Instruction),
+            (New-DocxParagraphXml -Text 'Manual QA is not complete until every checklist row carries a recorded result. Leave no row as Not Recorded at sign-off.'),
+            (New-DocxParagraphXml -Text 'If a beta blocker is encountered, stop, record the failure, and escalate before proceeding to dependent tests.'),
+            (New-DocxParagraphXml -Text 'Retain all screenshots, logs, and notes generated during this review for inclusion in the release record.'),
             (New-DocxParagraphXml -Text "Generated: $GeneratedAt"),
             (New-DocxParagraphXml -Text "Repository: $Repository"),
+            (New-DocxParagraphXml -Text "Guest MSI Path: $GuestMsiPath"),
             (New-DocxParagraphXml -Text "This packet is for the human installed-app beta pass. It does not launch the app, install or uninstall MSI packages, run GUI automation, mutate Hyper-V, or use active WHITEDRAGON for validation."),
-            (New-DocxParagraphXml -Text 'Existing Release Evidence' -Style Heading1),
-            (New-DocxTableXml -Headers @('Artifact', 'State', 'Path', 'Purpose') -Rows $artifactRows -ColumnWidths @(1700, 1100, 7700, 2700)),
-            (New-DocxParagraphXml -Text 'Manual Installed-App Checklist' -Style Heading1),
-            (New-DocxTableXml -Headers @('Checklist Item', 'Result', 'Reviewer Notes', 'Evidence / Screenshot') -Rows $checklistRows -ColumnWidths @(5600, 1500, 3600, 2500)),
-            (New-DocxParagraphXml -Text 'Completion Rule' -Style Heading1),
-            (New-DocxParagraphXml -Text 'Manual QA is not complete until every applicable checklist item is marked Pass, Fail, Blocked, or NotApplicable and any failures are recorded with artifact paths or screenshots.' -Style Instruction)
+            (New-DocxParagraphXml -Text '3. Manual Installed-App QA Checklist' -Style Heading1),
+            (New-DocxParagraphXml -Text 'Complete every row. Record exactly one result per test: Pass, Fail, Blocked, or Not Applicable. For Fail/Blocked, add notes and evidence.' -Style Instruction),
+            (New-DocxTableXml -Headers @('#', 'Area', 'Test', 'Expected Result', 'Result', 'Reviewer Notes', 'Evidence / Screenshot') -Rows $checklistRows -ColumnWidths @(600, 1400, 3200, 3700, 1100, 2200, 1000)),
+            (New-DocxParagraphXml -Text '4. Beta Blocker Watchlist' -Style Heading1),
+            (New-DocxParagraphXml -Text 'Any confirmed blocker listed below must be resolved before final sign-off. Tick the box when the category has been verified as clear. Leave unticked if the issue is open or untested.'),
+            (New-DocxTableXml -Headers @('Status', 'Blocker Category', 'Description') -Rows $blockerRows -ColumnWidths @(900, 3600, 8700)),
+            (New-DocxParagraphXml -Text '5. Final Review Decision' -Style Heading1),
+            (New-DocxParagraphXml -Text 'Select exactly one decision below. Complete all sign-off fields before submitting this packet.'),
+            (New-DocxTableXml -Headers @('Decision', 'Meaning', 'Select One') -Rows @(
+                    @('Ready for private beta handoff', 'No blocking manual QA failures found', ''),
+                    @('Ready with known non-blocking issues', 'Issues are documented and acceptable for private beta', ''),
+                    @('Blocked', 'One or more beta blockers must be fixed before handoff', '')
+                ) -ColumnWidths @(4700, 6900, 1600)),
+            (New-DocxTableXml -Headers @('Field', 'Value') -Rows @(
+                    @('Reviewer Name', ''),
+                    @('Date', ''),
+                    @('Summary Notes', ''),
+                    @('Follow-up Issue Links or File Paths', '')
+                ) -ColumnWidths @(3200, 10000))
         ) -join ''
         $documentXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>' + $body + '<w:sectPr><w:pgSz w:w="15840" w:h="12240" w:orient="landscape"/><w:pgMar w:top="720" w:right="720" w:bottom="720" w:left="720" w:header="720" w:footer="720" w:gutter="0"/></w:sectPr></w:body></w:document>'
         $documentXml | Set-Content -LiteralPath (Join-Path $wordDir 'document.xml') -Encoding UTF8
@@ -233,26 +263,47 @@ $artifacts = $artifactSpecs | ForEach-Object {
     New-ArtifactStatus -Name $_.Name -Path $_.Path -Purpose $_.Purpose
 }
 
-$checklistItems = @(
-    "Start Menu launch opens Lisan Studio",
-    "Desktop shortcut launch opens Lisan Studio",
-    "Open the installed sample project and verify the RTL shell",
-    'Open a real `.apy` folder from the project sidebar',
-    "Arabic mixed-direction edit, save, close, and reopen preserves text",
-    "Cursor, selection, copy, paste, undo, redo, backspace, and delete behave around Arabic text",
-    "Project search opens a clicked file and line",
-    "Problems panel reports an inserted hidden BiDi control",
-    'Run current `.apy` shows readable UTF-8 Arabic output',
-    "Output panel shows command, working directory, exit code, elapsed time, and cancel behavior",
-    "Settings opens, runtime diagnostics are readable, and editor font changes persist after restart",
-    "Uninstall removes app payload and shortcuts",
-    "Reinstall from the same beta MSI succeeds without manual PATH or Python setup"
+$checklistSpecs = @(
+    @{ Area = 'Launch'; Test = 'Start Menu launch opens Lisan Studio'; ExpectedResult = 'App opens without crash and shows Lisan Studio branding' },
+    @{ Area = 'Launch'; Test = 'Desktop shortcut launch opens Lisan Studio'; ExpectedResult = 'Shortcut targets the installed LisanStudio.exe, not any legacy app' },
+    @{ Area = 'Shell / RTL'; Test = 'Open the installed sample project and verify the RTL shell'; ExpectedResult = 'Top shell, project sidebar, editor tabs, bottom panel, and status bar appear RTL and readable' },
+    @{ Area = 'Project'; Test = 'Open a real `.apy` folder from the project sidebar'; ExpectedResult = 'Project tree loads file names cleanly and remains RTL' },
+    @{ Area = 'Editing'; Test = 'Arabic mixed-direction edit, save, close, and reopen preserves text'; ExpectedResult = 'Arabic, English, numbers, paths, and punctuation survive save/reopen without corruption' },
+    @{ Area = 'Editing'; Test = 'Cursor, selection, copy, paste, undo, redo, backspace, and delete behave around Arabic text'; ExpectedResult = 'No cursor jumps, selection corruption, or text loss around mixed-direction text' },
+    @{ Area = 'Search'; Test = 'Project search opens a clicked file and line'; ExpectedResult = 'Search results are readable and clicking a result opens the correct file/line' },
+    @{ Area = 'Problems'; Test = 'Problems panel reports an inserted hidden BiDi control'; ExpectedResult = 'Hidden BiDi diagnostic appears with useful file/line detail' },
+    @{ Area = 'Runtime'; Test = 'Run current `.apy` shows readable UTF-8 Arabic output'; ExpectedResult = 'Output panel shows Arabic text without mojibake' },
+    @{ Area = 'Runtime'; Test = 'Output panel shows command, working directory, exit code, elapsed time, and cancel behavior'; ExpectedResult = 'Runtime feedback is structured and readable' },
+    @{ Area = 'Settings'; Test = 'Settings opens, runtime diagnostics are readable, and editor font changes persist after restart'; ExpectedResult = 'Settings dialog is RTL, diagnostics are clear, and font preference persists' },
+    @{ Area = 'Installer'; Test = 'Uninstall removes app payload and shortcuts'; ExpectedResult = 'Installed payload and shortcuts are removed; user settings are not treated as MSI payload' },
+    @{ Area = 'Installer'; Test = 'Reinstall from the same beta MSI succeeds without manual PATH or Python setup'; ExpectedResult = 'Reinstall succeeds cleanly and app runs using bundled runtime' }
 )
-$checklist = $checklistItems | ForEach-Object {
+$checklist = $checklistSpecs | ForEach-Object {
     [PSCustomObject]@{
-        item = $_
-        status = "NotRecorded"
-        notes = ""
+        area = $_.Area
+        test = $_.Test
+        expectedResult = $_.ExpectedResult
+        status = 'Not Recorded'
+        notes = ''
+    }
+}
+
+$blockerWatchlist = @(
+    @{ Status = ''; Category = 'Arabic output mojibake'; Description = 'Arabic text appears as garbled characters in the output panel.' },
+    @{ Status = ''; Category = 'Cursor or selection corruption'; Description = 'Cursor jumps, incorrect selection, or text loss around mixed-direction content.' },
+    @{ Status = ''; Category = 'Save / open data loss'; Description = 'Any content lost or corrupted between save and reopen.' },
+    @{ Status = ''; Category = 'Crash on launch, run, close, install, or uninstall'; Description = 'Any unhandled exception or process termination.' },
+    @{ Status = ''; Category = 'MSI requiring manual PATH or system Python setup'; Description = 'Installation must succeed using the bundled runtime only.' },
+    @{ Status = ''; Category = 'Shortcuts pointing to wrong or legacy app'; Description = 'Start Menu and desktop shortcuts must target the installed LisanStudio.exe.' },
+    @{ Status = ''; Category = 'Missing Qt, Python, or lughat-althuban license payloads'; Description = 'All required license files must be present in the installed payload.' },
+    @{ Status = ''; Category = 'Hidden BiDi controls inserted by the editor'; Description = 'The editor must not silently insert Unicode BiDi control characters.' },
+    @{ Status = ''; Category = 'RTL shell regression'; Description = 'Any panel, sidebar, or status bar rendering in LTR when it should be RTL.' },
+    @{ Status = ''; Category = 'App launching on WHITEDRAGON instead of isolated QA VM'; Description = 'All GUI/MSI testing must remain within LisanStudio-QA.' }
+) | ForEach-Object {
+    [PSCustomObject]@{
+        status = $_.Status
+        category = $_.Category
+        description = $_.Description
     }
 }
 
@@ -266,11 +317,17 @@ $artifactLines = $artifacts | ForEach-Object {
     $state = if ($_.exists) { "present" } else { "missing" }
     '- [{0}] {1}: `{2}` - {3}' -f $state, $_.name, $_.path, $_.purpose
 }
-$checklistLines = @("| Item | Result | Notes |", "| --- | --- | --- |")
-$checklistLines += $checklist | ForEach-Object { "| $($_.item) | $($_.status) | $($_.notes) |" }
+$checklistLines = @("| # | Area | Test | Expected Result | Result | Reviewer Notes | Evidence / Screenshot |", "| --- | --- | --- | --- | --- | --- | --- |")
+$rowNumber = 0
+$checklistLines += $checklist | ForEach-Object {
+    ++$rowNumber
+    "| $rowNumber | $($_.area) | $($_.test) | $($_.expectedResult) | $($_.status) | $($_.notes) |  |"
+}
+$blockerLines = @("| Status | Blocker Category | Description |", "| --- | --- | --- |")
+$blockerLines += $blockerWatchlist | ForEach-Object { "| $($_.status) | $($_.category) | $($_.description) |" }
 
 $markdownLines = @(
-    "# Lisan Studio $ReleaseLabel Manual Beta QA",
+    "# Lisan Studio $ReleaseLabel Manual QA Review Packet",
     "",
     "Generated: $generatedAt",
     "Repository: $repo",
@@ -279,13 +336,39 @@ $markdownLines = @(
     "",
     "This report is an installed-app checklist for a human beta pass. It does not launch the app, install or uninstall MSI packages, run GUI automation, mutate Hyper-V, or use active WHITEDRAGON for validation.",
     "",
-    "## Existing Release Evidence",
+    "## 1. Automated Evidence Summary",
     "",
     $artifactLines,
     "",
-    "## Manual Installed-App Checklist",
+    "## 2. Reviewer Instructions",
+    "",
+    "- Perform all testing exclusively inside the LisanStudio-QA isolated VM.",
+    "- Do not install, run, or uninstall the MSI on active WHITEDRAGON.",
+    "- Record exactly one result per checklist item: Pass, Fail, Blocked, or Not Applicable.",
+    "- Add notes and evidence paths for every Fail or Blocked item.",
+    "",
+    "## 3. Manual Installed-App QA Checklist",
     "",
     $checklistLines,
+    "",
+    "## 4. Beta Blocker Watchlist",
+    "",
+    $blockerLines,
+    "",
+    "## 5. Final Review Decision",
+    "",
+    "| Decision | Meaning | Select One |",
+    "| --- | --- | --- |",
+    "| Ready for private beta handoff | No blocking manual QA failures found |  |",
+    "| Ready with known non-blocking issues | Issues are documented and acceptable for private beta |  |",
+    "| Blocked | One or more beta blockers must be fixed before handoff |  |",
+    "",
+    "| Field | Value |",
+    "| --- | --- |",
+    "| Reviewer Name |  |",
+    "| Date |  |",
+    "| Summary Notes |  |",
+    "| Follow-up Issue Links or File Paths |  |",
     "",
     "## Completion Rule",
     "",
@@ -300,7 +383,8 @@ New-ManualQaWordDocument `
     -ManualQaStatus $manualQaStatus `
     -GuestMsiPath $GuestMsiPath `
     -Artifacts $artifacts `
-    -Checklist $checklist
+    -Checklist $checklist `
+    -BlockerWatchlist $blockerWatchlist
 
 $result = [PSCustomObject]@{
     ok = $true
@@ -316,6 +400,7 @@ $result = [PSCustomObject]@{
     manualQaStatus = $manualQaStatus
     artifacts = $artifacts
     checklist = $checklist
+    blockerWatchlist = $blockerWatchlist
 }
 $result | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $jsonPath -Encoding UTF8
 
