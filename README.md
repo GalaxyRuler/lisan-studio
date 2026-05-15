@@ -15,6 +15,13 @@ prototype, not a browser shell, and not an Electron app.
 
 ## Local Build
 
+For full install, developer setup, packaging, QA, and troubleshooting
+instructions, see:
+
+```text
+docs\INSTALLATION.md
+```
+
 Run from PowerShell:
 
 ```powershell
