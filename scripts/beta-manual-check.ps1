@@ -5,6 +5,7 @@ param(
     [string]$GuestMsiPath = "",
     [string]$OutputRoot = "",
     [string]$RunId = "",
+    [string]$TemplatePath = "",
     [switch]$Json
 )
 
@@ -25,6 +26,17 @@ if ([string]::IsNullOrWhiteSpace($OutputRoot)) {
 }
 if ([string]::IsNullOrWhiteSpace($RunId)) {
     $RunId = Get-Date -Format "yyyyMMddTHHmmss"
+}
+if ([string]::IsNullOrWhiteSpace($TemplatePath)) {
+    $homelabRoot = if ($env:CODEX_HOMELAB_ROOT) {
+        $env:CODEX_HOMELAB_ROOT
+    } else {
+        'C:\Users\Admin\Documents\Codex\Homelab\codex-isolated-test-runners'
+    }
+    $candidateTemplatePath = Join-Path $homelabRoot 'docs\templates\manual-qa-review-packet-template.docx'
+    if (Test-Path -LiteralPath $candidateTemplatePath) {
+        $TemplatePath = $candidateTemplatePath
+    }
 }
 
 $outputDirectory = Join-Path $OutputRoot $RunId
@@ -86,9 +98,36 @@ function New-DocxTableXml {
     if ($ColumnWidths.Count -ne $Headers.Count) {
         $ColumnWidths = @(1..$Headers.Count | ForEach-Object { 2400 })
     }
+    $normalizedRows = New-Object System.Collections.Generic.List[object[]]
+    $pendingCells = New-Object System.Collections.Generic.List[object]
+    foreach ($row in $Rows) {
+        if ($row -is [array]) {
+            if ($pendingCells.Count -gt 0) {
+                while ($pendingCells.Count -lt $Headers.Count) {
+                    [void]$pendingCells.Add('')
+                }
+                [void]$normalizedRows.Add([object[]]$pendingCells.ToArray())
+                $pendingCells.Clear()
+            }
+            [void]$normalizedRows.Add([object[]]$row)
+        } else {
+            [void]$pendingCells.Add($row)
+            if ($pendingCells.Count -eq $Headers.Count) {
+                [void]$normalizedRows.Add([object[]]$pendingCells.ToArray())
+                $pendingCells.Clear()
+            }
+        }
+    }
+    if ($pendingCells.Count -gt 0) {
+        while ($pendingCells.Count -lt $Headers.Count) {
+            [void]$pendingCells.Add('')
+        }
+        [void]$normalizedRows.Add([object[]]$pendingCells.ToArray())
+    }
 
     $xml = New-Object System.Collections.Generic.List[string]
-    [void]$xml.Add('<w:tbl><w:tblPr><w:tblStyle w:val="TableGrid"/><w:tblW w:w="0" w:type="auto"/><w:tblCellMar><w:top w:w="80" w:type="dxa"/><w:left w:w="80" w:type="dxa"/><w:bottom w:w="80" w:type="dxa"/><w:right w:w="80" w:type="dxa"/></w:tblCellMar></w:tblPr>')
+    $tableWidth = ($ColumnWidths | Measure-Object -Sum).Sum
+    [void]$xml.Add('<w:tbl><w:tblPr><w:tblStyle w:val="TableGrid"/><w:tblW w:w="' + $tableWidth + '" w:type="dxa"/><w:tblLayout w:type="fixed"/><w:tblCellMar><w:top w:w="80" w:type="dxa"/><w:left w:w="80" w:type="dxa"/><w:bottom w:w="80" w:type="dxa"/><w:right w:w="80" w:type="dxa"/></w:tblCellMar></w:tblPr>')
     [void]$xml.Add('<w:tblGrid>')
     foreach ($width in $ColumnWidths) {
         [void]$xml.Add('<w:gridCol w:w="' + $width + '"/>')
@@ -98,12 +137,12 @@ function New-DocxTableXml {
     for ($index = 0; $index -lt $Headers.Count; ++$index) {
         $header = $Headers[$index]
         $width = $ColumnWidths[$index]
-        [void]$xml.Add('<w:tc><w:tcPr><w:tcW w:w="' + $width + '" w:type="dxa"/><w:shd w:fill="1F4E79" w:val="clear"/><w:tcMar><w:top w:w="90" w:type="dxa"/><w:left w:w="90" w:type="dxa"/><w:bottom w:w="90" w:type="dxa"/><w:right w:w="90" w:type="dxa"/></w:tcMar></w:tcPr><w:p><w:r><w:b/><w:color w:val="FFFFFF"/><w:t xml:space="preserve">' + (ConvertTo-DocxXmlText $header) + '</w:t></w:r></w:p></w:tc>')
+        [void]$xml.Add('<w:tc><w:tcPr><w:tcW w:w="' + $width + '" w:type="dxa"/><w:shd w:fill="1F4E79" w:val="clear"/><w:tcMar><w:top w:w="90" w:type="dxa"/><w:left w:w="90" w:type="dxa"/><w:bottom w:w="90" w:type="dxa"/><w:right w:w="90" w:type="dxa"/></w:tcMar></w:tcPr><w:p><w:r><w:rPr><w:b/><w:color w:val="FFFFFF"/></w:rPr><w:t xml:space="preserve">' + (ConvertTo-DocxXmlText $header) + '</w:t></w:r></w:p></w:tc>')
     }
     [void]$xml.Add('</w:tr>')
 
     $rowIndex = 0
-    foreach ($row in $Rows) {
+    foreach ($row in $normalizedRows) {
         $fill = if (($rowIndex % 2) -eq 0) { 'FFFFFF' } else { 'EAF2F8' }
         [void]$xml.Add('<w:tr>')
         $cells = @($row)
@@ -130,19 +169,31 @@ function New-ManualQaWordDocument {
         [Parameter(Mandatory = $true)][string]$GuestMsiPath,
         [Parameter(Mandatory = $true)][object[]]$Artifacts,
         [Parameter(Mandatory = $true)][object[]]$Checklist,
-        [Parameter(Mandatory = $true)][object[]]$BlockerWatchlist
+        [Parameter(Mandatory = $true)][object[]]$BlockerWatchlist,
+        [string]$TemplatePath
     )
 
     Add-Type -AssemblyName System.IO.Compression.FileSystem
 
     $tempDocxRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("lisan-beta-docx-" + [System.Guid]::NewGuid().ToString('N'))
     $wordDir = Join-Path $tempDocxRoot 'word'
+    $wordRelsDir = Join-Path $wordDir '_rels'
     $relsDir = Join-Path $tempDocxRoot '_rels'
     $docPropsDir = Join-Path $tempDocxRoot 'docProps'
-    New-Item -ItemType Directory -Force -Path $wordDir, $relsDir, $docPropsDir | Out-Null
 
     try {
-        @'
+        $resolvedTemplatePath = $null
+        if (-not [string]::IsNullOrWhiteSpace($TemplatePath) -and (Test-Path -LiteralPath $TemplatePath)) {
+            $resolvedTemplatePath = (Resolve-Path -LiteralPath $TemplatePath).Path
+        }
+        if ($resolvedTemplatePath) {
+            [System.IO.Compression.ZipFile]::ExtractToDirectory($resolvedTemplatePath, $tempDocxRoot)
+        }
+
+        New-Item -ItemType Directory -Force -Path $wordDir, $wordRelsDir, $relsDir, $docPropsDir | Out-Null
+
+        if (-not $resolvedTemplatePath) {
+            @'
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
   <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
@@ -153,7 +204,7 @@ function New-ManualQaWordDocument {
 </Types>
 '@ | Set-Content -LiteralPath (Join-Path $tempDocxRoot '[Content_Types].xml') -Encoding UTF8
 
-        @'
+            @'
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
@@ -161,17 +212,37 @@ function New-ManualQaWordDocument {
 </Relationships>
 '@ | Set-Content -LiteralPath (Join-Path $relsDir '.rels') -Encoding UTF8
 
-        @'
+            @'
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
-  <w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:rPr><w:rFonts w:ascii="Aptos" w:hAnsi="Aptos"/><w:sz w:val="21"/></w:rPr></w:style>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
+</Relationships>
+'@ | Set-Content -LiteralPath (Join-Path $wordRelsDir 'document.xml.rels') -Encoding UTF8
+        }
+
+        $lisanStylesXml = @'
   <w:style w:type="paragraph" w:styleId="LisanTitle"><w:name w:val="Lisan Title"/><w:basedOn w:val="Normal"/><w:pPr><w:jc w:val="center"/><w:shd w:fill="1F4E79" w:val="clear"/><w:spacing w:before="120" w:after="120"/></w:pPr><w:rPr><w:b/><w:color w:val="FFFFFF"/><w:sz w:val="36"/></w:rPr></w:style>
   <w:style w:type="paragraph" w:styleId="LisanSubtitle"><w:name w:val="Lisan Subtitle"/><w:basedOn w:val="Normal"/><w:pPr><w:jc w:val="center"/><w:spacing w:after="180"/></w:pPr><w:rPr><w:color w:val="365F91"/><w:sz w:val="22"/></w:rPr></w:style>
   <w:style w:type="paragraph" w:styleId="LisanHeading1"><w:name w:val="Lisan Heading 1"/><w:basedOn w:val="Normal"/><w:pPr><w:spacing w:before="220" w:after="100"/></w:pPr><w:rPr><w:b/><w:color w:val="1F4E79"/><w:sz w:val="26"/></w:rPr></w:style>
   <w:style w:type="paragraph" w:styleId="LisanInstruction"><w:name w:val="Lisan Instruction"/><w:basedOn w:val="Normal"/><w:pPr><w:shd w:fill="EAF2F8" w:val="clear"/><w:spacing w:before="80" w:after="120"/></w:pPr><w:rPr><w:color w:val="1F4E79"/><w:sz w:val="21"/></w:rPr></w:style>
   <w:style w:type="table" w:styleId="TableGrid"><w:name w:val="Table Grid"/><w:tblPr><w:tblBorders><w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:left w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:right w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:insideH w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:insideV w:val="single" w:sz="4" w:space="0" w:color="auto"/></w:tblBorders></w:tblPr></w:style>
+'@
+        $stylesPath = Join-Path $wordDir 'styles.xml'
+        if ($resolvedTemplatePath -and (Test-Path -LiteralPath $stylesPath)) {
+            $stylesXml = Get-Content -Raw -LiteralPath $stylesPath
+            if ($stylesXml -notmatch 'w:styleId="LisanTitle"') {
+                $stylesXml = $stylesXml -replace '</w:styles>\s*$', ($lisanStylesXml + "`r`n</w:styles>")
+                Set-Content -LiteralPath $stylesPath -Value $stylesXml -Encoding UTF8
+            }
+        } else {
+            @"
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:rPr><w:rFonts w:ascii="Aptos" w:hAnsi="Aptos"/><w:sz w:val="21"/></w:rPr></w:style>
+$lisanStylesXml
 </w:styles>
-'@ | Set-Content -LiteralPath (Join-Path $wordDir 'styles.xml') -Encoding UTF8
+"@ | Set-Content -LiteralPath $stylesPath -Encoding UTF8
+        }
 
         $artifactRows = @($Artifacts | ForEach-Object {
             $state = if ($_.exists) { 'Present' } else { 'Missing' }
@@ -216,7 +287,7 @@ function New-ManualQaWordDocument {
             (New-DocxParagraphXml -Text "This packet is for the human installed-app beta pass. It does not launch the app, install or uninstall MSI packages, run GUI automation, mutate Hyper-V, or use active WHITEDRAGON for validation."),
             (New-DocxParagraphXml -Text '3. Manual Installed-App QA Checklist' -Style Heading1),
             (New-DocxParagraphXml -Text 'Complete every row. Record exactly one result per test: Pass, Fail, Blocked, or Not Applicable. For Fail/Blocked, add notes and evidence.' -Style Instruction),
-            (New-DocxTableXml -Headers @('#', 'Area', 'Test', 'Expected Result', 'Result', 'Reviewer Notes', 'Evidence / Screenshot') -Rows $checklistRows -ColumnWidths @(600, 1400, 3200, 3700, 1100, 2200, 1000)),
+            (New-DocxTableXml -Headers @('#', 'Area', 'Test', 'Expected Result', 'Result', 'Reviewer Notes', 'Evidence / Screenshot') -Rows $checklistRows -ColumnWidths @(500, 1100, 3100, 4100, 1300, 1600, 1500)),
             (New-DocxParagraphXml -Text '4. Beta Blocker Watchlist' -Style Heading1),
             (New-DocxParagraphXml -Text 'Any confirmed blocker listed below must be resolved before final sign-off. Tick the box when the category has been verified as clear. Leave unticked if the issue is open or untested.'),
             (New-DocxTableXml -Headers @('Status', 'Blocker Category', 'Description') -Rows $blockerRows -ColumnWidths @(900, 3600, 8700)),
@@ -244,7 +315,40 @@ function New-ManualQaWordDocument {
         if (Test-Path -LiteralPath $Path) {
             Remove-Item -LiteralPath $Path -Force
         }
-        [System.IO.Compression.ZipFile]::CreateFromDirectory($tempDocxRoot, $Path)
+        Get-ChildItem -LiteralPath $tempDocxRoot -Recurse -File -Include '*.xml', '*.rels' | ForEach-Object {
+            $bytes = [System.IO.File]::ReadAllBytes($_.FullName)
+            if ($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF) {
+                $stripped = New-Object byte[] ($bytes.Length - 3)
+                [Array]::Copy($bytes, 3, $stripped, 0, $stripped.Length)
+                [System.IO.File]::WriteAllBytes($_.FullName, $stripped)
+            }
+        }
+        $zipStream = [System.IO.File]::Open($Path, [System.IO.FileMode]::CreateNew)
+        try {
+            $zipArchive = New-Object System.IO.Compression.ZipArchive($zipStream, [System.IO.Compression.ZipArchiveMode]::Create, $false)
+            try {
+                Get-ChildItem -LiteralPath $tempDocxRoot -Recurse -File | Sort-Object FullName | ForEach-Object {
+                    $relativePath = $_.FullName.Substring($tempDocxRoot.Length).TrimStart('\', '/')
+                    $entryName = $relativePath -replace '\\', '/'
+                    $entry = $zipArchive.CreateEntry($entryName, [System.IO.Compression.CompressionLevel]::Optimal)
+                    $entryStream = $entry.Open()
+                    try {
+                        $sourceStream = [System.IO.File]::OpenRead($_.FullName)
+                        try {
+                            $sourceStream.CopyTo($entryStream)
+                        } finally {
+                            $sourceStream.Dispose()
+                        }
+                    } finally {
+                        $entryStream.Dispose()
+                    }
+                }
+            } finally {
+                $zipArchive.Dispose()
+            }
+        } finally {
+            $zipStream.Dispose()
+        }
     } finally {
         Remove-Item -LiteralPath $tempDocxRoot -Recurse -Force -ErrorAction SilentlyContinue
     }
@@ -384,7 +488,8 @@ New-ManualQaWordDocument `
     -GuestMsiPath $GuestMsiPath `
     -Artifacts $artifacts `
     -Checklist $checklist `
-    -BlockerWatchlist $blockerWatchlist
+    -BlockerWatchlist $blockerWatchlist `
+    -TemplatePath $TemplatePath
 
 $result = [PSCustomObject]@{
     ok = $true
@@ -397,6 +502,7 @@ $result = [PSCustomObject]@{
     markdownPath = $markdownPath
     wordPath = $wordPath
     jsonPath = $jsonPath
+    templatePath = $TemplatePath
     manualQaStatus = $manualQaStatus
     artifacts = $artifacts
     checklist = $checklist

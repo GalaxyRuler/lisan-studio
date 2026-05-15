@@ -95,6 +95,14 @@ try {
     if (-not (Test-Path -LiteralPath $documentXmlPath)) {
         throw 'Generated Word report should contain word/document.xml.'
     }
+    $documentRelsPath = Join-Path $docxExtractRoot 'word\_rels\document.xml.rels'
+    if (-not (Test-Path -LiteralPath $documentRelsPath)) {
+        throw 'Generated Word report should contain word/_rels/document.xml.rels.'
+    }
+    $documentRels = Get-Content -Raw -LiteralPath $documentRelsPath
+    if ($documentRels -notmatch 'officeDocument/2006/relationships/styles') {
+        throw 'Generated Word report document relationships should link word/styles.xml.'
+    }
     $documentXml = Get-Content -Raw -LiteralPath $documentXmlPath
     $stylesXmlPath = Join-Path $docxExtractRoot 'word\styles.xml'
     if (-not (Test-Path -LiteralPath $stylesXmlPath)) {
