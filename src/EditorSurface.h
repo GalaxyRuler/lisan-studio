@@ -2,6 +2,8 @@
 
 #include "ApyHighlighter.h"
 
+#include <QContextMenuEvent>
+#include <QMenu>
 #include <QPlainTextEdit>
 #include <QVector>
 
@@ -31,6 +33,7 @@ public:
     QVector<HiddenBidiFinding> findHiddenBidiControls(const QString &text) const;
     int lineNumberAreaWidth() const;
     void lineNumberAreaPaintEvent(QPaintEvent *event);
+    QMenu *createEditorContextMenu(QWidget *parent = nullptr);
 
 signals:
     void filePathChanged(const QString &path);
@@ -46,6 +49,7 @@ private:
     void setCurrentFilePath(const QString &path);
     void updateLineNumberAreaWidth(int blockCount);
     void updateLineNumberArea(const QRect &rect, int dy);
+    void contextMenuEvent(QContextMenuEvent *event) override;
     void paintEvent(QPaintEvent *event) override;
     void resizeEvent(QResizeEvent *event) override;
 };

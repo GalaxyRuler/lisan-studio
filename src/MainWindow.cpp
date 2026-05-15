@@ -1118,8 +1118,13 @@ void MainWindow::renderSearchResults(const QVector<SearchResultRow> &rows)
         rowLayout->setContentsMargins(16, 16, 16, 16);
         rowLayout->setSpacing(0);
 
-        auto *metaLayout = new QHBoxLayout;
+        auto *metadataCluster = new QWidget(rowWidget);
+        metadataCluster->setObjectName(QStringLiteral("searchResultMetadataCluster"));
+        metadataCluster->setLayoutDirection(Qt::RightToLeft);
+        metadataCluster->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+        auto *metaLayout = new QHBoxLayout(metadataCluster);
         metaLayout->setDirection(QBoxLayout::RightToLeft);
+        metaLayout->setContentsMargins(0, 0, 0, 0);
         metaLayout->setSpacing(8);
         const QString fileLabelText = row.path.isEmpty()
             ? QString::fromUtf8("المحرر الحالي")
@@ -1151,7 +1156,7 @@ void MainWindow::renderSearchResults(const QVector<SearchResultRow> &rows)
         detailLayout->addStretch(1);
         detailLayout->addWidget(detailLabel);
 
-        rowLayout->addLayout(metaLayout);
+        rowLayout->addWidget(metadataCluster);
         rowLayout->addLayout(detailLayout);
         item->setSizeHint(QSize(rowWidget->sizeHint().width(), 72));
         searchResultsPanel->setItemWidget(item, rowWidget);
@@ -1911,13 +1916,25 @@ void MainWindow::addProblem(const QString &severity, const QString &message, con
 
     auto *messageLabel = new QLabel(message, row);
     messageLabel->setObjectName(QStringLiteral("problemMessageLabel"));
+    messageLabel->setLayoutDirection(Qt::RightToLeft);
     messageLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    messageLabel->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Preferred);
     messageLabel->setWordWrap(false);
     messageLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
     messageLabel->setStyleSheet(QStringLiteral("color: #D6DEE9;"));
 
+    auto *messageLine = new QWidget(row);
+    messageLine->setObjectName(QStringLiteral("problemMessageLine"));
+    messageLine->setLayoutDirection(Qt::RightToLeft);
+    auto *messageLayout = new QHBoxLayout(messageLine);
+    messageLayout->setDirection(QBoxLayout::RightToLeft);
+    messageLayout->setContentsMargins(0, 0, 0, 0);
+    messageLayout->setSpacing(0);
+    messageLayout->addWidget(messageLabel);
+    messageLayout->addStretch(1);
+
     rowLayout->addWidget(topLine);
-    rowLayout->addWidget(messageLabel);
+    rowLayout->addWidget(messageLine);
     problemsPanel->setItemWidget(item, row);
 }
 

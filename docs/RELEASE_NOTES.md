@@ -32,14 +32,18 @@
 
 - Automated Homelab MSI/GUI/release evidence lane passed inside `LisanStudio-QA`.
 - Manual installed-app QA is complete.
-- Private beta handoff decision: ready with known non-blocking issues.
+- Private beta handoff decision: ready; previously recorded non-blocking polish
+  notes are resolved in the current codebase.
 
-Known non-blocking manual QA notes:
+Resolved reviewer notes:
 
-- A command window appeared at the same time as app launch.
-- Right-click Undo/Redo menu actions were not clickable, while keyboard shortcuts worked.
-- Search result text appeared far from the number column.
-- Problems panel diagnostic subtext appeared far left.
+- Normal app launch is configured as a Windows GUI executable so it does not
+  open a command window.
+- Right-click Undo/Redo menu actions are Lisan-owned actions and trigger the
+  same editor commands as keyboard shortcuts.
+- Search result file text and line metadata are kept in a guarded RTL metadata
+  cluster.
+- Problems panel diagnostic subtext is right-anchored under the metadata row.
 
 ## Deferred
 

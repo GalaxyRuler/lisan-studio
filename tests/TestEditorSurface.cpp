@@ -3,6 +3,10 @@
 #include "ApyHighlighter.h"
 #include "EditorSurface.h"
 
+#include <QMenu>
+
+#include <memory>
+
 class TestEditorSurface : public QObject
 {
     Q_OBJECT
@@ -15,6 +19,7 @@ private slots:
     void highlightsArabicKeywordsStringsCommentsAndNumbers();
     void supportsCursorSelectionUndoAndDeleteInMixedText();
     void supportsCopyPasteUndoRedoAndDeleteAroundMixedDirectionText();
+    void contextMenuUndoRedoActionsAreEnabledAndTriggerEditorCommands();
     void cursorCanVisitEveryLogicalPositionInMixedDirectionLongLine();
     void lineNumberAreaScalesAndStaysVisibleForLongFiles();
     void lineNumbersStayOnRightEdgeForArabicEditing();
@@ -165,6 +170,41 @@ void TestEditorSurface::supportsCopyPasteUndoRedoAndDeleteAroundMixedDirectionTe
     editor.setTextCursor(cursor);
     QTest::keyClick(&editor, Qt::Key_Delete);
     QVERIFY(editor.toPlainText().contains(QString::fromUtf8("شروع/main.apy")));
+}
+
+void TestEditorSurface::contextMenuUndoRedoActionsAreEnabledAndTriggerEditorCommands()
+{
+    EditorSurface editor;
+    editor.resize(640, 360);
+    editor.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&editor));
+
+    editor.setPlainText(QString::fromUtf8("س = 1"));
+    QTextCursor cursor = editor.textCursor();
+    cursor.movePosition(QTextCursor::End);
+    editor.setTextCursor(cursor);
+    editor.insertPlainText(QString::fromUtf8("\nاطبع(س)"));
+
+    const QString editedText = editor.toPlainText();
+    QVERIFY(editedText.contains(QString::fromUtf8("اطبع")));
+
+    std::unique_ptr<QMenu> undoMenu(editor.createEditorContextMenu());
+    QVERIFY(undoMenu != nullptr);
+    auto *undoAction = undoMenu->findChild<QAction *>(QStringLiteral("editorContextUndoAction"));
+    QVERIFY(undoAction != nullptr);
+    QVERIFY(undoAction->isEnabled());
+    undoAction->trigger();
+
+    QVERIFY(editor.toPlainText().size() < editedText.size());
+
+    std::unique_ptr<QMenu> redoMenu(editor.createEditorContextMenu());
+    QVERIFY(redoMenu != nullptr);
+    auto *redoAction = redoMenu->findChild<QAction *>(QStringLiteral("editorContextRedoAction"));
+    QVERIFY(redoAction != nullptr);
+    QVERIFY(redoAction->isEnabled());
+    redoAction->trigger();
+
+    QCOMPARE(editor.toPlainText(), editedText);
 }
 
 void TestEditorSurface::cursorCanVisitEveryLogicalPositionInMixedDirectionLongLine()

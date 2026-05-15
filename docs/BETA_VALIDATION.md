@@ -5,7 +5,8 @@ Run validation from the installed app, not only from the build tree.
 
 ## Current 0.1.0-beta Status
 
-Status: ready for private beta handoff with known non-blocking manual QA notes.
+Status: ready for private beta handoff with previously recorded polish notes
+resolved in the current codebase.
 
 Completed gates:
 
@@ -14,17 +15,22 @@ Completed gates:
 - Human installed-app manual QA checklist was completed.
 - Installer reinstall check passed from the VM desktop MSI:
   `C:\Users\Public\Desktop\LisanStudio-0.1.0-beta.msi`.
+- Latest polish-closure Homelab report:
+  `C:\Users\Admin\Documents\Codex\Homelab\codex-isolated-test-runners\tools\codex-runner\artifacts\homelab-runtime-lane-20260516T015105\homelab-runtime-lane-report.json`.
 
-Recorded non-blocking reviewer notes:
+Resolved reviewer notes:
 
-- Launch: a command window appeared at the same time as app launch.
-- Editing: right-click Undo/Redo menu actions were not clickable, while keyboard
-  shortcuts worked.
-- Search: result text appeared far from the number column.
-- Problems panel: diagnostic subtext appeared far left.
+- Launch: normal app launch is configured as a Windows GUI executable so it
+  does not open a command window.
+- Editing: right-click Undo/Redo menu actions are Lisan-owned actions and
+  trigger the same editor commands as keyboard shortcuts.
+- Search: result file text and line metadata are kept in a guarded RTL metadata
+  cluster.
+- Problems panel: diagnostic subtext is right-anchored under the metadata row.
 
-These notes do not block the 0.1.0 private beta handoff, but they should be
-tracked as follow-up polish before a wider release.
+These fixes must still be preserved by the local Qt tests and the Homelab
+`LisanStudio-QA` MSI/GUI/release-evidence lane before a refreshed handoff build
+is treated as final.
 
 ## Automated Gate
 

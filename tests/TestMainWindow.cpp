@@ -67,6 +67,17 @@ static QString writeFile(const QDir &root, const QString &relative, const QStrin
     return info.absoluteFilePath();
 }
 
+static int horizontalGap(const QRect &a, const QRect &b)
+{
+    if (a.right() < b.left()) {
+        return b.left() - a.right();
+    }
+    if (b.right() < a.left()) {
+        return a.left() - b.right();
+    }
+    return 0;
+}
+
 void TestMainWindow::opensProjectAndFileFromPath()
 {
     QTemporaryDir temp;
@@ -645,6 +656,9 @@ void TestMainWindow::projectSearchFindsCurrentUnsavedEditorImmediately()
     QCOMPARE(results->count(), 1);
     auto *resultRow = results->itemWidget(results->item(0));
     QVERIFY(resultRow != nullptr);
+    auto *metadataCluster = resultRow->findChild<QWidget *>(QStringLiteral("searchResultMetadataCluster"));
+    QVERIFY(metadataCluster != nullptr);
+    QCOMPARE(metadataCluster->layoutDirection(), Qt::RightToLeft);
     auto *fileLabel = resultRow->findChild<QLabel *>(QStringLiteral("searchResultFileLabel"));
     auto *lineLabel = resultRow->findChild<QLabel *>(QStringLiteral("searchResultLineLabel"));
     auto *detailLabel = resultRow->findChild<QLabel *>(QStringLiteral("searchResultDetailLabel"));
@@ -690,8 +704,10 @@ void TestMainWindow::projectSearchResultRowsFillRtlViewport()
     auto *resultRow = results->itemWidget(results->item(0));
     QVERIFY(resultRow != nullptr);
     auto *fileLabel = resultRow->findChild<QLabel *>(QStringLiteral("searchResultFileLabel"));
+    auto *lineLabel = resultRow->findChild<QLabel *>(QStringLiteral("searchResultLineLabel"));
     auto *detailLabel = resultRow->findChild<QLabel *>(QStringLiteral("searchResultDetailLabel"));
     QVERIFY(fileLabel != nullptr);
+    QVERIFY(lineLabel != nullptr);
     QVERIFY(detailLabel != nullptr);
     QVERIFY(resultRow->findChild<QWidget *>(QStringLiteral("searchResultPreviewText")) == nullptr);
 
@@ -703,6 +719,15 @@ void TestMainWindow::projectSearchResultRowsFillRtlViewport()
             .arg(viewportWidth)));
 
     const QRect labelRect(fileLabel->mapTo(results->viewport(), QPoint(0, 0)), fileLabel->size());
+    const QRect lineRect(lineLabel->mapTo(results->viewport(), QPoint(0, 0)), lineLabel->size());
+    const int metadataGap = horizontalGap(labelRect, lineRect);
+    QVERIFY2(metadataGap <= 24,
+        qPrintable(QStringLiteral("search result file text should sit near the line column. gap=%1 file=[%2,%3] line=[%4,%5]")
+            .arg(metadataGap)
+            .arg(labelRect.left())
+            .arg(labelRect.right())
+            .arg(lineRect.left())
+            .arg(lineRect.right())));
     QVERIFY2(labelRect.right() > viewportWidth - 260,
         qPrintable(QStringLiteral("RTL search result title should sit near the right edge. labelRight=%1 viewport=%2")
             .arg(labelRect.right())
@@ -775,6 +800,10 @@ void TestMainWindow::problemsPanelShowsHiddenBidiWarnings()
 
     MainWindow window;
     QVERIFY(window.openPath(filePath));
+    window.resize(1000, 700);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    QCoreApplication::processEvents();
 
     auto *problems = window.findChild<QListWidget *>(QStringLiteral("problemsPanel"));
     QVERIFY(problems != nullptr);
@@ -789,13 +818,27 @@ void TestMainWindow::problemsPanelShowsHiddenBidiWarnings()
     auto *severity = row->findChild<QLabel *>(QStringLiteral("problemSeverityLabel"));
     auto *location = row->findChild<QLabel *>(QStringLiteral("problemLocationLabel"));
     auto *message = row->findChild<QLabel *>(QStringLiteral("problemMessageLabel"));
+    auto *messageLine = row->findChild<QWidget *>(QStringLiteral("problemMessageLine"));
     QVERIFY(severity != nullptr);
     QVERIFY(location != nullptr);
     QVERIFY(message != nullptr);
+    QVERIFY(messageLine != nullptr);
+    QCOMPARE(messageLine->layoutDirection(), Qt::RightToLeft);
     QCOMPARE(severity->text(), QString::fromUtf8("تحذير"));
     QVERIFY(location->text().contains(QStringLiteral("main.apy")));
     QVERIFY(location->text().contains(QString::fromUtf8("السطر 2")));
     QVERIFY(message->text().contains(QStringLiteral("RIGHT-TO-LEFT OVERRIDE")));
+    const int viewportWidth = problems->viewport()->width();
+    const QRect locationRect(location->mapTo(problems->viewport(), QPoint(0, 0)), location->size());
+    const QRect messageRect(message->mapTo(problems->viewport(), QPoint(0, 0)), message->size());
+    QVERIFY2(messageRect.right() > viewportWidth - 260,
+        qPrintable(QStringLiteral("problem message should stay near the right edge. messageRight=%1 viewport=%2")
+            .arg(messageRect.right())
+            .arg(viewportWidth)));
+    QVERIFY2(messageRect.left() >= locationRect.left() - 32,
+        qPrintable(QStringLiteral("problem message should align under the right-side location text. messageLeft=%1 locationLeft=%2")
+            .arg(messageRect.left())
+            .arg(locationRect.left())));
     QCOMPARE(problems->item(0)->data(Qt::UserRole + 2).toString(), QString::fromUtf8("تحذير"));
     QVERIFY(problems->item(0)->data(Qt::UserRole + 3).toString().contains(QString::fromUtf8("تحكم اتجاه مخفي")));
 }
@@ -836,6 +879,9 @@ void TestMainWindow::problemsPanelShowsRuntimeFailureRows()
     QVERIFY(temp.isValid());
 
     MainWindow window;
+    window.resize(1000, 700);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
     QVERIFY(window.openPath(temp.path()));
     QVERIFY(QMetaObject::invokeMethod(&window, "newFile", Qt::DirectConnection));
 
@@ -861,13 +907,27 @@ void TestMainWindow::problemsPanelShowsRuntimeFailureRows()
     auto *severity = row->findChild<QLabel *>(QStringLiteral("problemSeverityLabel"));
     auto *location = row->findChild<QLabel *>(QStringLiteral("problemLocationLabel"));
     auto *message = row->findChild<QLabel *>(QStringLiteral("problemMessageLabel"));
+    auto *messageLine = row->findChild<QWidget *>(QStringLiteral("problemMessageLine"));
     QVERIFY(severity != nullptr);
     QVERIFY(location != nullptr);
     QVERIFY(message != nullptr);
+    QVERIFY(messageLine != nullptr);
+    QCOMPARE(messageLine->layoutDirection(), Qt::RightToLeft);
     QCOMPARE(severity->text(), QString::fromUtf8("خطأ"));
     QVERIFY(location->text().contains(QStringLiteral("current-buffer.apy")));
     QVERIFY(location->text().contains(QString::fromUtf8("السطر 1")));
     QVERIFY(message->text().contains(QString::fromUtf8("تعذر بدء")));
+    const int viewportWidth = problems->viewport()->width();
+    const QRect locationRect(location->mapTo(problems->viewport(), QPoint(0, 0)), location->size());
+    const QRect messageRect(message->mapTo(problems->viewport(), QPoint(0, 0)), message->size());
+    QVERIFY2(messageRect.right() > viewportWidth - 260,
+        qPrintable(QStringLiteral("runtime problem message should stay near the right edge. messageRight=%1 viewport=%2")
+            .arg(messageRect.right())
+            .arg(viewportWidth)));
+    QVERIFY2(messageRect.left() >= locationRect.left() - 32,
+        qPrintable(QStringLiteral("runtime problem message should align under the right-side location text. messageLeft=%1 locationLeft=%2")
+            .arg(messageRect.left())
+            .arg(locationRect.left())));
 
     problems->itemClicked(item);
 

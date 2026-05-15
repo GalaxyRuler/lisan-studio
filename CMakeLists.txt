@@ -37,7 +37,7 @@ add_library(acs_core
 target_include_directories(acs_core PUBLIC src)
 target_link_libraries(acs_core PUBLIC Qt6::Core Qt6::Gui Qt6::Widgets)
 
-qt_add_executable(LisanStudio
+qt_add_executable(LisanStudio WIN32
     src/main.cpp
     src/MainWindow.h
     src/MainWindow.cpp

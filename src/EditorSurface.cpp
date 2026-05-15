@@ -3,9 +3,12 @@
 #include <QPainter>
 #include <QFile>
 #include <QFontDatabase>
+#include <QKeySequence>
 #include <QPaintEvent>
 #include <QTextBlock>
 #include <QTextOption>
+
+#include <memory>
 
 class LineNumberArea final : public QWidget
 {
@@ -148,6 +151,54 @@ int EditorSurface::lineNumberAreaWidth() const
     return 12 + fontMetrics().horizontalAdvance(QLatin1Char('9')) * digits;
 }
 
+QMenu *EditorSurface::createEditorContextMenu(QWidget *parent)
+{
+    auto *menu = new QMenu(parent ? parent : this);
+    menu->setLayoutDirection(Qt::RightToLeft);
+
+    auto *undoAction = menu->addAction(QString::fromUtf8("تراجع"));
+    undoAction->setObjectName(QStringLiteral("editorContextUndoAction"));
+    undoAction->setShortcut(QKeySequence::Undo);
+    undoAction->setEnabled(document()->isUndoAvailable());
+    connect(undoAction, &QAction::triggered, this, &QPlainTextEdit::undo);
+
+    auto *redoAction = menu->addAction(QString::fromUtf8("إعادة"));
+    redoAction->setObjectName(QStringLiteral("editorContextRedoAction"));
+    redoAction->setShortcut(QKeySequence::Redo);
+    redoAction->setEnabled(document()->isRedoAvailable());
+    connect(redoAction, &QAction::triggered, this, &QPlainTextEdit::redo);
+
+    menu->addSeparator();
+
+    auto *cutAction = menu->addAction(QString::fromUtf8("قص"));
+    cutAction->setObjectName(QStringLiteral("editorContextCutAction"));
+    cutAction->setShortcut(QKeySequence::Cut);
+    cutAction->setEnabled(textCursor().hasSelection());
+    connect(cutAction, &QAction::triggered, this, &QPlainTextEdit::cut);
+
+    auto *copyAction = menu->addAction(QString::fromUtf8("نسخ"));
+    copyAction->setObjectName(QStringLiteral("editorContextCopyAction"));
+    copyAction->setShortcut(QKeySequence::Copy);
+    copyAction->setEnabled(textCursor().hasSelection());
+    connect(copyAction, &QAction::triggered, this, &QPlainTextEdit::copy);
+
+    auto *pasteAction = menu->addAction(QString::fromUtf8("لصق"));
+    pasteAction->setObjectName(QStringLiteral("editorContextPasteAction"));
+    pasteAction->setShortcut(QKeySequence::Paste);
+    pasteAction->setEnabled(canPaste());
+    connect(pasteAction, &QAction::triggered, this, &QPlainTextEdit::paste);
+
+    menu->addSeparator();
+
+    auto *selectAllAction = menu->addAction(QString::fromUtf8("تحديد الكل"));
+    selectAllAction->setObjectName(QStringLiteral("editorContextSelectAllAction"));
+    selectAllAction->setShortcut(QKeySequence::SelectAll);
+    selectAllAction->setEnabled(!document()->isEmpty());
+    connect(selectAllAction, &QAction::triggered, this, &QPlainTextEdit::selectAll);
+
+    return menu;
+}
+
 void EditorSurface::lineNumberAreaPaintEvent(QPaintEvent *event)
 {
     QPainter painter(lineNumberArea);
@@ -229,6 +280,12 @@ void EditorSurface::updateLineNumberArea(const QRect &rect, int dy)
     if (rect.contains(viewport()->rect())) {
         updateLineNumberAreaWidth(blockCount());
     }
+}
+
+void EditorSurface::contextMenuEvent(QContextMenuEvent *event)
+{
+    std::unique_ptr<QMenu> menu(createEditorContextMenu(this));
+    menu->exec(event->globalPos());
 }
 
 void EditorSurface::paintEvent(QPaintEvent *event)
