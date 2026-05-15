@@ -40,4 +40,20 @@ if ($source -notmatch '(?s)catch\s*\{.*\$_.Exception.Message.*Add-Content') {
     throw 'Invoke-LoggedStep should append the failure message after captured command output.'
 }
 
+foreach ($requiredScreenshotToken in @(
+        '$screenshotSmokeExitMs = 30000',
+        '$screenshotArguments = @($sampleProject, "--smoke-exit-ms", "$screenshotSmokeExitMs")',
+        'Start-Process -FilePath $app -ArgumentList $screenshotArguments -PassThru',
+        'PrintWindow',
+        'CopyFromScreen',
+        'ReleaseHdc',
+        'throw "Screenshot capture failed for Lisan Studio window."',
+        'finally',
+        'Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue'
+    )) {
+    if ($source -notmatch [regex]::Escape($requiredScreenshotToken)) {
+        throw "release-evidence.ps1 should keep screenshot launch bounded and cleaned up: $requiredScreenshotToken"
+    }
+}
+
 "Test-ReleaseEvidenceFailureLogging.ps1 passed"

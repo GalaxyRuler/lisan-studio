@@ -118,6 +118,35 @@ function Get-HostApythonRoot {
     return (Resolve-Path -LiteralPath $candidate).Path
 }
 
+function Get-HostGitMetadata {
+    param([string]$RepoRoot)
+
+    $metadata = [ordered]@{
+        capturedAt = (Get-Date).ToString('o')
+        source = 'host'
+        repoRoot = $RepoRoot
+        branch = 'unavailable'
+        commit = 'unavailable'
+        status = 'Git metadata unavailable in host workspace.'
+    }
+
+    try {
+        $insideWorkTree = (& git -C $RepoRoot rev-parse --is-inside-work-tree 2>$null)
+        if ($LASTEXITCODE -eq 0 -and $insideWorkTree.Trim() -eq 'true') {
+            $metadata.branch = (& git -C $RepoRoot branch --show-current).Trim()
+            $metadata.commit = (& git -C $RepoRoot rev-parse --short HEAD).Trim()
+            $statusOutput = @(& git -C $RepoRoot status --short 2>$null)
+            if ($LASTEXITCODE -eq 0) {
+                $metadata.status = if ($statusOutput.Count -gt 0) { $statusOutput -join "`n" } else { 'Clean working tree' }
+            }
+        }
+    } catch {
+        $metadata.status = "Git metadata unavailable in host workspace: $($_.Exception.Message)"
+    }
+
+    return $metadata
+}
+
 function Get-GuestInteractiveSmokeRunnerContent {
     return @'
 param(
@@ -698,6 +727,7 @@ try {
     $credentialInfo = Get-LisanQaCredential
     $hostApythonRoot = Get-HostApythonRoot
     $hostRepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+    $hostGitMetadata = Get-HostGitMetadata -RepoRoot $hostRepoRoot
     $guestArtifactLeaf = Split-Path -Leaf $resolvedOutputDirectory
     $guestLaneLeaf = Split-Path -Leaf (Split-Path -Parent $resolvedOutputDirectory)
     $guestWorkLeaf = "$guestLaneLeaf-$guestArtifactLeaf"
@@ -732,6 +762,13 @@ try {
             )
 
             $ErrorActionPreference = 'Stop'
+            if (Test-Path -LiteralPath $GuestArtifactDirectory) {
+                Remove-Item -LiteralPath $GuestArtifactDirectory -Recurse -Force
+            }
+            if (Test-Path -LiteralPath $GuestLogDirectory) {
+                Remove-Item -LiteralPath $GuestLogDirectory -Recurse -Force
+            }
+
             foreach ($path in @(
                     'C:\CodexRunner',
                     'C:\CodexRunner\work',
@@ -793,6 +830,25 @@ try {
                     item = $item
                 })
         }
+
+        Write-SmokeProgress -Stage 'stage-repo' -Message 'Writing source metadata into guest workspace.' -Data ([ordered]@{
+                branch = $hostGitMetadata.branch
+                commit = $hostGitMetadata.commit
+            })
+        $hostGitMetadataJson = $hostGitMetadata | ConvertTo-Json -Depth 8
+        Invoke-Command -Session $session -ArgumentList $guestRepoRoot, $hostGitMetadataJson -ScriptBlock {
+            param(
+                [string]$GuestRepoRoot,
+                [string]$MetadataJson
+            )
+
+            $metadataPath = Join-Path $GuestRepoRoot '.codex\source-metadata.json'
+            New-Item -ItemType Directory -Force -Path (Split-Path -Parent $metadataPath) | Out-Null
+            Set-Content -LiteralPath $metadataPath -Value $MetadataJson -Encoding UTF8
+        } | Out-Null
+        Write-SmokeProgress -Stage 'stage-repo' -Message 'Wrote source metadata into guest workspace.' -Data ([ordered]@{
+                metadataPath = (Join-Path $guestRepoRoot '.codex\source-metadata.json')
+            })
 
         $hostApythonContents = Join-Path $hostApythonRoot '*'
         Write-SmokeProgress -Stage 'stage-apython' -Message 'Copying apython payload into guest workspace.' -Data ([ordered]@{
@@ -898,7 +954,7 @@ try {
 
             $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument $taskArgument
             $principal = New-ScheduledTaskPrincipal -UserId $scheduledTaskUserName -LogonType Interactive -RunLevel Highest
-            $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Hours 2)
+            $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Minutes 90)
             Register-ScheduledTask -TaskName $taskName -Action $action -Principal $principal -Settings $settings -Description 'Lisan Studio project-owned interactive MSI/GUI smoke task.' | Out-Null
             Start-ScheduledTask -TaskName $taskName
 
@@ -923,7 +979,7 @@ try {
         $guestSmoke = $null
         $pollSnapshot = $null
         $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
-        $timeout = [TimeSpan]::FromHours(2)
+        $timeout = [TimeSpan]::FromMinutes(75)
         $nextProgressAt = [TimeSpan]::Zero
         while ($stopwatch.Elapsed -lt $timeout) {
             $pollSnapshot = Invoke-Command -Session $session -ArgumentList $taskSetup.taskName, $taskSetup.taskResultPath -ScriptBlock {

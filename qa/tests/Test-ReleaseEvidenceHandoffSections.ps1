@@ -26,6 +26,8 @@ foreach ($requiredToken in @(
         '## Automated Validation Completed',
         '## Manual QA Required',
         '## Deferred Features',
+        'SourceMetadataPath',
+        'source-metadata.json',
         'LisanStudio-QA',
         'active WHITEDRAGON',
         'scripts\beta-manual-check.ps1',

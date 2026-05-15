@@ -7,9 +7,23 @@
 #include <QTranslator>
 
 #include <chrono>
+#include <cstdint>
 #include <cstdlib>
 #include <string>
 #include <thread>
+
+#ifdef _WIN32
+#include <windows.h>
+
+namespace {
+DWORD WINAPI smokeHardExitThread(LPVOID parameter)
+{
+    const auto hardExitMs = static_cast<DWORD>(reinterpret_cast<uintptr_t>(parameter));
+    Sleep(hardExitMs);
+    ExitProcess(0);
+}
+}
+#endif
 
 int main(int argc, char *argv[])
 {
@@ -39,10 +53,23 @@ int main(int argc, char *argv[])
 
     if (smokeExitMs >= 0) {
         const int hardExitMs = smokeExitMs + 5000;
+#ifdef _WIN32
+        const HANDLE hardExitThread = CreateThread(
+            nullptr,
+            0,
+            smokeHardExitThread,
+            reinterpret_cast<LPVOID>(static_cast<uintptr_t>(hardExitMs)),
+            0,
+            nullptr);
+        if (hardExitThread) {
+            CloseHandle(hardExitThread);
+        }
+#else
         std::thread([hardExitMs]() {
             std::this_thread::sleep_for(std::chrono::milliseconds(hardExitMs));
             std::exit(0);
         }).detach();
+#endif
     }
 
     QApplication app(argc, argv);

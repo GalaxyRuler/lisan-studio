@@ -6,12 +6,16 @@ param(
     [string]$BashPath = "C:\msys64\usr\bin\bash.exe",
     [string]$WindeployQtPath = "C:\msys64\ucrt64\bin\windeployqt6.exe",
     [string]$WixPath = "C:\Program Files\WiX Toolset v7.0\bin\wix.exe",
-    [string]$QtLicenseRoot = "C:\msys64\ucrt64\share\licenses\qt6-base"
+    [string]$QtLicenseRoot = "C:\msys64\ucrt64\share\licenses\qt6-base",
+    [string]$SourceMetadataPath
 )
 
 $ErrorActionPreference = "Stop"
 
 $repo = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+if (-not $SourceMetadataPath) {
+    $SourceMetadataPath = Join-Path $repo ".codex\source-metadata.json"
+}
 $releaseDir = Join-Path $repo "artifacts\release\$ReleaseLabel"
 $logsDir = Join-Path $releaseDir "logs"
 $screenshotsDir = Join-Path $releaseDir "screenshots"
@@ -76,6 +80,7 @@ public static class LisanReleaseWindowOps {
   [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left; public int Top; public int Right; public int Bottom; }
   [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
   [DllImport("user32.dll")] public static extern bool MoveWindow(IntPtr hWnd, int X, int Y, int nWidth, int nHeight, bool bRepaint);
+  [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr hWnd, IntPtr hdcBlt, uint nFlags);
   [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
   [DllImport("dwmapi.dll")] public static extern int DwmGetWindowAttribute(IntPtr hWnd, int attr, out RECT rect, int size);
 }
@@ -83,54 +88,74 @@ public static class LisanReleaseWindowOps {
 
     Get-Process LisanStudio -ErrorAction SilentlyContinue | Stop-Process -Force
     $sampleProject = Join-Path $installRoot "samples\torture-project"
-    $process = Start-Process -FilePath $app -ArgumentList @($sampleProject) -PassThru
-    $handle = [IntPtr]::Zero
-    for ($index = 0; $index -lt 60; ++$index) {
-        Start-Sleep -Milliseconds 200
-        $process.Refresh()
-        if ($process.MainWindowHandle -ne 0) {
-            $handle = $process.MainWindowHandle
-            break
+    $screenshotSmokeExitMs = 30000
+    $screenshotArguments = @($sampleProject, "--smoke-exit-ms", "$screenshotSmokeExitMs")
+    $process = Start-Process -FilePath $app -ArgumentList $screenshotArguments -PassThru
+    try {
+        $handle = [IntPtr]::Zero
+        for ($index = 0; $index -lt 60; ++$index) {
+            Start-Sleep -Milliseconds 200
+            $process.Refresh()
+            if ($process.MainWindowHandle -ne 0) {
+                $handle = $process.MainWindowHandle
+                break
+            }
         }
-    }
-    if ($handle -eq [IntPtr]::Zero) {
-        throw "Lisan Studio did not expose a main window handle for screenshot capture."
-    }
+        if ($handle -eq [IntPtr]::Zero) {
+            throw "Lisan Studio did not expose a main window handle for screenshot capture."
+        }
 
-    $secondary = [System.Windows.Forms.Screen]::AllScreens | Where-Object { -not $_.Primary } | Select-Object -First 1
-    if ($secondary) {
-        $x = $secondary.WorkingArea.X + 40
-        $y = $secondary.WorkingArea.Y + 80
-    } else {
-        $x = 100
-        $y = 100
-    }
+        $secondary = [System.Windows.Forms.Screen]::AllScreens | Where-Object { -not $_.Primary } | Select-Object -First 1
+        if ($secondary) {
+            $x = $secondary.WorkingArea.X + 40
+            $y = $secondary.WorkingArea.Y + 80
+        } else {
+            $x = 100
+            $y = 100
+        }
 
-    [LisanReleaseWindowOps]::ShowWindow($handle, 9) | Out-Null
-    [LisanReleaseWindowOps]::MoveWindow($handle, $x, $y, 1600, 950, $true) | Out-Null
-    Start-Sleep -Milliseconds 900
+        [LisanReleaseWindowOps]::ShowWindow($handle, 9) | Out-Null
+        [LisanReleaseWindowOps]::MoveWindow($handle, $x, $y, 1600, 950, $true) | Out-Null
+        Start-Sleep -Milliseconds 900
 
-    $rect = New-Object LisanReleaseWindowOps+RECT
-    $dwmResult = [LisanReleaseWindowOps]::DwmGetWindowAttribute(
-        $handle,
-        9,
-        [ref]$rect,
-        [System.Runtime.InteropServices.Marshal]::SizeOf([type][LisanReleaseWindowOps+RECT])
-    )
-    if ($dwmResult -ne 0) {
-        [LisanReleaseWindowOps]::GetWindowRect($handle, [ref]$rect) | Out-Null
+        $rect = New-Object LisanReleaseWindowOps+RECT
+        $dwmResult = [LisanReleaseWindowOps]::DwmGetWindowAttribute(
+            $handle,
+            9,
+            [ref]$rect,
+            [System.Runtime.InteropServices.Marshal]::SizeOf([type][LisanReleaseWindowOps+RECT])
+        )
+        if ($dwmResult -ne 0) {
+            [LisanReleaseWindowOps]::GetWindowRect($handle, [ref]$rect) | Out-Null
+        }
+        $width = [Math]::Max(1, $rect.Right - $rect.Left)
+        $height = [Math]::Max(1, $rect.Bottom - $rect.Top)
+        $bitmap = New-Object System.Drawing.Bitmap($width, $height)
+        $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
+        try {
+            try {
+                $graphics.CopyFromScreen($rect.Left, $rect.Top, 0, 0, $bitmap.Size)
+            } catch {
+                $hdc = $graphics.GetHdc()
+                try {
+                    $printed = [LisanReleaseWindowOps]::PrintWindow($handle, $hdc, 2)
+                } finally {
+                    $graphics.ReleaseHdc($hdc)
+                }
+                if (-not $printed) {
+                    throw "Screenshot capture failed for Lisan Studio window."
+                }
+            }
+            $screenshotPath = Join-Path $screenshotsDir "main-window.png"
+            $bitmap.Save($screenshotPath, [System.Drawing.Imaging.ImageFormat]::Png)
+            $screenshotPath
+        } finally {
+            $graphics.Dispose()
+            $bitmap.Dispose()
+        }
+    } finally {
+        Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
     }
-    $width = $rect.Right - $rect.Left
-    $height = $rect.Bottom - $rect.Top
-    $bitmap = New-Object System.Drawing.Bitmap($width, $height)
-    $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
-    $graphics.CopyFromScreen($rect.Left, $rect.Top, 0, 0, $bitmap.Size)
-    $screenshotPath = Join-Path $screenshotsDir "main-window.png"
-    $bitmap.Save($screenshotPath, [System.Drawing.Imaging.ImageFormat]::Png)
-    $graphics.Dispose()
-    $bitmap.Dispose()
-    Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
-    $screenshotPath
 }
 
 $steps = @()
@@ -172,9 +197,29 @@ $knownIssuesPath = Join-Path $releaseDir "KNOWN_ISSUES.md"
 $gitCommit = 'unavailable'
 $gitBranch = 'unavailable'
 $gitStatus = 'Git metadata unavailable in this workspace.'
+if (Test-Path -LiteralPath $SourceMetadataPath) {
+    try {
+        $sourceMetadata = Get-Content -Raw -LiteralPath $SourceMetadataPath | ConvertFrom-Json
+        if ($sourceMetadata.commit) {
+            $gitCommit = [string]$sourceMetadata.commit
+        }
+        if ($sourceMetadata.branch) {
+            $gitBranch = [string]$sourceMetadata.branch
+        }
+        if ($sourceMetadata.status) {
+            $gitStatus = [string]$sourceMetadata.status
+        }
+    } catch {
+        $gitStatus = "Source metadata unavailable: $($_.Exception.Message)"
+    }
+}
 try {
-    $isInsideWorkTree = (& git -C $repo rev-parse --is-inside-work-tree 2>$null)
-    if ($LASTEXITCODE -eq 0 -and $isInsideWorkTree.Trim() -eq 'true') {
+    $isInsideWorkTree = if ($gitCommit -eq 'unavailable' -or $gitBranch -eq 'unavailable') {
+        (& git -C $repo rev-parse --is-inside-work-tree 2>$null)
+    } else {
+        $null
+    }
+    if ($isInsideWorkTree -and $LASTEXITCODE -eq 0 -and $isInsideWorkTree.Trim() -eq 'true') {
         $gitCommit = (& git -C $repo rev-parse --short HEAD).Trim()
         $gitBranch = (& git -C $repo branch --show-current).Trim()
         $gitStatusOutput = (& git -C $repo status --short 2>$null)

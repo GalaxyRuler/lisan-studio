@@ -27,9 +27,9 @@ foreach ($requiredMainToken in @(
         'app.quit()',
         'window.close()',
         'QCoreApplication::exit(0)',
-        'std::thread',
-        'std::this_thread::sleep_for',
-        'std::exit(0)'
+        'CreateThread',
+        'Sleep(hardExitMs)',
+        'ExitProcess(0)'
     )) {
     if ($main -notmatch [regex]::Escape($requiredMainToken)) {
         throw "main.cpp should keep the installed-app smoke exit hook token: $requiredMainToken"
