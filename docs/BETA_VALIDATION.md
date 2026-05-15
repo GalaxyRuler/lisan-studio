@@ -3,6 +3,29 @@
 This file tracks the private beta gate for the installed Windows application.
 Run validation from the installed app, not only from the build tree.
 
+## Current 0.1.0-beta Status
+
+Status: ready for private beta handoff with known non-blocking manual QA notes.
+
+Completed gates:
+
+- Homelab MSI/GUI/release evidence lane passed inside `LisanStudio-QA`.
+- Active `WHITEDRAGON` was not used for GUI/MSI validation.
+- Human installed-app manual QA checklist was completed.
+- Installer reinstall check passed from the VM desktop MSI:
+  `C:\Users\Public\Desktop\LisanStudio-0.1.0-beta.msi`.
+
+Recorded non-blocking reviewer notes:
+
+- Launch: a command window appeared at the same time as app launch.
+- Editing: right-click Undo/Redo menu actions were not clickable, while keyboard
+  shortcuts worked.
+- Search: result text appeared far from the number column.
+- Problems panel: diagnostic subtext appeared far left.
+
+These notes do not block the 0.1.0 private beta handoff, but they should be
+tracked as follow-up polish before a wider release.
+
 ## Automated Gate
 
 ```powershell

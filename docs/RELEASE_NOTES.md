@@ -28,6 +28,19 @@
 - Release evidence script for checksums, validation log, known issues, and screenshot capture.
 - Manual beta checklist script for recording the installed-app handoff pass as a professionally formatted Word review packet, with Markdown and JSON traceability files.
 
+## Validation Status
+
+- Automated Homelab MSI/GUI/release evidence lane passed inside `LisanStudio-QA`.
+- Manual installed-app QA is complete.
+- Private beta handoff decision: ready with known non-blocking issues.
+
+Known non-blocking manual QA notes:
+
+- A command window appeared at the same time as app launch.
+- Right-click Undo/Redo menu actions were not clickable, while keyboard shortcuts worked.
+- Search result text appeared far from the number column.
+- Problems panel diagnostic subtext appeared far left.
+
 ## Deferred
 
 - Git UI.
@@ -47,4 +60,3 @@
 - Hidden BiDi controls inserted by the editor.
 - Any return of a native `QMenuBar` or `QToolBar` shell surface.
 - Left-to-right shell regression in top command bar menus, project/sidebar, tabs, status bar, or bottom panel.
-- Missing manual installed-app checklist before private beta handoff.
