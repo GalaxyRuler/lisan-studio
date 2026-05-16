@@ -9,6 +9,7 @@
 #include "ProjectReplaceService.h"
 #include "RuntimeProblemParser.h"
 #include "RuntimeHistory.h"
+#include "RuntimeRunConfiguration.h"
 #include "RuntimeRunner.h"
 #include "SearchService.h"
 #include "SettingsDialogModel.h"
@@ -36,6 +37,8 @@ private slots:
     void runtimeRunnerReportsMissingBundledPythonDiagnostics();
     void runtimeHistoryRecordsMostRecentLaunchesFirst();
     void runtimeHistoryCapsEntriesAndCanClear();
+    void runtimeRunConfigurationModelCreatesCurrentFileDefault();
+    void runtimeRunConfigurationModelRejectsInvalidAndDuplicateEntries();
     void outputTranscriptRendersAndFiltersByChannel();
     void outputTranscriptFiltersByCaseInsensitiveText();
     void runtimeProblemParserExtractsArabicSyntaxLine();
@@ -373,6 +376,58 @@ void TestProjectSearchRuntime::runtimeHistoryCapsEntriesAndCanClear()
 
     history.clear();
     QVERIFY(history.entries().isEmpty());
+}
+
+void TestProjectSearchRuntime::runtimeRunConfigurationModelCreatesCurrentFileDefault()
+{
+    const RuntimeRunConfiguration config = RuntimeRunConfigurationModel::currentFileRunConfiguration(
+        QStringLiteral("C:/project/main.apy"),
+        QStringLiteral("C:/project"));
+
+    QCOMPARE(config.id, QStringLiteral("current-file"));
+    QCOMPARE(config.name, QString::fromUtf8("تشغيل الملف الحالي"));
+    QCOMPARE(config.action, RuntimeAction::Run);
+    QCOMPARE(config.filePath, QStringLiteral("C:/project/main.apy"));
+    QCOMPARE(config.workingDirectory, QStringLiteral("C:/project"));
+    QVERIFY(!config.reloadAfterSuccess);
+
+    RuntimeRunConfigurationModel model;
+    QString error;
+    QVERIFY2(model.addConfiguration(config, &error), qPrintable(error));
+    QCOMPARE(model.configurations().size(), 1);
+    QVERIFY(model.findById(QStringLiteral("current-file")) != nullptr);
+    QCOMPARE(model.findById(QStringLiteral("current-file"))->name, config.name);
+
+    QVERIFY(model.removeConfiguration(QStringLiteral("current-file")));
+    QVERIFY(model.configurations().isEmpty());
+}
+
+void TestProjectSearchRuntime::runtimeRunConfigurationModelRejectsInvalidAndDuplicateEntries()
+{
+    RuntimeRunConfigurationModel model;
+    QString error;
+
+    RuntimeRunConfiguration blankName;
+    blankName.id = QStringLiteral("blank");
+    blankName.filePath = QStringLiteral("C:/project/main.apy");
+    QVERIFY(!model.addConfiguration(blankName, &error));
+    QVERIFY(error.contains(QString::fromUtf8("اسم")));
+
+    RuntimeRunConfiguration first = RuntimeRunConfigurationModel::currentFileRunConfiguration(
+        QStringLiteral("C:/project/main.apy"),
+        QStringLiteral("C:/project"));
+    QVERIFY(model.addConfiguration(first, &error));
+
+    RuntimeRunConfiguration duplicateId = first;
+    duplicateId.name = QString::fromUtf8("تشغيل آخر");
+    QVERIFY(!model.addConfiguration(duplicateId, &error));
+    QVERIFY(error.contains(QStringLiteral("id")));
+
+    RuntimeRunConfiguration duplicateName = first;
+    duplicateName.id = QStringLiteral("other");
+    duplicateName.name = first.name.toUpper();
+    QVERIFY(!model.addConfiguration(duplicateName, &error));
+    QVERIFY(error.contains(QString::fromUtf8("الاسم")));
 }
 
 void TestProjectSearchRuntime::outputTranscriptRendersAndFiltersByChannel()
