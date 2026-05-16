@@ -4,6 +4,7 @@
 #include "RuntimeProblemParser.h"
 
 #include <QApplication>
+#include <QCheckBox>
 #include <QClipboard>
 #include <QComboBox>
 #include <QDialog>
@@ -1545,12 +1546,15 @@ void MainWindow::renderSearchResults(const QVector<SearchResultRow> &rows)
 void MainWindow::renderProjectReplacePreview(const QVector<ProjectReplacePreviewRow> &rows)
 {
     searchResultsPanel->clear();
-    for (const ProjectReplacePreviewRow &row : rows) {
+    ProjectReplaceSelectionState selection = ProjectReplaceService::selectionFromRows(rows);
+    for (int rowIndex = 0; rowIndex < rows.size(); ++rowIndex) {
+        const ProjectReplacePreviewRow &row = rows.at(rowIndex);
         auto *item = new QListWidgetItem(searchResultsPanel);
         item->setData(Qt::UserRole, row.path);
         item->setData(Qt::UserRole + 1, row.line);
         item->setData(Qt::UserRole + 2, row.before);
         item->setData(Qt::UserRole + 3, row.after);
+        item->setData(Qt::UserRole + 4, selection.isRowAccepted(rowIndex));
         item->setToolTip(QString::fromUtf8("%1\n%2\n→ %3")
             .arg(QDir::toNativeSeparators(row.path.isEmpty() ? currentEditorPath() : row.path), row.before, row.after));
         item->setText(QString::fromUtf8("%1، السطر %2").arg(QFileInfo(row.path).fileName()).arg(row.line));
@@ -1607,14 +1611,65 @@ void MainWindow::renderProjectReplacePreview(const QVector<ProjectReplacePreview
         afterLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
         afterLabel->setStyleSheet(QStringLiteral("color: #B8F5C8; font-family: 'Cascadia Code', 'Consolas';"));
 
+        auto *acceptCheckBox = new QCheckBox(QString::fromUtf8("تضمين"), rowWidget);
+        acceptCheckBox->setObjectName(QStringLiteral("projectReplaceAcceptCheckBox"));
+        acceptCheckBox->setLayoutDirection(Qt::RightToLeft);
+        acceptCheckBox->setChecked(selection.isRowAccepted(rowIndex));
+        connect(acceptCheckBox, &QCheckBox::toggled, this, [item](bool checked) {
+            item->setData(Qt::UserRole + 4, checked);
+        });
+
+        auto *fileControls = new QWidget(rowWidget);
+        fileControls->setObjectName(QStringLiteral("projectReplaceFileControls"));
+        fileControls->setLayoutDirection(Qt::RightToLeft);
+        auto *fileControlsLayout = new QHBoxLayout(fileControls);
+        fileControlsLayout->setContentsMargins(0, 0, 0, 0);
+        fileControlsLayout->setSpacing(6);
+        auto *acceptFileButton = new QPushButton(QString::fromUtf8("تضمين الملف"), fileControls);
+        acceptFileButton->setObjectName(QStringLiteral("projectReplaceAcceptFileButton"));
+        auto *rejectFileButton = new QPushButton(QString::fromUtf8("استبعاد الملف"), fileControls);
+        rejectFileButton->setObjectName(QStringLiteral("projectReplaceRejectFileButton"));
+        connect(acceptFileButton, &QPushButton::clicked, this, [this, path = row.path]() {
+            setProjectReplaceFileAccepted(path, true);
+        });
+        connect(rejectFileButton, &QPushButton::clicked, this, [this, path = row.path]() {
+            setProjectReplaceFileAccepted(path, false);
+        });
+        fileControlsLayout->addWidget(acceptFileButton);
+        fileControlsLayout->addWidget(rejectFileButton);
+        fileControlsLayout->addStretch(1);
+
         rowLayout->addWidget(metadataCluster);
+        rowLayout->addWidget(acceptCheckBox);
+        rowLayout->addWidget(fileControls);
         rowLayout->addWidget(detailLabel);
         rowLayout->addWidget(beforeLabel);
         rowLayout->addWidget(afterLabel);
-        item->setSizeHint(QSize(rowWidget->sizeHint().width(), 112));
+        item->setSizeHint(QSize(rowWidget->sizeHint().width(), 160));
         searchResultsPanel->setItemWidget(item, rowWidget);
     }
     showSearchResultsPanel();
+}
+
+void MainWindow::setProjectReplaceFileAccepted(const QString &path, bool accepted)
+{
+    if (!searchResultsPanel) {
+        return;
+    }
+
+    for (int row = 0; row < searchResultsPanel->count(); ++row) {
+        auto *item = searchResultsPanel->item(row);
+        if (!item || item->data(Qt::UserRole).toString() != path) {
+            continue;
+        }
+
+        item->setData(Qt::UserRole + 4, accepted);
+        auto *rowWidget = searchResultsPanel->itemWidget(item);
+        auto *checkBox = rowWidget ? rowWidget->findChild<QCheckBox *>(QStringLiteral("projectReplaceAcceptCheckBox")) : nullptr;
+        if (checkBox && checkBox->isChecked() != accepted) {
+            checkBox->setChecked(accepted);
+        }
+    }
 }
 
 void MainWindow::openSearchResult(QListWidgetItem *item)

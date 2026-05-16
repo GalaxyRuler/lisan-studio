@@ -41,6 +41,8 @@ private slots:
     void projectReplaceServicePreviewsArabicMixedMatches();
     void projectReplaceServiceSkipsIgnoredDirectories();
     void projectReplaceServiceMergesImmediateRowsBeforeDiskRows();
+    void projectReplaceSelectionAcceptsRowsByDefault();
+    void projectReplaceSelectionRejectsSingleRowsAndWholeFiles();
 };
 
 static QString writeFile(const QDir &root, const QString &relative, const QString &text)
@@ -522,6 +524,52 @@ void TestProjectSearchRuntime::projectReplaceServiceMergesImmediateRowsBeforeDis
     QCOMPARE(rows.at(0).path, QStringLiteral("main.apy"));
     QCOMPARE(rows.at(1).path, QStringLiteral("scratch.apy"));
     QCOMPARE(rows.at(2).path, QStringLiteral("other.apy"));
+}
+
+void TestProjectSearchRuntime::projectReplaceSelectionAcceptsRowsByDefault()
+{
+    const QVector<ProjectReplacePreviewRow> rows = {
+        {QStringLiteral("main.apy"), 1, QString::fromUtf8("عدد = 1"), QString::fromUtf8("قيمة = 1"), 1},
+        {QStringLiteral("main.apy"), 2, QString::fromUtf8("اطبع(عدد)"), QString::fromUtf8("اطبع(قيمة)"), 1},
+    };
+
+    const ProjectReplaceSelectionState selection = ProjectReplaceService::selectionFromRows(rows);
+
+    QVERIFY(selection.isRowAccepted(0));
+    QVERIFY(selection.isRowAccepted(1));
+    QCOMPARE(selection.acceptedRows().size(), 2);
+    QCOMPARE(selection.acceptedMatchCount(), 2);
+}
+
+void TestProjectSearchRuntime::projectReplaceSelectionRejectsSingleRowsAndWholeFiles()
+{
+    const QVector<ProjectReplacePreviewRow> rows = {
+        {QStringLiteral("main.apy"), 1, QString::fromUtf8("عدد = 1"), QString::fromUtf8("قيمة = 1"), 1},
+        {QStringLiteral("main.apy"), 2, QString::fromUtf8("اطبع(عدد)"), QString::fromUtf8("اطبع(قيمة)"), 1},
+        {QStringLiteral("other.apy"), 1, QString::fromUtf8("عدد"), QString::fromUtf8("قيمة"), 1},
+    };
+
+    ProjectReplaceSelectionState selection = ProjectReplaceService::selectionFromRows(rows);
+
+    selection.setRowAccepted(1, false);
+    QVERIFY(selection.isRowAccepted(0));
+    QVERIFY(!selection.isRowAccepted(1));
+    QVERIFY(selection.isRowAccepted(2));
+    QCOMPARE(selection.acceptedRows().size(), 2);
+    QCOMPARE(selection.acceptedMatchCount(), 2);
+
+    selection.setFileAccepted(QStringLiteral("main.apy"), false);
+    QVERIFY(!selection.isRowAccepted(0));
+    QVERIFY(!selection.isRowAccepted(1));
+    QVERIFY(selection.isRowAccepted(2));
+    QCOMPARE(selection.acceptedRows().size(), 1);
+    QCOMPARE(selection.acceptedRows().first().path, QStringLiteral("other.apy"));
+
+    selection.setFileAccepted(QStringLiteral("main.apy"), true);
+    QVERIFY(selection.isRowAccepted(0));
+    QVERIFY(selection.isRowAccepted(1));
+    QVERIFY(selection.isRowAccepted(2));
+    QCOMPARE(selection.acceptedRows().size(), 3);
 }
 
 QTEST_MAIN(TestProjectSearchRuntime)

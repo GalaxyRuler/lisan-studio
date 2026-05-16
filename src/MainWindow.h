@@ -151,6 +151,7 @@ private:
     QVector<ProjectReplacePreviewRow> currentEditorReplacePreviewRows(const QString &query, const QString &replacement) const;
     void renderSearchResults(const QVector<SearchResultRow> &rows);
     void renderProjectReplacePreview(const QVector<ProjectReplacePreviewRow> &rows);
+    void setProjectReplaceFileAccepted(const QString &path, bool accepted);
     void refreshEditorProblems();
     void addProblem(const QString &severity, const QString &message, const QString &path = QString(), int line = 0);
     void goToEditorLine(int line);

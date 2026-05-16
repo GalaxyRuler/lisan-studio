@@ -27,6 +27,22 @@ struct ProjectReplacePreview
     int scannedFiles = 0;
 };
 
+class ProjectReplaceSelectionState final
+{
+public:
+    explicit ProjectReplaceSelectionState(const QVector<ProjectReplacePreviewRow> &rows = {});
+
+    bool isRowAccepted(int rowIndex) const;
+    void setRowAccepted(int rowIndex, bool accepted);
+    void setFileAccepted(const QString &path, bool accepted);
+    QVector<ProjectReplacePreviewRow> acceptedRows() const;
+    int acceptedMatchCount() const;
+
+private:
+    QVector<ProjectReplacePreviewRow> rows;
+    QVector<bool> accepted;
+};
+
 class ProjectReplaceService final
 {
 public:
@@ -47,4 +63,6 @@ public:
         const QVector<ProjectReplacePreviewRow> &priorityRows,
         const QVector<ProjectReplacePreviewRow> &secondaryRows,
         int limit = 250);
+
+    static ProjectReplaceSelectionState selectionFromRows(const QVector<ProjectReplacePreviewRow> &rows);
 };

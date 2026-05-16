@@ -3,6 +3,7 @@
 #include "MainWindow.h"
 
 #include <QClipboard>
+#include <QCheckBox>
 #include <QComboBox>
 #include <QDialog>
 #include <QDialogButtonBox>
@@ -51,6 +52,8 @@ private slots:
     void projectSearchShowsClickableResultRows();
     void projectSearchFindsCurrentUnsavedEditorImmediately();
     void projectReplacePreviewRendersRowsWithoutWritingFile();
+    void projectReplacePreviewRowCheckboxesTrackAcceptedState();
+    void projectReplacePreviewFileButtonsToggleRowsForThatFile();
     void projectSearchResultRowsFillRtlViewport();
     void projectSearchResultRowsHaveReadableHeight();
     void problemsPanelShowsHiddenBidiWarnings();
@@ -1018,6 +1021,113 @@ void TestMainWindow::projectReplacePreviewRendersRowsWithoutWritingFile()
     QString diskText = QString::fromUtf8(file.readAll());
     diskText.replace(QStringLiteral("\r\n"), QStringLiteral("\n"));
     QCOMPARE(diskText, QString::fromUtf8("عدد = 1\nاطبع(عدد)\n"));
+}
+
+void TestMainWindow::projectReplacePreviewRowCheckboxesTrackAcceptedState()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    QDir root(temp.path());
+    const QString filePath = writeFile(root, QStringLiteral("main.apy"), QString::fromUtf8("عدد = 1\nاطبع(عدد)\n"));
+
+    MainWindow window;
+    QVERIFY(window.openPath(root.absolutePath()));
+
+    auto *commandBox = window.findChild<QLineEdit *>(QStringLiteral("commandBox"));
+    auto *replaceInput = window.findChild<QLineEdit *>(QStringLiteral("projectReplaceInput"));
+    QVERIFY(commandBox != nullptr);
+    QVERIFY(replaceInput != nullptr);
+    commandBox->setText(QString::fromUtf8("عدد"));
+    replaceInput->setText(QString::fromUtf8("قيمة"));
+
+    QVERIFY(QMetaObject::invokeMethod(&window, "previewProjectReplace", Qt::DirectConnection));
+
+    auto *results = window.findChild<QListWidget *>(QStringLiteral("searchResultsPanel"));
+    QVERIFY(results != nullptr);
+    QCOMPARE(results->count(), 2);
+
+    auto *firstRow = results->itemWidget(results->item(0));
+    QVERIFY(firstRow != nullptr);
+    auto *accept = firstRow->findChild<QCheckBox *>(QStringLiteral("projectReplaceAcceptCheckBox"));
+    QVERIFY(accept != nullptr);
+    QVERIFY(accept->isChecked());
+    QCOMPARE(results->item(0)->data(Qt::UserRole + 4).toBool(), true);
+
+    accept->setChecked(false);
+    QCOMPARE(results->item(0)->data(Qt::UserRole + 4).toBool(), false);
+
+    QFile file(filePath);
+    QVERIFY(file.open(QIODevice::ReadOnly));
+    QString diskText = QString::fromUtf8(file.readAll());
+    diskText.replace(QStringLiteral("\r\n"), QStringLiteral("\n"));
+    QCOMPARE(diskText, QString::fromUtf8("عدد = 1\nاطبع(عدد)\n"));
+}
+
+void TestMainWindow::projectReplacePreviewFileButtonsToggleRowsForThatFile()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    QDir root(temp.path());
+    writeFile(root, QStringLiteral("main.apy"), QString::fromUtf8("عدد = 1\nاطبع(عدد)\n"));
+    writeFile(root, QStringLiteral("other.apy"), QString::fromUtf8("اطبع(عدد)\n"));
+
+    MainWindow window;
+    QVERIFY(window.openPath(root.absolutePath()));
+
+    auto *commandBox = window.findChild<QLineEdit *>(QStringLiteral("commandBox"));
+    auto *replaceInput = window.findChild<QLineEdit *>(QStringLiteral("projectReplaceInput"));
+    QVERIFY(commandBox != nullptr);
+    QVERIFY(replaceInput != nullptr);
+    commandBox->setText(QString::fromUtf8("عدد"));
+    replaceInput->setText(QString::fromUtf8("قيمة"));
+
+    QVERIFY(QMetaObject::invokeMethod(&window, "previewProjectReplace", Qt::DirectConnection));
+
+    auto *results = window.findChild<QListWidget *>(QStringLiteral("searchResultsPanel"));
+    QVERIFY(results != nullptr);
+    QCOMPARE(results->count(), 3);
+
+    int mainRow = -1;
+    int otherRow = -1;
+    for (int row = 0; row < results->count(); ++row) {
+        const QString path = results->item(row)->data(Qt::UserRole).toString();
+        if (path.endsWith(QStringLiteral("main.apy")) && mainRow < 0) {
+            mainRow = row;
+        }
+        if (path.endsWith(QStringLiteral("other.apy"))) {
+            otherRow = row;
+        }
+    }
+    QVERIFY(mainRow >= 0);
+    QVERIFY(otherRow >= 0);
+
+    results->setCurrentRow(mainRow);
+    auto *rowWidget = results->itemWidget(results->item(mainRow));
+    QVERIFY(rowWidget != nullptr);
+    auto *rejectFile = rowWidget->findChild<QPushButton *>(QStringLiteral("projectReplaceRejectFileButton"));
+    auto *acceptFile = rowWidget->findChild<QPushButton *>(QStringLiteral("projectReplaceAcceptFileButton"));
+    QVERIFY(rejectFile != nullptr);
+    QVERIFY(acceptFile != nullptr);
+
+    rejectFile->click();
+    for (int row = 0; row < results->count(); ++row) {
+        const QString path = results->item(row)->data(Qt::UserRole).toString();
+        if (path.endsWith(QStringLiteral("main.apy"))) {
+            QCOMPARE(results->item(row)->data(Qt::UserRole + 4).toBool(), false);
+            auto *checkbox = results->itemWidget(results->item(row))->findChild<QCheckBox *>(QStringLiteral("projectReplaceAcceptCheckBox"));
+            QVERIFY(checkbox != nullptr);
+            QCOMPARE(checkbox->isChecked(), false);
+        }
+    }
+    QCOMPARE(results->item(otherRow)->data(Qt::UserRole + 4).toBool(), true);
+
+    acceptFile->click();
+    for (int row = 0; row < results->count(); ++row) {
+        const QString path = results->item(row)->data(Qt::UserRole).toString();
+        if (path.endsWith(QStringLiteral("main.apy"))) {
+            QCOMPARE(results->item(row)->data(Qt::UserRole + 4).toBool(), true);
+        }
+    }
 }
 
 void TestMainWindow::projectSearchResultRowsFillRtlViewport()

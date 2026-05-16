@@ -37,6 +37,56 @@ void appendSummary(ProjectReplacePreview *preview, const QString &path, int rowC
 }
 }
 
+ProjectReplaceSelectionState::ProjectReplaceSelectionState(const QVector<ProjectReplacePreviewRow> &previewRows)
+    : rows(previewRows)
+    , accepted(previewRows.size(), true)
+{
+}
+
+bool ProjectReplaceSelectionState::isRowAccepted(int rowIndex) const
+{
+    return rowIndex >= 0 && rowIndex < accepted.size() && accepted.at(rowIndex);
+}
+
+void ProjectReplaceSelectionState::setRowAccepted(int rowIndex, bool rowAccepted)
+{
+    if (rowIndex < 0 || rowIndex >= accepted.size()) {
+        return;
+    }
+    accepted[rowIndex] = rowAccepted;
+}
+
+void ProjectReplaceSelectionState::setFileAccepted(const QString &path, bool fileAccepted)
+{
+    for (int i = 0; i < rows.size(); ++i) {
+        if (rows.at(i).path == path) {
+            accepted[i] = fileAccepted;
+        }
+    }
+}
+
+QVector<ProjectReplacePreviewRow> ProjectReplaceSelectionState::acceptedRows() const
+{
+    QVector<ProjectReplacePreviewRow> result;
+    for (int i = 0; i < rows.size(); ++i) {
+        if (isRowAccepted(i)) {
+            result.push_back(rows.at(i));
+        }
+    }
+    return result;
+}
+
+int ProjectReplaceSelectionState::acceptedMatchCount() const
+{
+    int total = 0;
+    for (int i = 0; i < rows.size(); ++i) {
+        if (isRowAccepted(i)) {
+            total += rows.at(i).matchCount;
+        }
+    }
+    return total;
+}
+
 ProjectReplacePreview ProjectReplaceService::previewText(
     const QString &path,
     const QString &text,
@@ -143,4 +193,9 @@ QVector<ProjectReplacePreviewRow> ProjectReplaceService::mergePreviewRows(
         }
     }
     return rows;
+}
+
+ProjectReplaceSelectionState ProjectReplaceService::selectionFromRows(const QVector<ProjectReplacePreviewRow> &rows)
+{
+    return ProjectReplaceSelectionState(rows);
 }
