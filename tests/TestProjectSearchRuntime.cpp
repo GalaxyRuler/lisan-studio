@@ -4,6 +4,7 @@
 #include "EditorFindService.h"
 #include "ProjectModel.h"
 #include "ProjectFileOperations.h"
+#include "ProjectReplaceService.h"
 #include "RuntimeProblemParser.h"
 #include "RuntimeRunner.h"
 #include "SearchService.h"
@@ -37,6 +38,9 @@ private slots:
     void documentFileIoRejectsInvalidUtf8ByPolicy();
     void editorFindServiceFindsArabicEnglishAndMixedMatches();
     void editorFindServiceReplacesCurrentAndAllMatches();
+    void projectReplaceServicePreviewsArabicMixedMatches();
+    void projectReplaceServiceSkipsIgnoredDirectories();
+    void projectReplaceServiceMergesImmediateRowsBeforeDiskRows();
 };
 
 static QString writeFile(const QDir &root, const QString &relative, const QString &text)
@@ -454,6 +458,70 @@ void TestProjectSearchRuntime::editorFindServiceReplacesCurrentAndAllMatches()
     text = EditorFindService::replaceAll(text, QString::fromUtf8("عدد"), QString::fromUtf8("قيمة"), &replaced);
     QCOMPARE(replaced, 1);
     QCOMPARE(text, QString::fromUtf8("قيمة = 1\nاطبع(قيمة)\n"));
+}
+
+void TestProjectSearchRuntime::projectReplaceServicePreviewsArabicMixedMatches()
+{
+    const QString text = QString::fromUtf8(
+        "عدد = 1\n"
+        "path = \"C:/Users/Admin/مشروع/main.apy\"\n"
+        "اطبع(عدد)\n");
+
+    ProjectReplaceService service;
+    const ProjectReplacePreview preview = service.previewText(
+        QStringLiteral("main.apy"),
+        text,
+        QString::fromUtf8("عدد"),
+        QString::fromUtf8("قيمة"));
+
+    QCOMPARE(preview.rows.size(), 2);
+    QCOMPARE(preview.totalMatches, 2);
+    QCOMPARE(preview.summaries.size(), 1);
+    QCOMPARE(preview.summaries.first().matchCount, 2);
+    QCOMPARE(preview.rows.first().line, 1);
+    QCOMPARE(preview.rows.first().before, QString::fromUtf8("عدد = 1"));
+    QCOMPARE(preview.rows.first().after, QString::fromUtf8("قيمة = 1"));
+    QCOMPARE(preview.rows.last().after, QString::fromUtf8("اطبع(قيمة)"));
+}
+
+void TestProjectSearchRuntime::projectReplaceServiceSkipsIgnoredDirectories()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    QDir root(temp.path());
+    const QString mainPath = writeFile(root, QStringLiteral("main.apy"), QString::fromUtf8("اطبع(عدد)\n"));
+    writeFile(root, QStringLiteral("build/generated.apy"), QString::fromUtf8("اطبع(عدد)\n"));
+    writeFile(root, QStringLiteral(".cache/hidden.apy"), QString::fromUtf8("اطبع(عدد)\n"));
+
+    ProjectReplaceService service;
+    const ProjectReplacePreview preview = service.previewProject(
+        root.absolutePath(),
+        QString::fromUtf8("عدد"),
+        QString::fromUtf8("قيمة"));
+
+    QCOMPARE(preview.rows.size(), 1);
+    QCOMPARE(QDir::toNativeSeparators(preview.rows.first().path), QDir::toNativeSeparators(mainPath));
+    QCOMPARE(preview.rows.first().after, QString::fromUtf8("اطبع(قيمة)"));
+    QCOMPARE(preview.totalMatches, 1);
+}
+
+void TestProjectSearchRuntime::projectReplaceServiceMergesImmediateRowsBeforeDiskRows()
+{
+    const QVector<ProjectReplacePreviewRow> immediateRows = {
+        {QStringLiteral("main.apy"), 1, QString::fromUtf8("عدد = 1"), QString::fromUtf8("قيمة = 1"), 1},
+        {QStringLiteral("scratch.apy"), 2, QString::fromUtf8("اطبع(عدد)"), QString::fromUtf8("اطبع(قيمة)"), 1},
+    };
+    const QVector<ProjectReplacePreviewRow> projectRows = {
+        {QStringLiteral("main.apy"), 1, QString::fromUtf8("عدد = 1"), QString::fromUtf8("قيمة = 1"), 1},
+        {QStringLiteral("other.apy"), 3, QString::fromUtf8("عدد"), QString::fromUtf8("قيمة"), 1},
+    };
+
+    const QVector<ProjectReplacePreviewRow> rows = ProjectReplaceService::mergePreviewRows(immediateRows, projectRows);
+
+    QCOMPARE(rows.size(), 3);
+    QCOMPARE(rows.at(0).path, QStringLiteral("main.apy"));
+    QCOMPARE(rows.at(1).path, QStringLiteral("scratch.apy"));
+    QCOMPARE(rows.at(2).path, QStringLiteral("other.apy"));
 }
 
 QTEST_MAIN(TestProjectSearchRuntime)

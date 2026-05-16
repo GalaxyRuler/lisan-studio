@@ -50,6 +50,7 @@ private slots:
     void projectTreeCopyPathActionCopiesSelectedPath();
     void projectSearchShowsClickableResultRows();
     void projectSearchFindsCurrentUnsavedEditorImmediately();
+    void projectReplacePreviewRendersRowsWithoutWritingFile();
     void projectSearchResultRowsFillRtlViewport();
     void projectSearchResultRowsHaveReadableHeight();
     void problemsPanelShowsHiddenBidiWarnings();
@@ -365,6 +366,7 @@ void TestMainWindow::commandPaletteExposesRegisteredWorkbenchCommands()
         QStringLiteral("project.item.rename"),
         QStringLiteral("project.item.reveal"),
         QStringLiteral("project.refresh"),
+        QStringLiteral("replace-in-project"),
         QStringLiteral("run-current-file"),
         QStringLiteral("save-as"),
         QStringLiteral("save-file"),
@@ -411,6 +413,9 @@ void TestMainWindow::coreCommandSurfacesDeclareRegisteredCommandIds()
     auto *commandBox = window.findChild<QLineEdit *>(QStringLiteral("commandBox"));
     QVERIFY(commandBox != nullptr);
     surfaceIds.append(commandBox->property("commandId").toString());
+    auto *projectReplaceInput = window.findChild<QLineEdit *>(QStringLiteral("projectReplaceInput"));
+    QVERIFY(projectReplaceInput != nullptr);
+    surfaceIds.append(projectReplaceInput->property("commandId").toString());
     surfaceIds.removeDuplicates();
     surfaceIds.sort();
 
@@ -431,6 +436,7 @@ void TestMainWindow::coreCommandSurfacesDeclareRegisteredCommandIds()
         QStringLiteral("project.item.rename"),
         QStringLiteral("project.item.reveal"),
         QStringLiteral("project.refresh"),
+        QStringLiteral("replace-in-project"),
         QStringLiteral("run-current-file"),
         QStringLiteral("save-as"),
         QStringLiteral("save-file"),
@@ -965,6 +971,53 @@ void TestMainWindow::projectSearchFindsCurrentUnsavedEditorImmediately()
     QCOMPARE(results->item(0)->data(Qt::UserRole).toString(), QString());
     QCOMPARE(results->item(0)->data(Qt::UserRole + 1).toInt(), 3);
     QVERIFY(results->item(0)->toolTip().contains(QStringLiteral("adult")));
+}
+
+void TestMainWindow::projectReplacePreviewRendersRowsWithoutWritingFile()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    QDir root(temp.path());
+    const QString filePath = writeFile(root, QStringLiteral("main.apy"), QString::fromUtf8("عدد = 1\nاطبع(عدد)\n"));
+
+    MainWindow window;
+    QVERIFY(window.openPath(root.absolutePath()));
+
+    auto *commandBox = window.findChild<QLineEdit *>(QStringLiteral("commandBox"));
+    auto *replaceInput = window.findChild<QLineEdit *>(QStringLiteral("projectReplaceInput"));
+    QVERIFY(commandBox != nullptr);
+    QVERIFY(replaceInput != nullptr);
+    QCOMPARE(replaceInput->property("commandId").toString(), QStringLiteral("replace-in-project"));
+
+    commandBox->setText(QString::fromUtf8("عدد"));
+    replaceInput->setText(QString::fromUtf8("قيمة"));
+
+    QVERIFY(QMetaObject::invokeMethod(&window, "previewProjectReplace", Qt::DirectConnection));
+
+    auto *results = window.findChild<QListWidget *>(QStringLiteral("searchResultsPanel"));
+    QVERIFY(results != nullptr);
+    QCOMPARE(results->count(), 2);
+
+    auto *resultRow = results->itemWidget(results->item(0));
+    QVERIFY(resultRow != nullptr);
+    auto *detailLabel = resultRow->findChild<QLabel *>(QStringLiteral("searchResultDetailLabel"));
+    auto *beforeLabel = resultRow->findChild<QLabel *>(QStringLiteral("projectReplaceBeforeLabel"));
+    auto *afterLabel = resultRow->findChild<QLabel *>(QStringLiteral("projectReplaceAfterLabel"));
+    QVERIFY(detailLabel != nullptr);
+    QVERIFY(beforeLabel != nullptr);
+    QVERIFY(afterLabel != nullptr);
+    QCOMPARE(detailLabel->text(), QString::fromUtf8("معاينة استبدال فقط - لن يتم تعديل الملف"));
+    QCOMPARE(beforeLabel->text(), QString::fromUtf8("عدد = 1"));
+    QCOMPARE(afterLabel->text(), QString::fromUtf8("قيمة = 1"));
+    QCOMPARE(QDir::toNativeSeparators(results->item(0)->data(Qt::UserRole).toString()), QDir::toNativeSeparators(filePath));
+    QCOMPARE(results->item(0)->data(Qt::UserRole + 1).toInt(), 1);
+    QCOMPARE(results->item(0)->data(Qt::UserRole + 3).toString(), QString::fromUtf8("قيمة = 1"));
+
+    QFile file(filePath);
+    QVERIFY(file.open(QIODevice::ReadOnly));
+    QString diskText = QString::fromUtf8(file.readAll());
+    diskText.replace(QStringLiteral("\r\n"), QStringLiteral("\n"));
+    QCOMPARE(diskText, QString::fromUtf8("عدد = 1\nاطبع(عدد)\n"));
 }
 
 void TestMainWindow::projectSearchResultRowsFillRtlViewport()

@@ -4,6 +4,7 @@
 #include "DocumentRegistry.h"
 #include "EditorSurface.h"
 #include "ProjectModel.h"
+#include "ProjectReplaceService.h"
 #include "RuntimeRunner.h"
 #include "SearchService.h"
 #include "SettingsDialogModel.h"
@@ -55,6 +56,7 @@ private slots:
     void handleRuntimeTimeout();
     void openCommandPalette();
     void findInProject();
+    void previewProjectReplace();
     void openInFileFind();
     void updateInFileFindMatches();
     void selectNextInFileMatch();
@@ -86,6 +88,8 @@ private:
     QLineEdit *inFileReplaceInput = nullptr;
     QLabel *inFileFindStatusLabel = nullptr;
     QLineEdit *commandBox = nullptr;
+    QLineEdit *projectReplaceInput = nullptr;
+    QPushButton *projectReplacePreviewButton = nullptr;
     QPlainTextEdit *outputPanel = nullptr;
     QPlainTextEdit *terminalPanel = nullptr;
     QListWidget *problemsPanel = nullptr;
@@ -144,7 +148,9 @@ private:
     void showProblemsPanel();
     void showSearchResultsPanel();
     QVector<SearchResultRow> currentEditorSearchResults(const QString &query) const;
+    QVector<ProjectReplacePreviewRow> currentEditorReplacePreviewRows(const QString &query, const QString &replacement) const;
     void renderSearchResults(const QVector<SearchResultRow> &rows);
+    void renderProjectReplacePreview(const QVector<ProjectReplacePreviewRow> &rows);
     void refreshEditorProblems();
     void addProblem(const QString &severity, const QString &message, const QString &path = QString(), int line = 0);
     void goToEditorLine(int line);

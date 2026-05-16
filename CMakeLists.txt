@@ -38,6 +38,8 @@ add_library(acs_core
     src/ProjectModel.cpp
     src/ProjectFileOperations.h
     src/ProjectFileOperations.cpp
+    src/ProjectReplaceService.h
+    src/ProjectReplaceService.cpp
     src/RuntimeRunner.h
     src/RuntimeRunner.cpp
     src/RuntimeProblemParser.h

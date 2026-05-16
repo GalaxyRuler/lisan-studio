@@ -530,8 +530,23 @@ void MainWindow::buildUi()
     commandBox->setLayoutDirection(Qt::RightToLeft);
     commandBox->setFixedWidth(440);
     connect(commandBox, &QLineEdit::returnPressed, this, &MainWindow::findInProject);
+
+    projectReplaceInput = new QLineEdit(this);
+    projectReplaceInput->setObjectName(QStringLiteral("projectReplaceInput"));
+    projectReplaceInput->setProperty("commandId", QStringLiteral("replace-in-project"));
+    projectReplaceInput->setPlaceholderText(QString::fromUtf8("استبدال بـ..."));
+    projectReplaceInput->setLayoutDirection(Qt::RightToLeft);
+    projectReplaceInput->setFixedWidth(180);
+
+    projectReplacePreviewButton = new QPushButton(QString::fromUtf8("معاينة"), this);
+    projectReplacePreviewButton->setObjectName(QStringLiteral("projectReplacePreviewButton"));
+    projectReplacePreviewButton->setProperty("commandId", QStringLiteral("replace-in-project"));
+    connect(projectReplacePreviewButton, &QPushButton::clicked, this, &MainWindow::previewProjectReplace);
+
     menuLayout->addStretch(1);
     menuLayout->addWidget(commandBox);
+    menuLayout->addWidget(projectReplaceInput);
+    menuLayout->addWidget(projectReplacePreviewButton);
     menuLayout->addStretch(1);
     menuLayout->addWidget(brandBlock);
 
@@ -1209,6 +1224,14 @@ void MainWindow::registerWorkbenchCommands()
             }
         });
     registerCommand(
+        QStringLiteral("replace-in-project"),
+        QString::fromUtf8("معاينة الاستبدال في المشروع"),
+        QString::fromUtf8("بحث"),
+        QKeySequence(),
+        QString::fromUtf8("معاينة استبدال في المشروع project replace preview"),
+        [this]() { previewProjectReplace(); },
+        [this]() { return !projectRoot.isEmpty(); });
+    registerCommand(
         QStringLiteral("project.file.new"),
         QString::fromUtf8("ملف جديد في المشروع"),
         QString::fromUtf8("المشروع"),
@@ -1410,6 +1433,29 @@ void MainWindow::findInProject()
     }));
 }
 
+void MainWindow::previewProjectReplace()
+{
+    if (projectRoot.isEmpty()) {
+        QMessageBox::information(this, QString::fromUtf8("لا يوجد مشروع"), QString::fromUtf8("افتح مشروعا قبل معاينة الاستبدال."));
+        return;
+    }
+
+    const QString query = commandBox ? commandBox->text().trimmed() : QString();
+    if (query.isEmpty()) {
+        return;
+    }
+
+    const QString replacement = projectReplaceInput ? projectReplaceInput->text() : QString();
+    ProjectReplaceService service;
+    const QVector<ProjectReplacePreviewRow> immediateRows = currentEditorReplacePreviewRows(query, replacement);
+    const ProjectReplacePreview projectPreview = service.previewProject(projectRoot, query, replacement);
+    const QVector<ProjectReplacePreviewRow> rows = ProjectReplaceService::mergePreviewRows(immediateRows, projectPreview.rows);
+
+    renderProjectReplacePreview(rows);
+    showSearchResultsPanel();
+    setStatus(QString::fromUtf8("معاينة الاستبدال: %1").arg(rows.size()));
+}
+
 QVector<SearchResultRow> MainWindow::currentEditorSearchResults(const QString &query) const
 {
     if (!editor || query.trimmed().isEmpty()) {
@@ -1418,6 +1464,16 @@ QVector<SearchResultRow> MainWindow::currentEditorSearchResults(const QString &q
 
     SearchService service;
     return service.searchText(editor->currentFilePath(), editor->toPlainText(), query);
+}
+
+QVector<ProjectReplacePreviewRow> MainWindow::currentEditorReplacePreviewRows(const QString &query, const QString &replacement) const
+{
+    if (!editor || query.trimmed().isEmpty()) {
+        return {};
+    }
+
+    ProjectReplaceService service;
+    return service.previewText(editor->currentFilePath(), editor->toPlainText(), query, replacement).rows;
 }
 
 void MainWindow::renderSearchResults(const QVector<SearchResultRow> &rows)
@@ -1481,6 +1537,81 @@ void MainWindow::renderSearchResults(const QVector<SearchResultRow> &rows)
         rowLayout->addWidget(metadataCluster);
         rowLayout->addLayout(detailLayout);
         item->setSizeHint(QSize(rowWidget->sizeHint().width(), 72));
+        searchResultsPanel->setItemWidget(item, rowWidget);
+    }
+    showSearchResultsPanel();
+}
+
+void MainWindow::renderProjectReplacePreview(const QVector<ProjectReplacePreviewRow> &rows)
+{
+    searchResultsPanel->clear();
+    for (const ProjectReplacePreviewRow &row : rows) {
+        auto *item = new QListWidgetItem(searchResultsPanel);
+        item->setData(Qt::UserRole, row.path);
+        item->setData(Qt::UserRole + 1, row.line);
+        item->setData(Qt::UserRole + 2, row.before);
+        item->setData(Qt::UserRole + 3, row.after);
+        item->setToolTip(QString::fromUtf8("%1\n%2\n→ %3")
+            .arg(QDir::toNativeSeparators(row.path.isEmpty() ? currentEditorPath() : row.path), row.before, row.after));
+        item->setText(QString::fromUtf8("%1، السطر %2").arg(QFileInfo(row.path).fileName()).arg(row.line));
+
+        auto *rowWidget = new QWidget(searchResultsPanel);
+        rowWidget->setObjectName(QStringLiteral("searchResultRow"));
+        rowWidget->setLayoutDirection(Qt::RightToLeft);
+        rowWidget->setMinimumHeight(112);
+        auto *rowLayout = new QVBoxLayout(rowWidget);
+        rowLayout->setContentsMargins(16, 14, 16, 14);
+        rowLayout->setSpacing(4);
+
+        auto *metadataCluster = new QWidget(rowWidget);
+        metadataCluster->setObjectName(QStringLiteral("searchResultMetadataCluster"));
+        metadataCluster->setLayoutDirection(Qt::RightToLeft);
+        auto *metaLayout = new QHBoxLayout(metadataCluster);
+        metaLayout->setDirection(QBoxLayout::RightToLeft);
+        metaLayout->setContentsMargins(0, 0, 0, 0);
+        metaLayout->setSpacing(8);
+
+        const QString fileLabelText = row.path.isEmpty()
+            ? QString::fromUtf8("المحرر الحالي")
+            : QDir::toNativeSeparators(row.path);
+        auto *fileLabel = new QLabel(fileLabelText, rowWidget);
+        fileLabel->setObjectName(QStringLiteral("searchResultFileLabel"));
+        fileLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        fileLabel->setLayoutDirection(row.path.isEmpty() ? Qt::RightToLeft : Qt::LeftToRight);
+        fileLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+        fileLabel->setStyleSheet(QStringLiteral("color: #E8ECF2; font-weight: 600;"));
+
+        auto *lineLabel = new QLabel(QString::fromUtf8("السطر %1").arg(row.line), rowWidget);
+        lineLabel->setObjectName(QStringLiteral("searchResultLineLabel"));
+        lineLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        lineLabel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
+        lineLabel->setStyleSheet(QStringLiteral("color: #AEC6FF;"));
+        metaLayout->addWidget(fileLabel, 1);
+        metaLayout->addWidget(lineLabel);
+
+        auto *detailLabel = new QLabel(QString::fromUtf8("معاينة استبدال فقط - لن يتم تعديل الملف"), rowWidget);
+        detailLabel->setObjectName(QStringLiteral("searchResultDetailLabel"));
+        detailLabel->setLayoutDirection(Qt::RightToLeft);
+        detailLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        detailLabel->setStyleSheet(QStringLiteral("color: #9AA7B6;"));
+
+        auto *beforeLabel = new QLabel(row.before, rowWidget);
+        beforeLabel->setObjectName(QStringLiteral("projectReplaceBeforeLabel"));
+        beforeLabel->setLayoutDirection(Qt::RightToLeft);
+        beforeLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        beforeLabel->setStyleSheet(QStringLiteral("color: #C8D0DC; font-family: 'Cascadia Code', 'Consolas';"));
+
+        auto *afterLabel = new QLabel(row.after, rowWidget);
+        afterLabel->setObjectName(QStringLiteral("projectReplaceAfterLabel"));
+        afterLabel->setLayoutDirection(Qt::RightToLeft);
+        afterLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        afterLabel->setStyleSheet(QStringLiteral("color: #B8F5C8; font-family: 'Cascadia Code', 'Consolas';"));
+
+        rowLayout->addWidget(metadataCluster);
+        rowLayout->addWidget(detailLabel);
+        rowLayout->addWidget(beforeLabel);
+        rowLayout->addWidget(afterLabel);
+        item->setSizeHint(QSize(rowWidget->sizeHint().width(), 112));
         searchResultsPanel->setItemWidget(item, rowWidget);
     }
     showSearchResultsPanel();
