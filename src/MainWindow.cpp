@@ -2353,8 +2353,10 @@ bool MainWindow::loadProject(const QString &path)
     }
 
     projectRoot = requestedRoot;
+    workspaceSettings = WorkspaceSettingsStore(projectRoot).load();
     fileSystemModel->setRootPath(projectRoot);
     projectTree->setRootIndex(fileSystemModel->index(projectRoot));
+    applyWorkspaceSettingsToOpenEditors();
     settings.addRecentProject(projectRoot);
     setStatus(QString::fromUtf8("المشروع: %1").arg(projectRoot));
     return true;
@@ -2398,6 +2400,7 @@ EditorSurface *MainWindow::createEditorTab(const QString &title)
 {
     auto *surface = new EditorSurface(editorTabs);
     applyEditorFont(surface);
+    applyWorkspaceSettings(surface);
     const int index = editorTabs->addTab(surface, title);
     workbenchState.addEditorSession(surface->currentFilePath());
     workbenchState.setCurrentEditorSessionIndex(index);
@@ -2447,6 +2450,26 @@ void MainWindow::applyEditorFont(EditorSurface *surface)
         .arg(stylesheetFamily)
         .arg(settings.editorFontSize()));
     surface->setTabStopDistance(surface->fontMetrics().horizontalAdvance(QLatin1Char(' ')) * 4);
+}
+
+void MainWindow::applyWorkspaceSettings(EditorSurface *surface)
+{
+    if (!surface) {
+        return;
+    }
+
+    surface->setTrimTrailingWhitespaceOnSave(workspaceSettings.trimTrailingWhitespaceOnSave);
+}
+
+void MainWindow::applyWorkspaceSettingsToOpenEditors()
+{
+    if (!editorTabs) {
+        return;
+    }
+
+    for (int i = 0; i < editorTabs->count(); ++i) {
+        applyWorkspaceSettings(qobject_cast<EditorSurface *>(editorTabs->widget(i)));
+    }
 }
 
 void MainWindow::syncEditorSession(EditorSurface *surface)

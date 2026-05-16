@@ -11,6 +11,7 @@
 #include "SettingsStore.h"
 #include "UnsavedChangesGuard.h"
 #include "WorkbenchState.h"
+#include "WorkspaceSettingsStore.h"
 
 #include <QFileSystemModel>
 #include <QAction>
@@ -134,6 +135,7 @@ private:
     RuntimeRunner runtime;
     CommandRegistry commandRegistry;
     WorkbenchState workbenchState;
+    WorkspaceSettings workspaceSettings;
     QString projectRoot;
 
     void buildUi();
@@ -147,6 +149,8 @@ private:
     void clearEditorsForDeletedPath(const QString &path);
     EditorSurface *createEditorTab(const QString &title);
     void applyEditorFont(EditorSurface *surface);
+    void applyWorkspaceSettings(EditorSurface *surface);
+    void applyWorkspaceSettingsToOpenEditors();
     void syncEditorSession(EditorSurface *surface);
     void setCurrentEditor(EditorSurface *surface);
     void updateEditorTabTitle(EditorSurface *surface);

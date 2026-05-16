@@ -1,6 +1,7 @@
 #include <QtTest/QtTest>
 
 #include "MainWindow.h"
+#include "WorkspaceSettingsStore.h"
 
 #include <QClipboard>
 #include <QCheckBox>
@@ -34,6 +35,7 @@ private slots:
     void restoresSavedWorkbenchSession();
     void savesWorkbenchSessionOnClose();
     void openingFileRecordsRecentFile();
+    void workspaceTrimSettingAppliesToOpenedEditors();
     void usesSingleRtlTopCommandBarWithMenuButtons();
     void exposesLisanLogoAssetInShell();
     void exposesPremiumFutureBottomPanelTabs();
@@ -211,6 +213,35 @@ void TestMainWindow::openingFileRecordsRecentFile()
     QCOMPARE(recentFiles.size(), 2);
     QCOMPARE(QDir::toNativeSeparators(recentFiles.at(0)), QDir::toNativeSeparators(secondPath));
     QCOMPARE(QDir::toNativeSeparators(recentFiles.at(1)), QDir::toNativeSeparators(firstPath));
+}
+
+void TestMainWindow::workspaceTrimSettingAppliesToOpenedEditors()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    QDir root(temp.path());
+    const QString filePath = writeFile(root, QStringLiteral("main.apy"), QString::fromUtf8("عدد = 1   \n"));
+
+    WorkspaceSettings workspaceSettings;
+    workspaceSettings.trimTrailingWhitespaceOnSave = true;
+    QString error;
+    WorkspaceSettingsStore workspaceStore(root.absolutePath());
+    QVERIFY2(workspaceStore.save(workspaceSettings, &error), qPrintable(error));
+
+    MainWindow window(nullptr, temp.filePath(QStringLiteral("app-settings.ini")));
+    QVERIFY(window.openPath(root.absolutePath()));
+    QVERIFY(window.openPath(filePath));
+
+    auto *editor = window.findChild<EditorSurface *>(QStringLiteral("editorSurface"));
+    QVERIFY(editor != nullptr);
+    QVERIFY(editor->trimTrailingWhitespaceOnSave());
+
+    editor->setPlainText(QString::fromUtf8("عدد = 2   \n"));
+    QVERIFY(QMetaObject::invokeMethod(&window, "saveFile", Qt::DirectConnection));
+
+    QFile saved(filePath);
+    QVERIFY(saved.open(QIODevice::ReadOnly | QIODevice::Text));
+    QCOMPARE(QString::fromUtf8(saved.readAll()), QString::fromUtf8("عدد = 2\n"));
 }
 
 void TestMainWindow::usesSingleRtlTopCommandBarWithMenuButtons()
