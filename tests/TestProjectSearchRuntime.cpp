@@ -43,6 +43,8 @@ private slots:
     void projectReplaceServiceMergesImmediateRowsBeforeDiskRows();
     void projectReplaceSelectionAcceptsRowsByDefault();
     void projectReplaceSelectionRejectsSingleRowsAndWholeFiles();
+    void projectReplaceServiceAppliesAcceptedRowsAtomically();
+    void projectReplaceServiceRejectsStaleRowsWithoutWriting();
 };
 
 static QString writeFile(const QDir &root, const QString &relative, const QString &text)
@@ -570,6 +572,55 @@ void TestProjectSearchRuntime::projectReplaceSelectionRejectsSingleRowsAndWholeF
     QVERIFY(selection.isRowAccepted(1));
     QVERIFY(selection.isRowAccepted(2));
     QCOMPARE(selection.acceptedRows().size(), 3);
+}
+
+void TestProjectSearchRuntime::projectReplaceServiceAppliesAcceptedRowsAtomically()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    QDir root(temp.path());
+    const QString path = writeFile(root, QStringLiteral("main.apy"), QString::fromUtf8("عدد = 1\nاطبع(عدد)\n"));
+
+    ProjectReplaceService service;
+    const ProjectReplacePreview preview = service.previewProject(root.absolutePath(), QString::fromUtf8("عدد"), QString::fromUtf8("قيمة"));
+    ProjectReplaceSelectionState selection = ProjectReplaceService::selectionFromRows(preview.rows);
+    selection.setRowAccepted(1, false);
+
+    QString error;
+    const ProjectReplaceApplyResult result = ProjectReplaceService::applyAcceptedRows(selection.acceptedRows(), &error);
+
+    QVERIFY2(result.succeeded, qPrintable(error));
+    QCOMPARE(result.filesChanged, 1);
+    QCOMPARE(result.rowsApplied, 1);
+
+    QFile file(path);
+    QVERIFY(file.open(QIODevice::ReadOnly));
+    QString diskText = QString::fromUtf8(file.readAll());
+    diskText.replace(QStringLiteral("\r\n"), QStringLiteral("\n"));
+    QCOMPARE(diskText, QString::fromUtf8("قيمة = 1\nاطبع(عدد)\n"));
+}
+
+void TestProjectSearchRuntime::projectReplaceServiceRejectsStaleRowsWithoutWriting()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    QDir root(temp.path());
+    const QString path = writeFile(root, QStringLiteral("main.apy"), QString::fromUtf8("عدد = 1\nاطبع(عدد)\n"));
+
+    ProjectReplaceService service;
+    const ProjectReplacePreview preview = service.previewProject(root.absolutePath(), QString::fromUtf8("عدد"), QString::fromUtf8("قيمة"));
+    QVERIFY(DocumentFileIO::saveUtf8Atomically(path, QString::fromUtf8("عدد = 2\nاطبع(عدد)\n")));
+
+    QString error;
+    const ProjectReplaceApplyResult result = ProjectReplaceService::applyAcceptedRows(preview.rows, &error);
+
+    QVERIFY(!result.succeeded);
+    QVERIFY(error.contains(QString::fromUtf8("تغير")));
+    QFile file(path);
+    QVERIFY(file.open(QIODevice::ReadOnly));
+    QString diskText = QString::fromUtf8(file.readAll());
+    diskText.replace(QStringLiteral("\r\n"), QStringLiteral("\n"));
+    QCOMPARE(diskText, QString::fromUtf8("عدد = 2\nاطبع(عدد)\n"));
 }
 
 QTEST_MAIN(TestProjectSearchRuntime)

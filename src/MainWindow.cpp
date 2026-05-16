@@ -544,10 +544,16 @@ void MainWindow::buildUi()
     projectReplacePreviewButton->setProperty("commandId", QStringLiteral("replace-in-project"));
     connect(projectReplacePreviewButton, &QPushButton::clicked, this, &MainWindow::previewProjectReplace);
 
+    projectReplaceApplyButton = new QPushButton(QString::fromUtf8("تطبيق"), this);
+    projectReplaceApplyButton->setObjectName(QStringLiteral("projectReplaceApplyButton"));
+    projectReplaceApplyButton->setProperty("commandId", QStringLiteral("replace-in-project.applyAccepted"));
+    connect(projectReplaceApplyButton, &QPushButton::clicked, this, &MainWindow::applyAcceptedProjectReplaceRows);
+
     menuLayout->addStretch(1);
     menuLayout->addWidget(commandBox);
     menuLayout->addWidget(projectReplaceInput);
     menuLayout->addWidget(projectReplacePreviewButton);
+    menuLayout->addWidget(projectReplaceApplyButton);
     menuLayout->addStretch(1);
     menuLayout->addWidget(brandBlock);
 
@@ -1233,6 +1239,14 @@ void MainWindow::registerWorkbenchCommands()
         [this]() { previewProjectReplace(); },
         [this]() { return !projectRoot.isEmpty(); });
     registerCommand(
+        QStringLiteral("replace-in-project.applyAccepted"),
+        QString::fromUtf8("تطبيق الاستبدالات المقبولة"),
+        QString::fromUtf8("بحث"),
+        QKeySequence(),
+        QString::fromUtf8("تطبيق الاستبدالات المقبولة apply accepted project replace"),
+        [this]() { applyAcceptedProjectReplaceRows(); },
+        [this]() { return searchResultsPanel && searchResultsPanel->count() > 0; });
+    registerCommand(
         QStringLiteral("project.file.new"),
         QString::fromUtf8("ملف جديد في المشروع"),
         QString::fromUtf8("المشروع"),
@@ -1457,6 +1471,28 @@ void MainWindow::previewProjectReplace()
     setStatus(QString::fromUtf8("معاينة الاستبدال: %1").arg(rows.size()));
 }
 
+void MainWindow::applyAcceptedProjectReplaceRows()
+{
+    const QVector<ProjectReplacePreviewRow> rows = acceptedProjectReplaceRows();
+    if (rows.isEmpty()) {
+        setStatus(QString::fromUtf8("لا توجد استبدالات محددة"));
+        return;
+    }
+    if (hasDirtyOpenDocumentForReplaceRows(rows)) {
+        setStatus(QString::fromUtf8("احفظ الملفات المفتوحة قبل تطبيق الاستبدال"));
+        return;
+    }
+
+    QString error;
+    const ProjectReplaceApplyResult result = ProjectReplaceService::applyAcceptedRows(rows, &error);
+    if (!result.succeeded) {
+        setStatus(error.isEmpty() ? QString::fromUtf8("تعذر تطبيق الاستبدال") : error);
+        return;
+    }
+
+    setStatus(QString::fromUtf8("تم تطبيق %1 استبدالا في %2 ملف").arg(result.rowsApplied).arg(result.filesChanged));
+}
+
 QVector<SearchResultRow> MainWindow::currentEditorSearchResults(const QString &query) const
 {
     if (!editor || query.trimmed().isEmpty()) {
@@ -1546,6 +1582,7 @@ void MainWindow::renderSearchResults(const QVector<SearchResultRow> &rows)
 void MainWindow::renderProjectReplacePreview(const QVector<ProjectReplacePreviewRow> &rows)
 {
     searchResultsPanel->clear();
+    currentProjectReplacePreviewRows = rows;
     ProjectReplaceSelectionState selection = ProjectReplaceService::selectionFromRows(rows);
     for (int rowIndex = 0; rowIndex < rows.size(); ++rowIndex) {
         const ProjectReplacePreviewRow &row = rows.at(rowIndex);
@@ -1670,6 +1707,46 @@ void MainWindow::setProjectReplaceFileAccepted(const QString &path, bool accepte
             checkBox->setChecked(accepted);
         }
     }
+}
+
+QVector<ProjectReplacePreviewRow> MainWindow::acceptedProjectReplaceRows() const
+{
+    QVector<ProjectReplacePreviewRow> rows;
+    if (!searchResultsPanel) {
+        return rows;
+    }
+
+    for (int row = 0; row < searchResultsPanel->count(); ++row) {
+        auto *item = searchResultsPanel->item(row);
+        if (!item || !item->data(Qt::UserRole + 4).toBool()) {
+            continue;
+        }
+        rows.push_back({
+            item->data(Qt::UserRole).toString(),
+            item->data(Qt::UserRole + 1).toInt(),
+            item->data(Qt::UserRole + 2).toString(),
+            item->data(Qt::UserRole + 3).toString(),
+            1,
+        });
+    }
+    return rows;
+}
+
+bool MainWindow::hasDirtyOpenDocumentForReplaceRows(const QVector<ProjectReplacePreviewRow> &rows) const
+{
+    for (int tabIndex = 0; editorTabs && tabIndex < editorTabs->count(); ++tabIndex) {
+        auto *surface = qobject_cast<EditorSurface *>(editorTabs->widget(tabIndex));
+        if (!surface || !surface->isDirty() || surface->currentFilePath().isEmpty()) {
+            continue;
+        }
+        const QString openPath = QFileInfo(surface->currentFilePath()).absoluteFilePath();
+        for (const ProjectReplacePreviewRow &row : rows) {
+            if (!row.path.isEmpty() && QFileInfo(row.path).absoluteFilePath() == openPath) {
+                return true;
+            }
+        }
+    }
+    return false;
 }
 
 void MainWindow::openSearchResult(QListWidgetItem *item)

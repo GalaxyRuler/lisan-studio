@@ -27,6 +27,13 @@ struct ProjectReplacePreview
     int scannedFiles = 0;
 };
 
+struct ProjectReplaceApplyResult
+{
+    bool succeeded = false;
+    int filesChanged = 0;
+    int rowsApplied = 0;
+};
+
 class ProjectReplaceSelectionState final
 {
 public:
@@ -65,4 +72,5 @@ public:
         int limit = 250);
 
     static ProjectReplaceSelectionState selectionFromRows(const QVector<ProjectReplacePreviewRow> &rows);
+    static ProjectReplaceApplyResult applyAcceptedRows(const QVector<ProjectReplacePreviewRow> &rows, QString *error = nullptr);
 };

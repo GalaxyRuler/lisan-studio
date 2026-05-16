@@ -57,6 +57,7 @@ private slots:
     void openCommandPalette();
     void findInProject();
     void previewProjectReplace();
+    void applyAcceptedProjectReplaceRows();
     void openInFileFind();
     void updateInFileFindMatches();
     void selectNextInFileMatch();
@@ -90,6 +91,7 @@ private:
     QLineEdit *commandBox = nullptr;
     QLineEdit *projectReplaceInput = nullptr;
     QPushButton *projectReplacePreviewButton = nullptr;
+    QPushButton *projectReplaceApplyButton = nullptr;
     QPlainTextEdit *outputPanel = nullptr;
     QPlainTextEdit *terminalPanel = nullptr;
     QListWidget *problemsPanel = nullptr;
@@ -120,6 +122,7 @@ private:
     QString activeRuntimeTitle;
     QString activeRuntimeStdout;
     QString activeRuntimeStderr;
+    QVector<ProjectReplacePreviewRow> currentProjectReplacePreviewRows;
     QModelIndex projectTreeContextIndex;
     bool activeRuntimeHandledError = false;
     SettingsStore settings;
@@ -152,6 +155,8 @@ private:
     void renderSearchResults(const QVector<SearchResultRow> &rows);
     void renderProjectReplacePreview(const QVector<ProjectReplacePreviewRow> &rows);
     void setProjectReplaceFileAccepted(const QString &path, bool accepted);
+    QVector<ProjectReplacePreviewRow> acceptedProjectReplaceRows() const;
+    bool hasDirtyOpenDocumentForReplaceRows(const QVector<ProjectReplacePreviewRow> &rows) const;
     void refreshEditorProblems();
     void addProblem(const QString &severity, const QString &message, const QString &path = QString(), int line = 0);
     void goToEditorLine(int line);

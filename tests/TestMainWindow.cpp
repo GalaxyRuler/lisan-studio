@@ -54,6 +54,8 @@ private slots:
     void projectReplacePreviewRendersRowsWithoutWritingFile();
     void projectReplacePreviewRowCheckboxesTrackAcceptedState();
     void projectReplacePreviewFileButtonsToggleRowsForThatFile();
+    void projectReplaceApplyWritesCheckedRowsOnly();
+    void projectReplaceApplyRefusesDirtyOpenBuffers();
     void projectSearchResultRowsFillRtlViewport();
     void projectSearchResultRowsHaveReadableHeight();
     void problemsPanelShowsHiddenBidiWarnings();
@@ -370,6 +372,7 @@ void TestMainWindow::commandPaletteExposesRegisteredWorkbenchCommands()
         QStringLiteral("project.item.reveal"),
         QStringLiteral("project.refresh"),
         QStringLiteral("replace-in-project"),
+        QStringLiteral("replace-in-project.applyAccepted"),
         QStringLiteral("run-current-file"),
         QStringLiteral("save-as"),
         QStringLiteral("save-file"),
@@ -419,6 +422,9 @@ void TestMainWindow::coreCommandSurfacesDeclareRegisteredCommandIds()
     auto *projectReplaceInput = window.findChild<QLineEdit *>(QStringLiteral("projectReplaceInput"));
     QVERIFY(projectReplaceInput != nullptr);
     surfaceIds.append(projectReplaceInput->property("commandId").toString());
+    auto *projectReplaceApplyButton = window.findChild<QPushButton *>(QStringLiteral("projectReplaceApplyButton"));
+    QVERIFY(projectReplaceApplyButton != nullptr);
+    surfaceIds.append(projectReplaceApplyButton->property("commandId").toString());
     surfaceIds.removeDuplicates();
     surfaceIds.sort();
 
@@ -440,6 +446,7 @@ void TestMainWindow::coreCommandSurfacesDeclareRegisteredCommandIds()
         QStringLiteral("project.item.reveal"),
         QStringLiteral("project.refresh"),
         QStringLiteral("replace-in-project"),
+        QStringLiteral("replace-in-project.applyAccepted"),
         QStringLiteral("run-current-file"),
         QStringLiteral("save-as"),
         QStringLiteral("save-file"),
@@ -1128,6 +1135,78 @@ void TestMainWindow::projectReplacePreviewFileButtonsToggleRowsForThatFile()
             QCOMPARE(results->item(row)->data(Qt::UserRole + 4).toBool(), true);
         }
     }
+}
+
+void TestMainWindow::projectReplaceApplyWritesCheckedRowsOnly()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    QDir root(temp.path());
+    const QString filePath = writeFile(root, QStringLiteral("main.apy"), QString::fromUtf8("عدد = 1\nاطبع(عدد)\n"));
+
+    MainWindow window;
+    QVERIFY(window.openPath(root.absolutePath()));
+
+    auto *commandBox = window.findChild<QLineEdit *>(QStringLiteral("commandBox"));
+    auto *replaceInput = window.findChild<QLineEdit *>(QStringLiteral("projectReplaceInput"));
+    auto *applyButton = window.findChild<QPushButton *>(QStringLiteral("projectReplaceApplyButton"));
+    QVERIFY(commandBox != nullptr);
+    QVERIFY(replaceInput != nullptr);
+    QVERIFY(applyButton != nullptr);
+    QCOMPARE(applyButton->property("commandId").toString(), QStringLiteral("replace-in-project.applyAccepted"));
+
+    commandBox->setText(QString::fromUtf8("عدد"));
+    replaceInput->setText(QString::fromUtf8("قيمة"));
+    QVERIFY(QMetaObject::invokeMethod(&window, "previewProjectReplace", Qt::DirectConnection));
+
+    auto *results = window.findChild<QListWidget *>(QStringLiteral("searchResultsPanel"));
+    QVERIFY(results != nullptr);
+    QCOMPARE(results->count(), 2);
+    auto *secondRow = results->itemWidget(results->item(1));
+    QVERIFY(secondRow != nullptr);
+    auto *acceptSecond = secondRow->findChild<QCheckBox *>(QStringLiteral("projectReplaceAcceptCheckBox"));
+    QVERIFY(acceptSecond != nullptr);
+    acceptSecond->setChecked(false);
+
+    QVERIFY(QMetaObject::invokeMethod(&window, "applyAcceptedProjectReplaceRows", Qt::DirectConnection));
+
+    QFile file(filePath);
+    QVERIFY(file.open(QIODevice::ReadOnly));
+    QString diskText = QString::fromUtf8(file.readAll());
+    diskText.replace(QStringLiteral("\r\n"), QStringLiteral("\n"));
+    QCOMPARE(diskText, QString::fromUtf8("قيمة = 1\nاطبع(عدد)\n"));
+}
+
+void TestMainWindow::projectReplaceApplyRefusesDirtyOpenBuffers()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    QDir root(temp.path());
+    const QString filePath = writeFile(root, QStringLiteral("main.apy"), QString::fromUtf8("عدد = 1\nاطبع(عدد)\n"));
+
+    MainWindow window;
+    QVERIFY(window.openPath(filePath));
+
+    auto *editor = window.findChild<EditorSurface *>(QStringLiteral("editorSurface"));
+    QVERIFY(editor != nullptr);
+    editor->insertPlainText(QString::fromUtf8("# تعديل غير محفوظ\n"));
+    QVERIFY(editor->isDirty());
+
+    auto *commandBox = window.findChild<QLineEdit *>(QStringLiteral("commandBox"));
+    auto *replaceInput = window.findChild<QLineEdit *>(QStringLiteral("projectReplaceInput"));
+    QVERIFY(commandBox != nullptr);
+    QVERIFY(replaceInput != nullptr);
+    commandBox->setText(QString::fromUtf8("عدد"));
+    replaceInput->setText(QString::fromUtf8("قيمة"));
+    QVERIFY(QMetaObject::invokeMethod(&window, "previewProjectReplace", Qt::DirectConnection));
+
+    QVERIFY(QMetaObject::invokeMethod(&window, "applyAcceptedProjectReplaceRows", Qt::DirectConnection));
+
+    QFile file(filePath);
+    QVERIFY(file.open(QIODevice::ReadOnly));
+    QString diskText = QString::fromUtf8(file.readAll());
+    diskText.replace(QStringLiteral("\r\n"), QStringLiteral("\n"));
+    QCOMPARE(diskText, QString::fromUtf8("عدد = 1\nاطبع(عدد)\n"));
 }
 
 void TestMainWindow::projectSearchResultRowsFillRtlViewport()

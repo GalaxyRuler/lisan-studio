@@ -1,5 +1,6 @@
 #include "ProjectReplaceService.h"
 
+#include "DocumentFileIO.h"
 #include "EditorFindService.h"
 #include "ProjectModel.h"
 
@@ -7,6 +8,7 @@
 #include <QDirIterator>
 #include <QFile>
 #include <QFileInfo>
+#include <QMap>
 #include <QStringList>
 
 #include <utility>
@@ -34,6 +36,13 @@ void appendSummary(ProjectReplacePreview *preview, const QString &path, int rowC
     }
     preview->summaries.push_back({path, rowCount, matchCount});
     preview->totalMatches += matchCount;
+}
+
+void setError(QString *error, const QString &message)
+{
+    if (error) {
+        *error = message;
+    }
 }
 }
 
@@ -198,4 +207,67 @@ QVector<ProjectReplacePreviewRow> ProjectReplaceService::mergePreviewRows(
 ProjectReplaceSelectionState ProjectReplaceService::selectionFromRows(const QVector<ProjectReplacePreviewRow> &rows)
 {
     return ProjectReplaceSelectionState(rows);
+}
+
+ProjectReplaceApplyResult ProjectReplaceService::applyAcceptedRows(const QVector<ProjectReplacePreviewRow> &rows, QString *error)
+{
+    if (error) {
+        error->clear();
+    }
+
+    ProjectReplaceApplyResult result;
+    if (rows.isEmpty()) {
+        result.succeeded = true;
+        return result;
+    }
+
+    QMap<QString, QVector<ProjectReplacePreviewRow>> rowsByPath;
+    for (const ProjectReplacePreviewRow &row : rows) {
+        if (row.path.isEmpty() || row.line <= 0) {
+            setError(error, QString::fromUtf8("تحتوي المعاينة على صف غير صالح."));
+            return {};
+        }
+        rowsByPath[row.path].push_back(row);
+    }
+
+    QMap<QString, QString> pendingWrites;
+    for (auto it = rowsByPath.cbegin(); it != rowsByPath.cend(); ++it) {
+        QString loadError;
+        const DocumentLoadResult loaded = DocumentFileIO::loadUtf8(it.key(), &loadError);
+        if (!loadError.isEmpty()) {
+            setError(error, loadError);
+            return {};
+        }
+
+        QStringList lines = loaded.text.split(QLatin1Char('\n'));
+        for (const ProjectReplacePreviewRow &row : it.value()) {
+            const int lineIndex = row.line - 1;
+            if (lineIndex < 0 || lineIndex >= lines.size()) {
+                setError(error, QString::fromUtf8("تغير الملف منذ إنشاء المعاينة."));
+                return {};
+            }
+
+            const QString currentLine = lines.at(lineIndex).trimmed();
+            if (currentLine != row.before) {
+                setError(error, QString::fromUtf8("تغير الملف منذ إنشاء المعاينة."));
+                return {};
+            }
+
+            lines[lineIndex] = row.after;
+        }
+        pendingWrites[it.key()] = lines.join(QLatin1Char('\n'));
+    }
+
+    for (auto it = pendingWrites.cbegin(); it != pendingWrites.cend(); ++it) {
+        QString saveError;
+        if (!DocumentFileIO::saveUtf8Atomically(it.key(), it.value(), &saveError)) {
+            setError(error, saveError);
+            return {};
+        }
+        ++result.filesChanged;
+    }
+
+    result.rowsApplied = rows.size();
+    result.succeeded = true;
+    return result;
 }
