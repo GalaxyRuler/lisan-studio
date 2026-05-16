@@ -26,6 +26,13 @@ QStringList nativeProjectPaths(const QStringList &paths)
     }
     return nativePaths;
 }
+
+QString themeLabel(const QString &preference)
+{
+    return preference == QStringLiteral("light")
+        ? QString::fromUtf8("فاتح")
+        : QString::fromUtf8("داكن");
+}
 }
 
 SettingsDialogState SettingsDialogModel::build(
@@ -42,7 +49,7 @@ SettingsDialogState SettingsDialogModel::build(
     state.editorFontFamilies = editorFontFamilies;
     state.selectedEditorFontFamily = resolvedEditorFontFamily(settings.editorFontFamily(), editorFontFamilies);
     state.editorFontSize = settings.editorFontSize();
-    state.themeLabel = QString::fromUtf8("داكن مستقبلي");
+    state.themeLabel = themeLabel(settings.themePreference());
     state.runtimePythonPath = QDir::toNativeSeparators(diagnostics.pythonExecutable);
     state.runtimePackageStatus = diagnostics.statusText;
     state.runtimeRunStatus = readyStatus(diagnostics.runModuleAvailable);

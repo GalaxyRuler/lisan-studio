@@ -23,6 +23,9 @@ public:
     int editorFontSize() const;
     void setEditorFontSize(int size);
 
+    QString themePreference() const;
+    void setThemePreference(const QString &preference);
+
     QStringList recentProjects() const;
     void addRecentProject(const QString &path);
 

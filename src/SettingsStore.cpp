@@ -41,6 +41,21 @@ void SettingsStore::setEditorFontSize(int size)
     settings.setValue(QStringLiteral("editor/fontSize"), qBound(8, size, 28));
 }
 
+QString SettingsStore::themePreference() const
+{
+    QSettings settings(path, QSettings::IniFormat);
+    const QString preference = settings.value(QStringLiteral("editor/theme"), QStringLiteral("dark")).toString();
+    return preference == QStringLiteral("light") ? QStringLiteral("light") : QStringLiteral("dark");
+}
+
+void SettingsStore::setThemePreference(const QString &preference)
+{
+    QSettings settings(path, QSettings::IniFormat);
+    settings.setValue(
+        QStringLiteral("editor/theme"),
+        preference == QStringLiteral("light") ? QStringLiteral("light") : QStringLiteral("dark"));
+}
+
 QStringList SettingsStore::recentProjects() const
 {
     QSettings settings(path, QSettings::IniFormat);

@@ -53,6 +53,7 @@ private slots:
     void runtimeProblemParserExtractsArabicSyntaxLine();
     void settingsStorePersistsArabicFontAndRecentProject();
     void settingsStorePersistsRecentFilesMostRecentFirst();
+    void settingsStorePersistsThemePreference();
     void settingsStorePersistsWorkbenchSession();
     void settingsStorePersistsShortcutSettingsJson();
     void workspaceSettingsStoreDefaultsWhenMissingOrInvalid();
@@ -602,6 +603,23 @@ void TestProjectSearchRuntime::settingsStorePersistsRecentFilesMostRecentFirst()
     QVERIFY(!files.contains(QStringLiteral("C:/project/0.apy")));
 }
 
+void TestProjectSearchRuntime::settingsStorePersistsThemePreference()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+
+    SettingsStore store(temp.path() + QStringLiteral("/settings.ini"));
+    QCOMPARE(store.themePreference(), QStringLiteral("dark"));
+
+    store.setThemePreference(QStringLiteral("light"));
+
+    SettingsStore reloaded(temp.path() + QStringLiteral("/settings.ini"));
+    QCOMPARE(reloaded.themePreference(), QStringLiteral("light"));
+
+    reloaded.setThemePreference(QStringLiteral("solarized"));
+    QCOMPARE(reloaded.themePreference(), QStringLiteral("dark"));
+}
+
 void TestProjectSearchRuntime::settingsStorePersistsWorkbenchSession()
 {
     QTemporaryDir temp;
@@ -717,6 +735,7 @@ void TestProjectSearchRuntime::settingsDialogModelBuildsUiStateFromStoreAndDiagn
     SettingsStore store(temp.path() + QStringLiteral("/settings.ini"));
     store.setEditorFontFamily(QString::fromUtf8("Cascadia Code"));
     store.setEditorFontSize(18);
+    store.setThemePreference(QStringLiteral("light"));
     store.addRecentProject(QString::fromUtf8("C:/مشروع"));
 
     RuntimeDiagnostics diagnostics;
@@ -735,7 +754,7 @@ void TestProjectSearchRuntime::settingsDialogModelBuildsUiStateFromStoreAndDiagn
     QCOMPARE(state.editorFontFamilies, QStringList({QStringLiteral("Segoe UI"), QStringLiteral("Tahoma")}));
     QCOMPARE(state.selectedEditorFontFamily, QStringLiteral("Segoe UI"));
     QCOMPARE(state.editorFontSize, 18);
-    QCOMPARE(state.themeLabel, QString::fromUtf8("داكن مستقبلي"));
+    QCOMPARE(state.themeLabel, QString::fromUtf8("فاتح"));
     QCOMPARE(state.runtimePythonPath, QStringLiteral("C:\\runtime\\python\\python.exe"));
     QCOMPARE(state.runtimePackageStatus, QString::fromUtf8("جاهز: lughat-althuban 1.0"));
     QCOMPARE(state.runtimeRunStatus, QString::fromUtf8("جاهز"));
