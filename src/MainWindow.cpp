@@ -1,5 +1,6 @@
 #include "MainWindow.h"
 
+#include "ApySnippetService.h"
 #include "ProjectFileOperations.h"
 #include "RuntimeProblemParser.h"
 
@@ -508,6 +509,7 @@ void MainWindow::buildUi()
         }
     });
     connect(addTextOnlyMenuAction(editMenu, QString::fromUtf8("بحث واستبدال"), QKeySequence::Find, QStringLiteral("find-in-file")), &QAction::triggered, this, &MainWindow::openInFileFind);
+    connect(addTextOnlyMenuAction(editMenu, QString::fromUtf8("إدراج اطبع"), QKeySequence(), QStringLiteral("snippet.insertPrint")), &QAction::triggered, this, &MainWindow::insertPrintSnippet);
     commandPaletteAction->setIconVisibleInMenu(false);
     connect(addTextOnlyMenuAction(viewMenu, QString::fromUtf8("لوحة الأوامر"), QKeySequence(), QStringLiteral("command-palette")), &QAction::triggered, this, &MainWindow::openCommandPalette);
     connect(addTextOnlyMenuAction(toolsMenu, QString::fromUtf8("فحص"), QKeySequence(), QStringLiteral("lint-current-file")), &QAction::triggered, this, &MainWindow::lintCurrentFile);
@@ -1186,6 +1188,14 @@ void MainWindow::registerWorkbenchCommands()
         [this]() { openInFileFind(); },
         [this]() { return editor != nullptr; });
     registerCommand(
+        QStringLiteral("snippet.insertPrint"),
+        QString::fromUtf8("إدراج اطبع"),
+        QString::fromUtf8("تحرير"),
+        QKeySequence(),
+        QString::fromUtf8("إدراج مقتطف اطبع snippet print"),
+        [this]() { insertPrintSnippet(); },
+        [this]() { return editor != nullptr; });
+    registerCommand(
         QStringLiteral("run-current-file"),
         QString::fromUtf8("تشغيل الملف الحالي"),
         QString::fromUtf8("تشغيل"),
@@ -1332,6 +1342,33 @@ void MainWindow::registerWorkbenchCommands()
         QKeySequence(QStringLiteral("Ctrl+Shift+P")),
         QString::fromUtf8("لوحة الأوامر command palette"),
         [this]() { openCommandPalette(); });
+}
+
+void MainWindow::insertPrintSnippet()
+{
+    insertSnippetById(QStringLiteral("apy.print"));
+}
+
+bool MainWindow::insertSnippetById(const QString &id)
+{
+    if (!editor) {
+        return false;
+    }
+
+    ApySnippet snippet;
+    if (!ApySnippetService::snippetById(id, &snippet)) {
+        return false;
+    }
+
+    QTextCursor cursor = editor->textCursor();
+    const int insertionStart = qMin(cursor.position(), cursor.anchor());
+    cursor.insertText(snippet.body);
+    if (snippet.cursorOffset >= 0 && snippet.cursorOffset <= snippet.body.size()) {
+        cursor.setPosition(insertionStart + snippet.cursorOffset);
+    }
+    editor->setTextCursor(cursor);
+    editor->setFocus(Qt::ShortcutFocusReason);
+    return true;
 }
 
 void MainWindow::openInFileFind()

@@ -2,6 +2,7 @@
 
 #include "DocumentFileIO.h"
 #include "EditorFindService.h"
+#include "ApySnippetService.h"
 #include "ProjectModel.h"
 #include "ProjectFileOperations.h"
 #include "ProjectReplaceService.h"
@@ -38,6 +39,8 @@ private slots:
     void documentFileIoRejectsInvalidUtf8ByPolicy();
     void editorFindServiceFindsArabicEnglishAndMixedMatches();
     void editorFindServiceReplacesCurrentAndAllMatches();
+    void apySnippetServiceListsArabicFirstSnippets();
+    void apySnippetServiceFindsSnippetById();
     void projectReplaceServicePreviewsArabicMixedMatches();
     void projectReplaceServiceSkipsIgnoredDirectories();
     void projectReplaceServiceMergesImmediateRowsBeforeDiskRows();
@@ -462,6 +465,28 @@ void TestProjectSearchRuntime::editorFindServiceReplacesCurrentAndAllMatches()
     text = EditorFindService::replaceAll(text, QString::fromUtf8("عدد"), QString::fromUtf8("قيمة"), &replaced);
     QCOMPARE(replaced, 1);
     QCOMPARE(text, QString::fromUtf8("قيمة = 1\nاطبع(قيمة)\n"));
+}
+
+void TestProjectSearchRuntime::apySnippetServiceListsArabicFirstSnippets()
+{
+    const QVector<ApySnippet> snippets = ApySnippetService::snippets();
+
+    QVERIFY(snippets.size() >= 2);
+    QCOMPARE(snippets.first().id, QStringLiteral("apy.print"));
+    QCOMPARE(snippets.first().title, QString::fromUtf8("اطبع"));
+    QCOMPARE(snippets.first().body, QString::fromUtf8("اطبع(\"\")"));
+    QCOMPARE(snippets.first().cursorOffset, QString::fromUtf8("اطبع(\"").size());
+}
+
+void TestProjectSearchRuntime::apySnippetServiceFindsSnippetById()
+{
+    ApySnippet snippet;
+
+    QVERIFY(ApySnippetService::snippetById(QStringLiteral("apy.if"), &snippet));
+    QCOMPARE(snippet.title, QString::fromUtf8("إذا"));
+    QCOMPARE(snippet.body, QString::fromUtf8("اذا شرط:\n    \n"));
+    QVERIFY(snippet.cursorOffset > 0);
+    QVERIFY(!ApySnippetService::snippetById(QStringLiteral("apy.missing"), &snippet));
 }
 
 void TestProjectSearchRuntime::projectReplaceServicePreviewsArabicMixedMatches()

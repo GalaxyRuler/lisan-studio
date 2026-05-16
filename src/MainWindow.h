@@ -58,6 +58,7 @@ private slots:
     void findInProject();
     void previewProjectReplace();
     void applyAcceptedProjectReplaceRows();
+    void insertPrintSnippet();
     void openInFileFind();
     void updateInFileFindMatches();
     void selectNextInFileMatch();
@@ -157,6 +158,7 @@ private:
     void setProjectReplaceFileAccepted(const QString &path, bool accepted);
     QVector<ProjectReplacePreviewRow> acceptedProjectReplaceRows() const;
     bool hasDirtyOpenDocumentForReplaceRows(const QVector<ProjectReplacePreviewRow> &rows) const;
+    bool insertSnippetById(const QString &id);
     void refreshEditorProblems();
     void addProblem(const QString &severity, const QString &message, const QString &path = QString(), int line = 0);
     void goToEditorLine(int line);

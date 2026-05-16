@@ -26,6 +26,8 @@ add_library(acs_core
     src/DocumentRegistry.cpp
     src/EditorFindService.h
     src/EditorFindService.cpp
+    src/ApySnippetService.h
+    src/ApySnippetService.cpp
     src/UnsavedChangesGuard.h
     src/UnsavedChangesGuard.cpp
     src/WorkbenchState.h

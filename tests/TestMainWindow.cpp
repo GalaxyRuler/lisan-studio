@@ -23,6 +23,7 @@
 #include <QTimer>
 #include <QToolBar>
 #include <QToolButton>
+#include <QTextCursor>
 
 class TestMainWindow : public QObject
 {
@@ -38,7 +39,9 @@ private slots:
     void commandPaletteExposesRegisteredWorkbenchCommands();
     void coreCommandSurfacesDeclareRegisteredCommandIds();
     void commandPaletteIncludesInFileFindCommand();
+    void commandPaletteIncludesSnippetCommand();
     void commandPaletteFiltersAndExecutesSelectedCommand();
+    void insertPrintSnippetPlacesCursorInsideQuotes();
     void inFileFindPanelNavigatesAndReplacesActiveEditor();
     void newFileClearsCurrentPathAndEditorText();
     void newFileCreatesANewEditorTab();
@@ -378,6 +381,7 @@ void TestMainWindow::commandPaletteExposesRegisteredWorkbenchCommands()
         QStringLiteral("save-file"),
         QStringLiteral("search-project"),
         QStringLiteral("settings"),
+        QStringLiteral("snippet.insertPrint"),
         QStringLiteral("stop-run"),
     };
     QCOMPARE(commandIds, expectedIds);
@@ -452,6 +456,7 @@ void TestMainWindow::coreCommandSurfacesDeclareRegisteredCommandIds()
         QStringLiteral("save-file"),
         QStringLiteral("search-project"),
         QStringLiteral("settings"),
+        QStringLiteral("snippet.insertPrint"),
         QStringLiteral("stop-run"),
     };
     QCOMPARE(surfaceIds, expectedSurfaceIds);
@@ -486,6 +491,33 @@ void TestMainWindow::commandPaletteIncludesInFileFindCommand()
 
     QVERIFY(QMetaObject::invokeMethod(&window, "openCommandPalette", Qt::DirectConnection));
     QVERIFY(commandIds.contains(QStringLiteral("find-in-file")));
+}
+
+void TestMainWindow::commandPaletteIncludesSnippetCommand()
+{
+    MainWindow window;
+    QStringList commandIds;
+
+    QTimer::singleShot(0, this, [&]() {
+        auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+        if (!dialog) {
+            return;
+        }
+
+        auto *commands = dialog->findChild<QListWidget *>(QStringLiteral("commandPaletteResults"));
+        if (!commands) {
+            dialog->reject();
+            return;
+        }
+
+        for (int row = 0; row < commands->count(); ++row) {
+            commandIds.append(commands->item(row)->data(Qt::UserRole).toString());
+        }
+        dialog->reject();
+    });
+
+    QVERIFY(QMetaObject::invokeMethod(&window, "openCommandPalette", Qt::DirectConnection));
+    QVERIFY(commandIds.contains(QStringLiteral("snippet.insertPrint")));
 }
 
 void TestMainWindow::commandPaletteFiltersAndExecutesSelectedCommand()
@@ -615,6 +647,24 @@ void TestMainWindow::commandPaletteFiltersAndExecutesSelectedCommand()
     QCOMPARE(doubleClickVisibleRows, 1);
     QCOMPARE(doubleClickCommandId, QStringLiteral("new-file"));
     QCOMPARE(tabs->count(), beforeTabCount + 2);
+}
+
+void TestMainWindow::insertPrintSnippetPlacesCursorInsideQuotes()
+{
+    MainWindow window;
+
+    auto *editor = window.findChild<EditorSurface *>(QStringLiteral("editorSurface"));
+    QVERIFY(editor != nullptr);
+    editor->setPlainText(QString::fromUtf8("قبل\n"));
+    QTextCursor cursor = editor->textCursor();
+    cursor.movePosition(QTextCursor::End);
+    editor->setTextCursor(cursor);
+
+    const int insertionStart = cursor.position();
+    QVERIFY(QMetaObject::invokeMethod(&window, "insertPrintSnippet", Qt::DirectConnection));
+
+    QCOMPARE(editor->toPlainText(), QString::fromUtf8("قبل\nاطبع(\"\")"));
+    QCOMPARE(editor->textCursor().position(), insertionStart + QString::fromUtf8("اطبع(\"").size());
 }
 
 void TestMainWindow::inFileFindPanelNavigatesAndReplacesActiveEditor()
