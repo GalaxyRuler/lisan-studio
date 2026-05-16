@@ -513,6 +513,7 @@ void MainWindow::buildUi()
     commandPaletteAction->setIconVisibleInMenu(false);
     connect(addTextOnlyMenuAction(viewMenu, QString::fromUtf8("لوحة الأوامر"), QKeySequence(), QStringLiteral("command-palette")), &QAction::triggered, this, &MainWindow::openCommandPalette);
     connect(addTextOnlyMenuAction(viewMenu, QString::fromUtf8("إظهار المسافات"), QKeySequence(), QStringLiteral("editor.toggleVisibleWhitespace")), &QAction::triggered, this, &MainWindow::toggleVisibleWhitespace);
+    connect(addTextOnlyMenuAction(viewMenu, QString::fromUtf8("حذف فراغات آخر السطر عند الحفظ"), QKeySequence(), QStringLiteral("editor.toggleTrimTrailingWhitespace")), &QAction::triggered, this, &MainWindow::toggleTrimTrailingWhitespace);
     connect(addTextOnlyMenuAction(toolsMenu, QString::fromUtf8("فحص"), QKeySequence(), QStringLiteral("lint-current-file")), &QAction::triggered, this, &MainWindow::lintCurrentFile);
     connect(addTextOnlyMenuAction(toolsMenu, QString::fromUtf8("تنسيق"), QKeySequence(), QStringLiteral("format-current-file")), &QAction::triggered, this, &MainWindow::formatCurrentFile);
     settingsAction->setIconVisibleInMenu(false);
@@ -1205,6 +1206,14 @@ void MainWindow::registerWorkbenchCommands()
         [this]() { toggleVisibleWhitespace(); },
         [this]() { return editor != nullptr; });
     registerCommand(
+        QStringLiteral("editor.toggleTrimTrailingWhitespace"),
+        QString::fromUtf8("حذف فراغات آخر السطر عند الحفظ"),
+        QString::fromUtf8("عرض"),
+        QKeySequence(),
+        QString::fromUtf8("حذف فراغات آخر السطر عند الحفظ trim trailing whitespace"),
+        [this]() { toggleTrimTrailingWhitespace(); },
+        [this]() { return editor != nullptr; });
+    registerCommand(
         QStringLiteral("run-current-file"),
         QString::fromUtf8("تشغيل الملف الحالي"),
         QString::fromUtf8("تشغيل"),
@@ -1365,6 +1374,15 @@ void MainWindow::toggleVisibleWhitespace()
     }
 
     editor->setVisibleWhitespaceEnabled(!editor->isVisibleWhitespaceEnabled());
+}
+
+void MainWindow::toggleTrimTrailingWhitespace()
+{
+    if (!editor) {
+        return;
+    }
+
+    editor->setTrimTrailingWhitespaceOnSave(!editor->trimTrailingWhitespaceOnSave());
 }
 
 bool MainWindow::insertSnippetById(const QString &id)

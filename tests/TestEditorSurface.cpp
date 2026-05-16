@@ -16,6 +16,8 @@ private slots:
     void saveAndReopenPreservesUtf8TortureText();
     void openRejectsInvalidUtf8ByPolicy();
     void saveUsesDocumentIoAndRejectsInvalidTarget();
+    void savePreservesTrailingWhitespaceByDefault();
+    void saveTrimsTrailingWhitespaceWhenEnabled();
     void rejectsHiddenBidiControls();
     void detectsAllHiddenBidiControls();
     void highlightsArabicKeywordsStringsCommentsAndNumbers();
@@ -120,6 +122,45 @@ void TestEditorSurface::saveUsesDocumentIoAndRejectsInvalidTarget()
     QString error;
     QVERIFY(!editor.saveFileAs(QDir(temp.path()).filePath(QStringLiteral("missing-dir/main.apy")), &error));
     QVERIFY(!error.isEmpty());
+}
+
+void TestEditorSurface::savePreservesTrailingWhitespaceByDefault()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    const QString path = temp.filePath(QStringLiteral("main.apy"));
+    const QString text = QString::fromUtf8("عدد = 1   \n    اطبع(عدد)\t \n");
+
+    EditorSurface editor;
+    QVERIFY(!editor.trimTrailingWhitespaceOnSave());
+    editor.setPlainText(text);
+    QVERIFY(editor.saveFileAs(path));
+
+    QFile saved(path);
+    QVERIFY(saved.open(QIODevice::ReadOnly));
+    QCOMPARE(QString::fromUtf8(saved.readAll()), text);
+    QCOMPARE(editor.toPlainText(), text);
+}
+
+void TestEditorSurface::saveTrimsTrailingWhitespaceWhenEnabled()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    const QString path = temp.filePath(QStringLiteral("main.apy"));
+
+    EditorSurface editor;
+    editor.setTrimTrailingWhitespaceOnSave(true);
+    QVERIFY(editor.trimTrailingWhitespaceOnSave());
+    editor.setPlainText(QString::fromUtf8("عدد = 1   \n    اطبع(عدد)\t \n"));
+
+    QVERIFY(editor.saveFileAs(path));
+    QVERIFY(!editor.isDirty());
+
+    const QString expected = QString::fromUtf8("عدد = 1\n    اطبع(عدد)\n");
+    QFile saved(path);
+    QVERIFY(saved.open(QIODevice::ReadOnly));
+    QCOMPARE(QString::fromUtf8(saved.readAll()), expected);
+    QCOMPARE(editor.toPlainText(), expected);
 }
 
 void TestEditorSurface::rejectsHiddenBidiControls()

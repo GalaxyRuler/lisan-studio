@@ -49,6 +49,36 @@ static QChar openingDelimiterFor(QChar ch)
     }
 }
 
+static QString removeTrailingWhitespace(const QString &text)
+{
+    QString result;
+    result.reserve(text.size());
+
+    int lineStart = 0;
+    for (int i = 0; i <= text.size(); ++i) {
+        if (i < text.size() && text.at(i) != QLatin1Char('\n')) {
+            continue;
+        }
+
+        int lineEnd = i;
+        while (lineEnd > lineStart) {
+            const QChar ch = text.at(lineEnd - 1);
+            if (ch != QLatin1Char(' ') && ch != QLatin1Char('\t')) {
+                break;
+            }
+            --lineEnd;
+        }
+
+        result.append(text.mid(lineStart, lineEnd - lineStart));
+        if (i < text.size()) {
+            result.append(QLatin1Char('\n'));
+        }
+        lineStart = i + 1;
+    }
+
+    return result;
+}
+
 class LineNumberArea final : public QWidget
 {
 public:
@@ -147,7 +177,17 @@ bool EditorSurface::saveFile(QString *error)
 
 bool EditorSurface::saveFileAs(const QString &path, QString *error)
 {
-    if (!DocumentFileIO::saveUtf8Atomically(path, toPlainText(), error)) {
+    QString textToSave = toPlainText();
+    if (trimTrailingWhitespace) {
+        textToSave = removeTrailingWhitespace(textToSave);
+        if (textToSave != toPlainText()) {
+            QTextCursor cursor(document());
+            cursor.select(QTextCursor::Document);
+            cursor.insertText(textToSave);
+        }
+    }
+
+    if (!DocumentFileIO::saveUtf8Atomically(path, textToSave, error)) {
         return false;
     }
 
@@ -285,6 +325,16 @@ void EditorSurface::setVisibleWhitespaceEnabled(bool enabled)
     option.setFlags(flags);
     document()->setDefaultTextOption(option);
     viewport()->update();
+}
+
+bool EditorSurface::trimTrailingWhitespaceOnSave() const
+{
+    return trimTrailingWhitespace;
+}
+
+void EditorSurface::setTrimTrailingWhitespaceOnSave(bool enabled)
+{
+    trimTrailingWhitespace = enabled;
 }
 
 int EditorSurface::lineNumberAreaWidth() const

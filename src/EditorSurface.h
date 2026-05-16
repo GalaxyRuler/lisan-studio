@@ -44,6 +44,8 @@ public:
     int bracketMatchSelectionCountForTest() const;
     bool isVisibleWhitespaceEnabled() const;
     void setVisibleWhitespaceEnabled(bool enabled);
+    bool trimTrailingWhitespaceOnSave() const;
+    void setTrimTrailingWhitespaceOnSave(bool enabled);
     int lineNumberAreaWidth() const;
     void lineNumberAreaPaintEvent(QPaintEvent *event);
     QMenu *createEditorContextMenu(QWidget *parent = nullptr);
@@ -60,6 +62,7 @@ private:
     int activeFindIndex = -1;
     int findHighlightSelectionCount = 0;
     int bracketMatchSelectionCount = 0;
+    bool trimTrailingWhitespace = false;
     ApyHighlighter *highlighter = nullptr;
     LineNumberArea *lineNumberArea = nullptr;
 

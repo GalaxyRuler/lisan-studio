@@ -60,6 +60,7 @@ private slots:
     void applyAcceptedProjectReplaceRows();
     void insertPrintSnippet();
     void toggleVisibleWhitespace();
+    void toggleTrimTrailingWhitespace();
     void openInFileFind();
     void updateInFileFindMatches();
     void selectNextInFileMatch();
