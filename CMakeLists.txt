@@ -44,6 +44,8 @@ add_library(acs_core
     src/ProjectReplaceService.cpp
     src/RuntimeRunner.h
     src/RuntimeRunner.cpp
+    src/RuntimeHistory.h
+    src/RuntimeHistory.cpp
     src/RuntimeProblemParser.h
     src/RuntimeProblemParser.cpp
     src/SearchService.h

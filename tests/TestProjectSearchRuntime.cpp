@@ -7,6 +7,7 @@
 #include "ProjectFileOperations.h"
 #include "ProjectReplaceService.h"
 #include "RuntimeProblemParser.h"
+#include "RuntimeHistory.h"
 #include "RuntimeRunner.h"
 #include "SearchService.h"
 #include "SettingsDialogModel.h"
@@ -32,6 +33,8 @@ private slots:
     void runtimeRunnerCanUseExplicitProjectWorkingDirectory();
     void runtimeRunnerUsesIsolatedUtf8PythonEnvironment();
     void runtimeRunnerReportsMissingBundledPythonDiagnostics();
+    void runtimeHistoryRecordsMostRecentLaunchesFirst();
+    void runtimeHistoryCapsEntriesAndCanClear();
     void runtimeProblemParserExtractsArabicSyntaxLine();
     void settingsStorePersistsArabicFontAndRecentProject();
     void settingsStorePersistsRecentFilesMostRecentFirst();
@@ -315,6 +318,57 @@ void TestProjectSearchRuntime::runtimeRunnerReportsMissingBundledPythonDiagnosti
     QVERIFY(!diagnostics.packageAvailable);
     QCOMPARE(diagnostics.packageVersion, QString());
     QVERIFY(diagnostics.statusText.contains(QString::fromUtf8("غير متوفر")));
+}
+
+void TestProjectSearchRuntime::runtimeHistoryRecordsMostRecentLaunchesFirst()
+{
+    RuntimeRunner runner;
+    RuntimeHistory history;
+
+    const RuntimeLaunchPlan first = runner.buildLaunchPlan(
+        RuntimeAction::Run,
+        QString::fromUtf8("تشغيل"),
+        QStringLiteral("C:/project/main.apy"),
+        QStringLiteral("C:/project"));
+    const RuntimeLaunchPlan second = runner.buildLaunchPlan(
+        RuntimeAction::Lint,
+        QString::fromUtf8("فحص"),
+        QStringLiteral("C:/project/src/other.apy"),
+        QStringLiteral("C:/project/src"));
+
+    history.recordLaunch(first);
+    history.recordLaunch(second);
+
+    const QVector<RuntimeHistoryEntry> entries = history.entries();
+    QCOMPARE(entries.size(), 2);
+    QCOMPARE(entries.at(0).action, RuntimeAction::Lint);
+    QCOMPARE(entries.at(0).title, QString::fromUtf8("فحص"));
+    QCOMPARE(entries.at(0).filePath, QStringLiteral("C:/project/src/other.apy"));
+    QCOMPARE(entries.at(0).workingDirectory, QStringLiteral("C:/project/src"));
+    QCOMPARE(entries.at(0).command.program, second.command.program);
+    QCOMPARE(entries.at(1).action, RuntimeAction::Run);
+}
+
+void TestProjectSearchRuntime::runtimeHistoryCapsEntriesAndCanClear()
+{
+    RuntimeRunner runner;
+    RuntimeHistory history(3);
+
+    for (int index = 0; index < 5; ++index) {
+        history.recordLaunch(runner.buildLaunchPlan(
+            RuntimeAction::Run,
+            QString::fromUtf8("تشغيل %1").arg(index),
+            QStringLiteral("C:/project/%1.apy").arg(index),
+            QStringLiteral("C:/project")));
+    }
+
+    const QVector<RuntimeHistoryEntry> entries = history.entries();
+    QCOMPARE(entries.size(), 3);
+    QCOMPARE(entries.at(0).filePath, QStringLiteral("C:/project/4.apy"));
+    QCOMPARE(entries.at(2).filePath, QStringLiteral("C:/project/2.apy"));
+
+    history.clear();
+    QVERIFY(history.entries().isEmpty());
 }
 
 void TestProjectSearchRuntime::runtimeProblemParserExtractsArabicSyntaxLine()
