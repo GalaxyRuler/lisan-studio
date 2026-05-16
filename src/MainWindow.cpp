@@ -521,6 +521,8 @@ void MainWindow::buildUi()
     connect(addTextOnlyMenuAction(viewMenu, QString::fromUtf8("لوحة الأوامر"), QKeySequence(), QStringLiteral("command-palette")), &QAction::triggered, this, &MainWindow::openCommandPalette);
     connect(addTextOnlyMenuAction(viewMenu, QString::fromUtf8("إظهار المسافات"), QKeySequence(), QStringLiteral("editor.toggleVisibleWhitespace")), &QAction::triggered, this, &MainWindow::toggleVisibleWhitespace);
     connect(addTextOnlyMenuAction(viewMenu, QString::fromUtf8("حذف فراغات آخر السطر عند الحفظ"), QKeySequence(), QStringLiteral("editor.toggleTrimTrailingWhitespace")), &QAction::triggered, this, &MainWindow::toggleTrimTrailingWhitespace);
+    connect(addTextOnlyMenuAction(viewMenu, QString::fromUtf8("نسخ الإخراج"), QKeySequence(), QStringLiteral("output.copy")), &QAction::triggered, this, &MainWindow::copyOutputPanel);
+    connect(addTextOnlyMenuAction(viewMenu, QString::fromUtf8("مسح الإخراج"), QKeySequence(), QStringLiteral("output.clear")), &QAction::triggered, this, &MainWindow::clearOutputPanel);
     connect(addTextOnlyMenuAction(toolsMenu, QString::fromUtf8("فحص"), QKeySequence(), QStringLiteral("lint-current-file")), &QAction::triggered, this, &MainWindow::lintCurrentFile);
     connect(addTextOnlyMenuAction(toolsMenu, QString::fromUtf8("تنسيق"), QKeySequence(), QStringLiteral("format-current-file")), &QAction::triggered, this, &MainWindow::formatCurrentFile);
     settingsAction->setIconVisibleInMenu(false);
@@ -1250,6 +1252,22 @@ void MainWindow::registerWorkbenchCommands()
         [this]() { cancelRuntimeProcess(); },
         [this]() { return activeRuntimeProcess && activeRuntimeProcess->state() != QProcess::NotRunning; });
     registerCommand(
+        QStringLiteral("output.copy"),
+        QString::fromUtf8("نسخ الإخراج"),
+        QString::fromUtf8("الإخراج"),
+        QKeySequence(),
+        QString::fromUtf8("نسخ الإخراج copy output"),
+        [this]() { copyOutputPanel(); },
+        [this]() { return outputPanel && !outputPanel->toPlainText().isEmpty(); });
+    registerCommand(
+        QStringLiteral("output.clear"),
+        QString::fromUtf8("مسح الإخراج"),
+        QString::fromUtf8("الإخراج"),
+        QKeySequence(),
+        QString::fromUtf8("مسح الإخراج clear output"),
+        [this]() { clearOutputPanel(); },
+        [this]() { return outputPanel && !outputPanel->toPlainText().isEmpty(); });
+    registerCommand(
         QStringLiteral("search-project"),
         QString::fromUtf8("بحث في المشروع"),
         QString::fromUtf8("بحث"),
@@ -1390,6 +1408,27 @@ void MainWindow::toggleTrimTrailingWhitespace()
     }
 
     editor->setTrimTrailingWhitespaceOnSave(!editor->trimTrailingWhitespaceOnSave());
+}
+
+void MainWindow::copyOutputPanel()
+{
+    if (!outputPanel) {
+        return;
+    }
+
+    QApplication::clipboard()->setText(outputPanel->toPlainText());
+    setStatus(QString::fromUtf8("تم نسخ الإخراج"));
+}
+
+void MainWindow::clearOutputPanel()
+{
+    if (!outputPanel) {
+        return;
+    }
+
+    outputPanel->clear();
+    showOutputPanel();
+    setStatus(QString::fromUtf8("تم مسح الإخراج"));
 }
 
 bool MainWindow::insertSnippetById(const QString &id)

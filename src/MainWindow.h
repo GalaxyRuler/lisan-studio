@@ -52,6 +52,8 @@ private slots:
     void lintCurrentFile();
     void formatCurrentFile();
     void cancelRuntimeProcess();
+    void copyOutputPanel();
+    void clearOutputPanel();
     void appendRuntimeStdout();
     void appendRuntimeStderr();
     void finishRuntimeProcess(int exitCode, QProcess::ExitStatus exitStatus);

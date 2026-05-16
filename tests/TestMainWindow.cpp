@@ -61,6 +61,7 @@ private slots:
     void projectTreeExposesRtlContextActions();
     void projectTreeOpenActionOpensSelectedFile();
     void projectTreeCopyPathActionCopiesSelectedPath();
+    void outputPanelActionsCopyAndClearTranscript();
     void projectSearchShowsClickableResultRows();
     void projectSearchFindsCurrentUnsavedEditorImmediately();
     void projectReplacePreviewRendersRowsWithoutWritingFile();
@@ -495,6 +496,8 @@ void TestMainWindow::commandPaletteExposesRegisteredWorkbenchCommands()
         QStringLiteral("new-file"),
         QStringLiteral("open-file"),
         QStringLiteral("open-project"),
+        QStringLiteral("output.clear"),
+        QStringLiteral("output.copy"),
         QStringLiteral("project.file.new"),
         QStringLiteral("project.folder.new"),
         QStringLiteral("project.item.copyPath"),
@@ -572,6 +575,8 @@ void TestMainWindow::coreCommandSurfacesDeclareRegisteredCommandIds()
         QStringLiteral("new-file"),
         QStringLiteral("open-file"),
         QStringLiteral("open-project"),
+        QStringLiteral("output.clear"),
+        QStringLiteral("output.copy"),
         QStringLiteral("project.file.new"),
         QStringLiteral("project.folder.new"),
         QStringLiteral("project.item.copyPath"),
@@ -833,6 +838,23 @@ void TestMainWindow::commandPaletteFiltersAndExecutesSelectedCommand()
     QCOMPARE(doubleClickVisibleRows, 1);
     QCOMPARE(doubleClickCommandId, QStringLiteral("new-file"));
     QCOMPARE(tabs->count(), beforeTabCount + 2);
+}
+
+void TestMainWindow::outputPanelActionsCopyAndClearTranscript()
+{
+    MainWindow window;
+
+    auto *outputPanel = window.findChild<QPlainTextEdit *>(QStringLiteral("outputPanel"));
+    QVERIFY(outputPanel != nullptr);
+    outputPanel->setPlainText(QString::fromUtf8("[stdout]\nمرحبا من التشغيل\n"));
+
+    QVERIFY(QMetaObject::invokeMethod(&window, "copyOutputPanel", Qt::DirectConnection));
+    QCOMPARE(QApplication::clipboard()->text(), outputPanel->toPlainText());
+
+    QVERIFY(QMetaObject::invokeMethod(&window, "clearOutputPanel", Qt::DirectConnection));
+    QCOMPARE(outputPanel->toPlainText(), QString());
+    QApplication::clipboard()->setText(QString());
+    QCoreApplication::processEvents();
 }
 
 void TestMainWindow::insertPrintSnippetPlacesCursorInsideQuotes()
