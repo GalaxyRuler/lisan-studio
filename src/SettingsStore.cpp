@@ -1,6 +1,7 @@
 #include "SettingsStore.h"
 
 #include <QDir>
+#include <QJsonDocument>
 #include <QSettings>
 #include <QStandardPaths>
 
@@ -113,6 +114,30 @@ void SettingsStore::saveWorkbenchSession(const SavedWorkbenchSession &session)
     settings.setValue(QStringLiteral("session/openFiles"), openFiles);
     settings.setValue(QStringLiteral("session/activeFileIndex"), activeFileIndex);
     settings.setValue(QStringLiteral("session/bottomPanelId"), session.bottomPanelId);
+}
+
+QJsonObject SettingsStore::shortcutSettingsJson() const
+{
+    QSettings settings(path, QSettings::IniFormat);
+    const QByteArray json = settings.value(QStringLiteral("shortcuts/json")).toString().toUtf8();
+    if (json.isEmpty()) {
+        return {};
+    }
+
+    QJsonParseError parseError;
+    const QJsonDocument document = QJsonDocument::fromJson(json, &parseError);
+    if (parseError.error != QJsonParseError::NoError || !document.isObject()) {
+        return {};
+    }
+    return document.object();
+}
+
+void SettingsStore::saveShortcutSettingsJson(const QJsonObject &object)
+{
+    QSettings settings(path, QSettings::IniFormat);
+    settings.setValue(
+        QStringLiteral("shortcuts/json"),
+        QString::fromUtf8(QJsonDocument(object).toJson(QJsonDocument::Compact)));
 }
 
 QString SettingsStore::settingsPath() const

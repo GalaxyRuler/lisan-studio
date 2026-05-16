@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QJsonObject>
 #include <QString>
 #include <QStringList>
 
@@ -30,6 +31,9 @@ public:
 
     SavedWorkbenchSession savedWorkbenchSession() const;
     void saveWorkbenchSession(const SavedWorkbenchSession &session);
+
+    QJsonObject shortcutSettingsJson() const;
+    void saveShortcutSettingsJson(const QJsonObject &object);
 
     QString settingsPath() const;
 

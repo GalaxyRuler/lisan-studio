@@ -1,5 +1,8 @@
 #include <QtTest/QtTest>
 
+#include <QJsonArray>
+#include <QJsonObject>
+
 #include "DocumentFileIO.h"
 #include "EditorFindService.h"
 #include "ApySnippetService.h"
@@ -51,6 +54,7 @@ private slots:
     void settingsStorePersistsArabicFontAndRecentProject();
     void settingsStorePersistsRecentFilesMostRecentFirst();
     void settingsStorePersistsWorkbenchSession();
+    void settingsStorePersistsShortcutSettingsJson();
     void workspaceSettingsStoreDefaultsWhenMissingOrInvalid();
     void workspaceSettingsStorePersistsTrustAndEditorPreferences();
     void settingsDialogModelBuildsUiStateFromStoreAndDiagnostics();
@@ -626,6 +630,32 @@ void TestProjectSearchRuntime::settingsStorePersistsWorkbenchSession()
     QCOMPARE(loaded.openFiles, session.openFiles);
     QCOMPARE(loaded.activeFileIndex, 1);
     QCOMPARE(loaded.bottomPanelId, QStringLiteral("search"));
+}
+
+void TestProjectSearchRuntime::settingsStorePersistsShortcutSettingsJson()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+
+    SettingsStore empty(temp.path() + QStringLiteral("/settings.ini"));
+    QVERIFY(empty.shortcutSettingsJson().isEmpty());
+
+    QJsonObject shortcuts;
+    shortcuts.insert(QStringLiteral("save-file"), QStringLiteral("Ctrl+Alt+S"));
+    shortcuts.insert(QStringLiteral("run-current-file"), QStringLiteral("F6"));
+
+    QJsonObject exported;
+    exported.insert(QStringLiteral("version"), 1);
+    exported.insert(QStringLiteral("shortcuts"), shortcuts);
+    exported.insert(QStringLiteral("futureMetadata"), QJsonArray {QStringLiteral("kept")});
+
+    empty.saveShortcutSettingsJson(exported);
+
+    SettingsStore reloaded(temp.path() + QStringLiteral("/settings.ini"));
+    const QJsonObject loaded = reloaded.shortcutSettingsJson();
+    QCOMPARE(loaded.value(QStringLiteral("version")).toInt(), 1);
+    QCOMPARE(loaded.value(QStringLiteral("shortcuts")).toObject().value(QStringLiteral("save-file")).toString(), QStringLiteral("Ctrl+Alt+S"));
+    QCOMPARE(loaded.value(QStringLiteral("futureMetadata")).toArray().first().toString(), QStringLiteral("kept"));
 }
 
 void TestProjectSearchRuntime::workspaceSettingsStoreDefaultsWhenMissingOrInvalid()
