@@ -27,6 +27,8 @@ private slots:
     void replaceCurrentAndAllUseActiveFindMatches();
     void highlightsMatchingBracketsAndQuotesInMixedText();
     void bracketMatchingKeepsFindHighlightsVisible();
+    void returnKeyIndentsAfterColonBlockLine();
+    void returnKeyPreservesCurrentLineIndent();
     void lineNumberAreaScalesAndStaysVisibleForLongFiles();
     void lineNumbersStayOnRightEdgeForArabicEditing();
     void emptyEditorPlaceholderPaintsFromRight();
@@ -343,6 +345,33 @@ void TestEditorSurface::bracketMatchingKeepsFindHighlightsVisible()
 
     QCOMPARE(editor.findHighlightSelectionCountForTest(), 2);
     QCOMPARE(editor.bracketMatchSelectionCountForTest(), 2);
+}
+
+void TestEditorSurface::returnKeyIndentsAfterColonBlockLine()
+{
+    EditorSurface editor;
+    editor.setPlainText(QString::fromUtf8("اذا شرط:"));
+    QTextCursor cursor = editor.textCursor();
+    cursor.movePosition(QTextCursor::End);
+    editor.setTextCursor(cursor);
+
+    QTest::keyClick(&editor, Qt::Key_Return);
+
+    QCOMPARE(editor.toPlainText(), QString::fromUtf8("اذا شرط:\n    "));
+    QCOMPARE(editor.textCursor().position(), editor.toPlainText().size());
+}
+
+void TestEditorSurface::returnKeyPreservesCurrentLineIndent()
+{
+    EditorSurface editor;
+    editor.setPlainText(QString::fromUtf8("    اطبع(\"مرحبا\")"));
+    QTextCursor cursor = editor.textCursor();
+    cursor.movePosition(QTextCursor::End);
+    editor.setTextCursor(cursor);
+
+    QTest::keyClick(&editor, Qt::Key_Return);
+
+    QCOMPARE(editor.toPlainText(), QString::fromUtf8("    اطبع(\"مرحبا\")\n    "));
 }
 
 void TestEditorSurface::lineNumberAreaScalesAndStaysVisibleForLongFiles()

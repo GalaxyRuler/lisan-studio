@@ -4,6 +4,7 @@
 
 #include <QPainter>
 #include <QFontDatabase>
+#include <QKeyEvent>
 #include <QKeySequence>
 #include <QPaintEvent>
 #include <QTextBlock>
@@ -574,6 +575,38 @@ void EditorSurface::contextMenuEvent(QContextMenuEvent *event)
 {
     std::unique_ptr<QMenu> menu(createEditorContextMenu(this));
     menu->exec(event->globalPos());
+}
+
+void EditorSurface::keyPressEvent(QKeyEvent *event)
+{
+    const bool isReturn = event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter;
+    const bool plainReturn = event->modifiers() == Qt::NoModifier || event->modifiers() == Qt::KeypadModifier;
+    if (!isReturn || !plainReturn) {
+        QPlainTextEdit::keyPressEvent(event);
+        return;
+    }
+
+    QTextCursor cursor = textCursor();
+    const QTextBlock block = cursor.block();
+    const QString line = block.text();
+    const int cursorColumn = qBound(0, cursor.position() - block.position(), line.size());
+    const QString beforeCursor = line.left(cursorColumn);
+
+    QString indent;
+    for (const QChar ch : line) {
+        if (ch == QLatin1Char(' ') || ch == QLatin1Char('\t')) {
+            indent.append(ch);
+            continue;
+        }
+        break;
+    }
+    if (beforeCursor.trimmed().endsWith(QLatin1Char(':'))) {
+        indent.append(QStringLiteral("    "));
+    }
+
+    cursor.insertText(QLatin1Char('\n') + indent);
+    setTextCursor(cursor);
+    event->accept();
 }
 
 void EditorSurface::paintEvent(QPaintEvent *event)
