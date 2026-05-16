@@ -185,9 +185,16 @@ static QIcon lightPlayIcon()
 }
 
 MainWindow::MainWindow(QWidget *parent)
-    : QMainWindow(parent)
+    : MainWindow(parent, QString())
+{
+}
+
+MainWindow::MainWindow(QWidget *parent, const QString &settingsPath)
+    : QMainWindow(parent),
+      settings(settingsPath)
 {
     buildUi();
+    restoreWorkbenchSession();
     resize(1280, 820);
     setWindowTitle(QString::fromUtf8("استوديو لسان"));
     setWindowIcon(QIcon(QStringLiteral(":/branding/lisan-logo.png")));
@@ -2855,4 +2862,107 @@ void MainWindow::setRuntimeActionsRunning(bool running)
     if (cancelRunAction) {
         cancelRunAction->setEnabled(running);
     }
+}
+
+void MainWindow::restoreWorkbenchSession()
+{
+    const SavedWorkbenchSession session = settings.savedWorkbenchSession();
+    if (!session.projectRoot.isEmpty() && QFileInfo(session.projectRoot).isDir()) {
+        loadProject(session.projectRoot);
+    }
+
+    bool openedAnyFile = false;
+    for (const QString &path : session.openFiles) {
+        if (path.isEmpty() || !QFileInfo(path).isFile()) {
+            continue;
+        }
+        if (openEditorFile(path)) {
+            openedAnyFile = true;
+        }
+    }
+
+    if (openedAnyFile && editorTabs) {
+        const int activeIndex = qBound(0, session.activeFileIndex, editorTabs->count() - 1);
+        editorTabs->setCurrentIndex(activeIndex);
+    }
+
+    if (bottomPanelTabs) {
+        if (auto *panel = bottomPanelForId(session.bottomPanelId)) {
+            bottomPanelTabs->setCurrentWidget(panel);
+        }
+    }
+}
+
+void MainWindow::saveWorkbenchSession()
+{
+    SavedWorkbenchSession session;
+    session.projectRoot = projectRoot;
+    if (editorTabs) {
+        for (int i = 0; i < editorTabs->count(); ++i) {
+            auto *surface = qobject_cast<EditorSurface *>(editorTabs->widget(i));
+            if (!surface || surface->currentFilePath().isEmpty()) {
+                continue;
+            }
+            session.openFiles.append(surface->currentFilePath());
+            if (i == editorTabs->currentIndex()) {
+                session.activeFileIndex = session.openFiles.size() - 1;
+            }
+        }
+    }
+    if (session.activeFileIndex < 0 && !session.openFiles.isEmpty()) {
+        session.activeFileIndex = 0;
+    }
+    session.bottomPanelId = bottomPanelTabs ? bottomPanelId(bottomPanelTabs->currentWidget()) : QString();
+    settings.saveWorkbenchSession(session);
+}
+
+QString MainWindow::bottomPanelId(QWidget *panel) const
+{
+    if (panel == terminalPanel) {
+        return QStringLiteral("terminal");
+    }
+    if (panel == outputPanel) {
+        return QStringLiteral("output");
+    }
+    if (panel == problemsPanel) {
+        return QStringLiteral("problems");
+    }
+    if (panel == searchResultsPanel) {
+        return QStringLiteral("search");
+    }
+    if (panel == debugPanel) {
+        return QStringLiteral("debug");
+    }
+    return QString();
+}
+
+QWidget *MainWindow::bottomPanelForId(const QString &id) const
+{
+    if (id == QStringLiteral("terminal")) {
+        return terminalPanel;
+    }
+    if (id == QStringLiteral("output")) {
+        return outputPanel;
+    }
+    if (id == QStringLiteral("problems")) {
+        return problemsPanel;
+    }
+    if (id == QStringLiteral("search")) {
+        return searchResultsPanel;
+    }
+    if (id == QStringLiteral("debug")) {
+        return debugPanel;
+    }
+    return nullptr;
+}
+
+void MainWindow::closeEvent(QCloseEvent *event)
+{
+    if (!confirmUnsavedDocuments(UnsavedChangesOperation::Exit)) {
+        event->ignore();
+        return;
+    }
+
+    saveWorkbenchSession();
+    QMainWindow::closeEvent(event);
 }

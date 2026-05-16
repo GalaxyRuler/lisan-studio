@@ -14,6 +14,7 @@
 
 #include <QFileSystemModel>
 #include <QAction>
+#include <QCloseEvent>
 #include <QDockWidget>
 #include <QElapsedTimer>
 #include <QFutureWatcher>
@@ -34,6 +35,7 @@ class MainWindow final : public QMainWindow
 
 public:
     explicit MainWindow(QWidget *parent = nullptr);
+    MainWindow(QWidget *parent, const QString &settingsPath);
     bool openPath(const QString &path);
     QString currentProjectRoot() const;
     QString currentEditorPath() const;
@@ -172,4 +174,9 @@ private:
     void appendRuntimeOutput(const QString &label, const QString &text);
     void completeRuntimeProcess(const QString &statusText);
     void setRuntimeActionsRunning(bool running);
+    void restoreWorkbenchSession();
+    void saveWorkbenchSession();
+    QString bottomPanelId(QWidget *panel) const;
+    QWidget *bottomPanelForId(const QString &id) const;
+    void closeEvent(QCloseEvent *event) override;
 };

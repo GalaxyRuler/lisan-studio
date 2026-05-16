@@ -31,6 +31,8 @@ class TestMainWindow : public QObject
 
 private slots:
     void opensProjectAndFileFromPath();
+    void restoresSavedWorkbenchSession();
+    void savesWorkbenchSessionOnClose();
     void usesSingleRtlTopCommandBarWithMenuButtons();
     void exposesLisanLogoAssetInShell();
     void exposesPremiumFutureBottomPanelTabs();
@@ -118,6 +120,76 @@ void TestMainWindow::opensProjectAndFileFromPath()
     auto *editor = window.findChild<EditorSurface *>(QStringLiteral("editorSurface"));
     QVERIFY(editor != nullptr);
     QVERIFY(editor->toPlainText().contains(QString::fromUtf8("مرحبا")));
+}
+
+void TestMainWindow::restoresSavedWorkbenchSession()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    QDir root(temp.path());
+    const QString firstPath = writeFile(root, QStringLiteral("main.apy"), QString::fromUtf8("اطبع(\"أول\")\n"));
+    const QString secondPath = writeFile(root, QStringLiteral("src/second.apy"), QString::fromUtf8("اطبع(\"ثان\")\n"));
+    const QString settingsPath = temp.filePath(QStringLiteral("settings.ini"));
+
+    SettingsStore store(settingsPath);
+    SavedWorkbenchSession session;
+    session.projectRoot = root.absolutePath();
+    session.openFiles = {firstPath, secondPath};
+    session.activeFileIndex = 1;
+    session.bottomPanelId = QStringLiteral("problems");
+    store.saveWorkbenchSession(session);
+
+    MainWindow window(nullptr, settingsPath);
+
+    QCOMPARE(QDir::toNativeSeparators(window.currentProjectRoot()), QDir::toNativeSeparators(root.absolutePath()));
+    QCOMPARE(QDir::toNativeSeparators(window.currentEditorPath()), QDir::toNativeSeparators(secondPath));
+    auto *tabs = window.findChild<QTabWidget *>(QStringLiteral("editorTabs"));
+    QVERIFY(tabs != nullptr);
+    QCOMPARE(tabs->count(), 2);
+    QCOMPARE(tabs->currentIndex(), 1);
+    auto *currentEditor = qobject_cast<EditorSurface *>(tabs->currentWidget());
+    QVERIFY(currentEditor != nullptr);
+    QVERIFY(currentEditor->toPlainText().contains(QString::fromUtf8("ثان")));
+
+    auto *bottomTabs = window.findChild<QTabWidget *>(QStringLiteral("bottomPanelTabs"));
+    auto *problems = window.findChild<QListWidget *>(QStringLiteral("problemsPanel"));
+    QVERIFY(bottomTabs != nullptr);
+    QVERIFY(problems != nullptr);
+    QCOMPARE(bottomTabs->currentWidget(), problems);
+}
+
+void TestMainWindow::savesWorkbenchSessionOnClose()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    QDir root(temp.path());
+    const QString firstPath = writeFile(root, QStringLiteral("main.apy"), QString::fromUtf8("اطبع(\"أول\")\n"));
+    const QString secondPath = writeFile(root, QStringLiteral("src/second.apy"), QString::fromUtf8("اطبع(\"ثان\")\n"));
+    const QString settingsPath = temp.filePath(QStringLiteral("settings.ini"));
+
+    {
+        MainWindow window(nullptr, settingsPath);
+        QVERIFY(window.openPath(root.absolutePath()));
+        QVERIFY(window.openPath(firstPath));
+        QVERIFY(window.openPath(secondPath));
+
+        auto *bottomTabs = window.findChild<QTabWidget *>(QStringLiteral("bottomPanelTabs"));
+        auto *search = window.findChild<QListWidget *>(QStringLiteral("searchResultsPanel"));
+        QVERIFY(bottomTabs != nullptr);
+        QVERIFY(search != nullptr);
+        bottomTabs->setCurrentWidget(search);
+
+        QVERIFY(window.close());
+    }
+
+    SettingsStore reloaded(settingsPath);
+    const SavedWorkbenchSession saved = reloaded.savedWorkbenchSession();
+    QCOMPARE(QDir::toNativeSeparators(saved.projectRoot), QDir::toNativeSeparators(root.absolutePath()));
+    QCOMPARE(saved.openFiles.size(), 2);
+    QCOMPARE(QDir::toNativeSeparators(saved.openFiles.at(0)), QDir::toNativeSeparators(firstPath));
+    QCOMPARE(QDir::toNativeSeparators(saved.openFiles.at(1)), QDir::toNativeSeparators(secondPath));
+    QCOMPARE(saved.activeFileIndex, 1);
+    QCOMPARE(saved.bottomPanelId, QStringLiteral("search"));
 }
 
 void TestMainWindow::usesSingleRtlTopCommandBarWithMenuButtons()
