@@ -36,6 +36,7 @@ private slots:
     void savesWorkbenchSessionOnClose();
     void openingFileRecordsRecentFile();
     void workspaceTrimSettingAppliesToOpenedEditors();
+    void lightThemePreferenceAppliesApplicationStylesheet();
     void usesSingleRtlTopCommandBarWithMenuButtons();
     void exposesLisanLogoAssetInShell();
     void exposesPremiumFutureBottomPanelTabs();
@@ -251,6 +252,20 @@ void TestMainWindow::workspaceTrimSettingAppliesToOpenedEditors()
     QFile saved(filePath);
     QVERIFY(saved.open(QIODevice::ReadOnly | QIODevice::Text));
     QCOMPARE(QString::fromUtf8(saved.readAll()), QString::fromUtf8("عدد = 2\n"));
+}
+
+void TestMainWindow::lightThemePreferenceAppliesApplicationStylesheet()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    const QString settingsPath = temp.path() + QStringLiteral("/settings.ini");
+    SettingsStore(settingsPath).setThemePreference(QStringLiteral("light"));
+
+    MainWindow window(nullptr, settingsPath);
+
+    QCOMPARE(window.property("themePreference").toString(), QStringLiteral("light"));
+    QVERIFY2(window.styleSheet().contains(QStringLiteral("#F6F7FB")), qPrintable(window.styleSheet()));
+    QVERIFY2(!window.styleSheet().contains(QStringLiteral("#0f141a")), qPrintable(window.styleSheet()));
 }
 
 void TestMainWindow::usesSingleRtlTopCommandBarWithMenuButtons()
@@ -2300,6 +2315,8 @@ void TestMainWindow::settingsDialogPersistsThemePreference()
     QTRY_VERIFY2(inspected, qPrintable(failure));
     QVERIFY2(failure.isEmpty(), qPrintable(failure));
     QTRY_COMPARE(SettingsStore(settingsPath).themePreference(), QStringLiteral("light"));
+    QCOMPARE(window.property("themePreference").toString(), QStringLiteral("light"));
+    QVERIFY2(window.styleSheet().contains(QStringLiteral("#F6F7FB")), qPrintable(window.styleSheet()));
 }
 
 QTEST_MAIN(TestMainWindow)

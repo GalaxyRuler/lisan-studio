@@ -150,6 +150,7 @@ private:
     QString activeRuntimeTitle;
     QString activeRuntimeStdout;
     QString activeRuntimeStderr;
+    QString darkThemeStyleSheet;
     QVector<ProjectReplacePreviewRow> currentProjectReplacePreviewRows;
     QModelIndex projectTreeContextIndex;
     bool activeRuntimeHandledError = false;
@@ -176,6 +177,7 @@ private:
     void applyEditorFont(EditorSurface *surface);
     void applyWorkspaceSettings(EditorSurface *surface);
     void applyWorkspaceSettingsToOpenEditors();
+    void applyThemePreference();
     void updateBreadcrumbBar();
     void updateStatusIndicators();
     void syncEditorSession(EditorSurface *surface);

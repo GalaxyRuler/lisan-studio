@@ -193,6 +193,40 @@ static QLabel *createStatusIndicator(const QString &objectName, const QString &t
     return label;
 }
 
+static QString lightWorkbenchStyleSheet()
+{
+    return QStringLiteral(
+        "QMainWindow, QWidget { background: #F6F7FB; color: #17202A; font-family: 'IBM Plex Sans Arabic', 'Segoe UI'; }"
+        "QFrame[role=\"menuPopup\"] { background: #FFFFFF; color: #17202A; border: 1px solid #CCD4E0; }"
+        "QPushButton[role=\"menuRow\"] { background: transparent; border: 0; border-radius: 0; padding: 8px 18px; text-align: right; color: #17202A; }"
+        "QPushButton[role=\"menuRow\"]:hover { background: #DCEBFF; color: #0C2D57; }"
+        "QWidget#topShell { background: #FFFFFF; border-bottom: 1px solid #CCD4E0; }"
+        "QWidget#topMenuRow { background: #FFFFFF; border-bottom: 1px solid #CCD4E0; }"
+        "QWidget#brandBlock { background: transparent; }"
+        "QLabel#brandTextLabel { color: #24589C; font-weight: 600; font-size: 18px; }"
+        "QToolButton[role=\"topMenu\"] { background: transparent; border: 1px solid transparent; border-radius: 4px; color: #35465B; font-weight: 600; padding: 7px 10px; }"
+        "QToolButton[role=\"topMenu\"]:hover { color: #17202A; background: #EEF4FF; border-color: #CCD4E0; border-bottom: 2px solid #3B74C5; }"
+        "QToolButton[role=\"topMenu\"]:pressed, QToolButton[role=\"topMenu\"]:checked { color: #174A8B; background: #DCEBFF; border-color: #3B74C5; }"
+        "QToolButton[role=\"topMenu\"][active=\"true\"] { color: #174A8B; border-bottom: 2px solid #3B74C5; }"
+        "QToolButton[role=\"topMenu\"]::menu-indicator { image: none; width: 0px; }"
+        "QToolButton[role=\"primaryAction\"] { background: #FFFFFF; border: 1px solid #3B74C5; border-radius: 12px; padding: 4px 12px; color: #145C72; font-weight: 700; }"
+        "QToolButton[role=\"primaryAction\"]:hover { background: #E4F7FB; border-color: #20869E; }"
+        "QToolButton { background: #FFFFFF; border: 1px solid #CCD4E0; border-radius: 4px; padding: 6px 10px; color: #17202A; }"
+        "QToolButton:hover { border-color: #3B74C5; background: #EEF4FF; }"
+        "QToolButton:disabled { color: #8996A8; background: #EEF1F5; }"
+        "QLineEdit { background: #FFFFFF; border: 1px solid #CCD4E0; border-radius: 12px; padding: 5px 12px; color: #17202A; selection-background-color: #B9D5FF; }"
+        "QLineEdit:focus { border-color: #3B74C5; }"
+        "QTreeView, QPlainTextEdit, QListWidget { background: #FFFFFF; border: 1px solid #CCD4E0; selection-background-color: #B9D5FF; color: #17202A; }"
+        "QListWidget::item { padding: 8px 10px; border-bottom: 1px solid #E2E7EF; }"
+        "QListWidget::item:hover { background: #EEF4FF; color: #0C2D57; }"
+        "QListWidget::item:selected { background: #B9D5FF; color: #0C2D57; }"
+        "QTabWidget::pane { border: 1px solid #CCD4E0; background: #FFFFFF; }"
+        "QTabBar::tab { background: #EEF1F5; color: #536274; border: 1px solid #CCD4E0; padding: 7px 12px; }"
+        "QTabBar::tab:selected { background: #FFFFFF; color: #17202A; border-top: 2px solid #3B74C5; }"
+        "QDockWidget::title { background: #FFFFFF; padding: 6px; text-align: right; color: #17202A; }"
+        "QStatusBar { background: #FFFFFF; color: #536274; border-top: 1px solid #CCD4E0; }");
+}
+
 static bool isArabicEditorFontFamily(const QString &family)
 {
     const QStringList families = arabicEditorFontFamilies();
@@ -352,6 +386,8 @@ void MainWindow::buildUi()
         "QTabBar::tab:selected { background: #202633; color: #E8ECF2; border-top: 2px solid #4C8DFF; }"
         "QDockWidget::title { background: #111318; padding: 6px; text-align: right; color: #E8ECF2; }"
         "QStatusBar { background: #111318; color: #A7B0BE; border-top: 1px solid #303746; }"));
+    darkThemeStyleSheet = styleSheet();
+    applyThemePreference();
 
     auto *topShell = new QWidget(this);
     topShell->setObjectName(QStringLiteral("topShell"));
@@ -2638,6 +2674,7 @@ void MainWindow::openSettings()
         : fontFamilyCombo->currentText().trimmed());
     settings.setEditorFontSize(fontSizeInput->value());
     settings.setThemePreference(themePreferenceCombo->currentData().toString());
+    applyThemePreference();
     for (int i = 0; editorTabs && i < editorTabs->count(); ++i) {
         if (auto *surface = qobject_cast<EditorSurface *>(editorTabs->widget(i))) {
             applyEditorFont(surface);
@@ -2788,6 +2825,13 @@ void MainWindow::applyWorkspaceSettingsToOpenEditors()
     for (int i = 0; i < editorTabs->count(); ++i) {
         applyWorkspaceSettings(qobject_cast<EditorSurface *>(editorTabs->widget(i)));
     }
+}
+
+void MainWindow::applyThemePreference()
+{
+    const QString preference = settings.themePreference();
+    setProperty("themePreference", preference);
+    setStyleSheet(preference == QStringLiteral("light") ? lightWorkbenchStyleSheet() : darkThemeStyleSheet);
 }
 
 void MainWindow::updateBreadcrumbBar()
