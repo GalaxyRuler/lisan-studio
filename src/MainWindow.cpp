@@ -2389,6 +2389,7 @@ bool MainWindow::openEditorFile(const QString &path)
     if (projectRoot.isEmpty()) {
         loadProject(QFileInfo(normalizedPath).absolutePath());
     }
+    settings.addRecentFile(normalizedPath);
     setStatus(QString::fromUtf8("فتح: %1").arg(QFileInfo(normalizedPath).fileName()));
     return true;
 }

@@ -25,6 +25,9 @@ public:
     QStringList recentProjects() const;
     void addRecentProject(const QString &path);
 
+    QStringList recentFiles() const;
+    void addRecentFile(const QString &path);
+
     SavedWorkbenchSession savedWorkbenchSession() const;
     void saveWorkbenchSession(const SavedWorkbenchSession &session);
 

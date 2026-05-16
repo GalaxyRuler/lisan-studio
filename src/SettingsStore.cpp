@@ -59,6 +59,26 @@ void SettingsStore::addRecentProject(const QString &projectPath)
     settings.setValue(QStringLiteral("project/recent"), projects);
 }
 
+QStringList SettingsStore::recentFiles() const
+{
+    QSettings settings(path, QSettings::IniFormat);
+    return settings.value(QStringLiteral("files/recent")).toStringList();
+}
+
+void SettingsStore::addRecentFile(const QString &filePath)
+{
+    const QString normalizedPath = QDir::fromNativeSeparators(filePath);
+    QStringList files = recentFiles();
+    files.removeAll(normalizedPath);
+    files.prepend(normalizedPath);
+    while (files.size() > 20) {
+        files.removeLast();
+    }
+
+    QSettings settings(path, QSettings::IniFormat);
+    settings.setValue(QStringLiteral("files/recent"), files);
+}
+
 SavedWorkbenchSession SettingsStore::savedWorkbenchSession() const
 {
     QSettings settings(path, QSettings::IniFormat);

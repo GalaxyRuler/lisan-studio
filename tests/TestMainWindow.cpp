@@ -33,6 +33,7 @@ private slots:
     void opensProjectAndFileFromPath();
     void restoresSavedWorkbenchSession();
     void savesWorkbenchSessionOnClose();
+    void openingFileRecordsRecentFile();
     void usesSingleRtlTopCommandBarWithMenuButtons();
     void exposesLisanLogoAssetInShell();
     void exposesPremiumFutureBottomPanelTabs();
@@ -190,6 +191,26 @@ void TestMainWindow::savesWorkbenchSessionOnClose()
     QCOMPARE(QDir::toNativeSeparators(saved.openFiles.at(1)), QDir::toNativeSeparators(secondPath));
     QCOMPARE(saved.activeFileIndex, 1);
     QCOMPARE(saved.bottomPanelId, QStringLiteral("search"));
+}
+
+void TestMainWindow::openingFileRecordsRecentFile()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    QDir root(temp.path());
+    const QString firstPath = writeFile(root, QStringLiteral("main.apy"), QString::fromUtf8("اطبع(\"أول\")\n"));
+    const QString secondPath = writeFile(root, QStringLiteral("src/second.apy"), QString::fromUtf8("اطبع(\"ثان\")\n"));
+    const QString settingsPath = temp.filePath(QStringLiteral("settings.ini"));
+
+    MainWindow window(nullptr, settingsPath);
+    QVERIFY(window.openPath(firstPath));
+    QVERIFY(window.openPath(secondPath));
+
+    SettingsStore reloaded(settingsPath);
+    const QStringList recentFiles = reloaded.recentFiles();
+    QCOMPARE(recentFiles.size(), 2);
+    QCOMPARE(QDir::toNativeSeparators(recentFiles.at(0)), QDir::toNativeSeparators(secondPath));
+    QCOMPARE(QDir::toNativeSeparators(recentFiles.at(1)), QDir::toNativeSeparators(firstPath));
 }
 
 void TestMainWindow::usesSingleRtlTopCommandBarWithMenuButtons()

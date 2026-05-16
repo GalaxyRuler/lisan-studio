@@ -33,6 +33,7 @@ private slots:
     void runtimeRunnerReportsMissingBundledPythonDiagnostics();
     void runtimeProblemParserExtractsArabicSyntaxLine();
     void settingsStorePersistsArabicFontAndRecentProject();
+    void settingsStorePersistsRecentFilesMostRecentFirst();
     void settingsStorePersistsWorkbenchSession();
     void settingsDialogModelBuildsUiStateFromStoreAndDiagnostics();
     void documentFileIoReadsUtf8AndRecordsIdentity();
@@ -340,6 +341,25 @@ void TestProjectSearchRuntime::settingsStorePersistsArabicFontAndRecentProject()
     SettingsStore reloaded(temp.path() + QStringLiteral("/settings.ini"));
     QCOMPARE(reloaded.editorFontFamily(), QString::fromUtf8("Cascadia Code"));
     QCOMPARE(reloaded.recentProjects().first(), QString::fromUtf8("C:/مشروع"));
+}
+
+void TestProjectSearchRuntime::settingsStorePersistsRecentFilesMostRecentFirst()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+
+    SettingsStore store(temp.path() + QStringLiteral("/settings.ini"));
+    for (int i = 0; i < 22; ++i) {
+        store.addRecentFile(QStringLiteral("C:/project/%1.apy").arg(i));
+    }
+    store.addRecentFile(QStringLiteral("C:/project/5.apy"));
+
+    SettingsStore reloaded(temp.path() + QStringLiteral("/settings.ini"));
+    const QStringList files = reloaded.recentFiles();
+    QCOMPARE(files.size(), 20);
+    QCOMPARE(files.first(), QStringLiteral("C:/project/5.apy"));
+    QCOMPARE(files.count(QStringLiteral("C:/project/5.apy")), 1);
+    QVERIFY(!files.contains(QStringLiteral("C:/project/0.apy")));
 }
 
 void TestProjectSearchRuntime::settingsStorePersistsWorkbenchSession()
