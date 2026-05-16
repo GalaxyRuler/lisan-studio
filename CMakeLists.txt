@@ -56,6 +56,8 @@ add_library(acs_core
     src/RuntimeProblemParser.cpp
     src/TerminalProfileModel.h
     src/TerminalProfileModel.cpp
+    src/TerminalLinkParser.h
+    src/TerminalLinkParser.cpp
     src/SearchService.h
     src/SearchService.cpp
     src/ShortcutSettingsModel.h

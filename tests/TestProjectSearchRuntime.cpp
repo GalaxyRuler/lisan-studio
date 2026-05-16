@@ -18,6 +18,7 @@
 #include "SearchService.h"
 #include "SettingsDialogModel.h"
 #include "SettingsStore.h"
+#include "TerminalLinkParser.h"
 #include "TerminalProfileModel.h"
 #include "WorkspaceSettingsStore.h"
 
@@ -48,6 +49,8 @@ private slots:
     void runtimeRunConfigurationStorePersistsConfigurations();
     void terminalProfileModelBuildsExplicitPowerShellProfile();
     void terminalProfileModelRequiresWorkspaceTrustForLaunch();
+    void terminalLinkParserExtractsWindowsPathsWithLineAndColumn();
+    void terminalLinkParserExtractsForwardSlashPaths();
     void outputTranscriptRendersAndFiltersByChannel();
     void outputTranscriptFiltersByCaseInsensitiveText();
     void runtimeProblemParserExtractsArabicSyntaxLine();
@@ -518,6 +521,31 @@ void TestProjectSearchRuntime::terminalProfileModelRequiresWorkspaceTrustForLaun
     QCOMPARE(allowed.command.program, QStringLiteral("powershell.exe"));
     QCOMPARE(allowed.command.arguments, QStringList({QStringLiteral("-NoLogo")}));
     QCOMPARE(allowed.command.workingDirectory, QStringLiteral("C:/project"));
+}
+
+void TestProjectSearchRuntime::terminalLinkParserExtractsWindowsPathsWithLineAndColumn()
+{
+    const QString text = QString::fromUtf8("خطأ في C:\\Users\\Admin\\مشروع\\main.apy:12:7 عند التشغيل");
+
+    const QVector<TerminalLink> links = TerminalLinkParser::linksForText(text);
+
+    QCOMPARE(links.size(), 1);
+    QCOMPARE(links.first().path, QString::fromUtf8("C:\\Users\\Admin\\مشروع\\main.apy"));
+    QCOMPARE(links.first().line, 12);
+    QCOMPARE(links.first().column, 7);
+    QCOMPARE(text.mid(links.first().start, links.first().length), QString::fromUtf8("C:\\Users\\Admin\\مشروع\\main.apy:12:7"));
+}
+
+void TestProjectSearchRuntime::terminalLinkParserExtractsForwardSlashPaths()
+{
+    const QString text = QStringLiteral("opened C:/project/src/app.apy:42 and ignored relative/path.apy:2");
+
+    const QVector<TerminalLink> links = TerminalLinkParser::linksForText(text);
+
+    QCOMPARE(links.size(), 1);
+    QCOMPARE(links.first().path, QStringLiteral("C:/project/src/app.apy"));
+    QCOMPARE(links.first().line, 42);
+    QCOMPARE(links.first().column, 0);
 }
 
 void TestProjectSearchRuntime::outputTranscriptRendersAndFiltersByChannel()
