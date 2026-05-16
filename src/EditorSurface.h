@@ -42,6 +42,8 @@ public:
     int replaceAllFindMatches(const QString &replacement);
     int findHighlightSelectionCountForTest() const;
     int bracketMatchSelectionCountForTest() const;
+    bool isVisibleWhitespaceEnabled() const;
+    void setVisibleWhitespaceEnabled(bool enabled);
     int lineNumberAreaWidth() const;
     void lineNumberAreaPaintEvent(QPaintEvent *event);
     QMenu *createEditorContextMenu(QWidget *parent = nullptr);

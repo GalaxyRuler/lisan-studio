@@ -29,6 +29,7 @@ private slots:
     void bracketMatchingKeepsFindHighlightsVisible();
     void returnKeyIndentsAfterColonBlockLine();
     void returnKeyPreservesCurrentLineIndent();
+    void visibleWhitespaceCanBeToggled();
     void lineNumberAreaScalesAndStaysVisibleForLongFiles();
     void lineNumbersStayOnRightEdgeForArabicEditing();
     void emptyEditorPlaceholderPaintsFromRight();
@@ -372,6 +373,22 @@ void TestEditorSurface::returnKeyPreservesCurrentLineIndent()
     QTest::keyClick(&editor, Qt::Key_Return);
 
     QCOMPARE(editor.toPlainText(), QString::fromUtf8("    اطبع(\"مرحبا\")\n    "));
+}
+
+void TestEditorSurface::visibleWhitespaceCanBeToggled()
+{
+    EditorSurface editor;
+
+    QVERIFY(editor.isVisibleWhitespaceEnabled());
+    QVERIFY(editor.document()->defaultTextOption().flags() & QTextOption::ShowTabsAndSpaces);
+
+    editor.setVisibleWhitespaceEnabled(false);
+    QVERIFY(!editor.isVisibleWhitespaceEnabled());
+    QVERIFY(!(editor.document()->defaultTextOption().flags() & QTextOption::ShowTabsAndSpaces));
+
+    editor.setVisibleWhitespaceEnabled(true);
+    QVERIFY(editor.isVisibleWhitespaceEnabled());
+    QVERIFY(editor.document()->defaultTextOption().flags() & QTextOption::ShowTabsAndSpaces);
 }
 
 void TestEditorSurface::lineNumberAreaScalesAndStaysVisibleForLongFiles()

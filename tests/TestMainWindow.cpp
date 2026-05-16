@@ -40,8 +40,10 @@ private slots:
     void coreCommandSurfacesDeclareRegisteredCommandIds();
     void commandPaletteIncludesInFileFindCommand();
     void commandPaletteIncludesSnippetCommand();
+    void commandPaletteIncludesVisibleWhitespaceCommand();
     void commandPaletteFiltersAndExecutesSelectedCommand();
     void insertPrintSnippetPlacesCursorInsideQuotes();
+    void toggleVisibleWhitespaceUpdatesActiveEditor();
     void inFileFindPanelNavigatesAndReplacesActiveEditor();
     void newFileClearsCurrentPathAndEditorText();
     void newFileCreatesANewEditorTab();
@@ -359,6 +361,7 @@ void TestMainWindow::commandPaletteExposesRegisteredWorkbenchCommands()
         QStringLiteral("document.revert"),
         QStringLiteral("document.save"),
         QStringLiteral("document.saveAll"),
+        QStringLiteral("editor.toggleVisibleWhitespace"),
         QStringLiteral("find-in-file"),
         QStringLiteral("format-current-file"),
         QStringLiteral("lint-current-file"),
@@ -434,6 +437,7 @@ void TestMainWindow::coreCommandSurfacesDeclareRegisteredCommandIds()
 
     const QStringList expectedSurfaceIds = {
         QStringLiteral("command-palette"),
+        QStringLiteral("editor.toggleVisibleWhitespace"),
         QStringLiteral("find-in-file"),
         QStringLiteral("format-current-file"),
         QStringLiteral("lint-current-file"),
@@ -518,6 +522,33 @@ void TestMainWindow::commandPaletteIncludesSnippetCommand()
 
     QVERIFY(QMetaObject::invokeMethod(&window, "openCommandPalette", Qt::DirectConnection));
     QVERIFY(commandIds.contains(QStringLiteral("snippet.insertPrint")));
+}
+
+void TestMainWindow::commandPaletteIncludesVisibleWhitespaceCommand()
+{
+    MainWindow window;
+    QStringList commandIds;
+
+    QTimer::singleShot(0, this, [&]() {
+        auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+        if (!dialog) {
+            return;
+        }
+
+        auto *commands = dialog->findChild<QListWidget *>(QStringLiteral("commandPaletteResults"));
+        if (!commands) {
+            dialog->reject();
+            return;
+        }
+
+        for (int row = 0; row < commands->count(); ++row) {
+            commandIds.append(commands->item(row)->data(Qt::UserRole).toString());
+        }
+        dialog->reject();
+    });
+
+    QVERIFY(QMetaObject::invokeMethod(&window, "openCommandPalette", Qt::DirectConnection));
+    QVERIFY(commandIds.contains(QStringLiteral("editor.toggleVisibleWhitespace")));
 }
 
 void TestMainWindow::commandPaletteFiltersAndExecutesSelectedCommand()
@@ -665,6 +696,21 @@ void TestMainWindow::insertPrintSnippetPlacesCursorInsideQuotes()
 
     QCOMPARE(editor->toPlainText(), QString::fromUtf8("قبل\nاطبع(\"\")"));
     QCOMPARE(editor->textCursor().position(), insertionStart + QString::fromUtf8("اطبع(\"").size());
+}
+
+void TestMainWindow::toggleVisibleWhitespaceUpdatesActiveEditor()
+{
+    MainWindow window;
+
+    auto *editor = window.findChild<EditorSurface *>(QStringLiteral("editorSurface"));
+    QVERIFY(editor != nullptr);
+    QVERIFY(editor->isVisibleWhitespaceEnabled());
+
+    QVERIFY(QMetaObject::invokeMethod(&window, "toggleVisibleWhitespace", Qt::DirectConnection));
+    QVERIFY(!editor->isVisibleWhitespaceEnabled());
+
+    QVERIFY(QMetaObject::invokeMethod(&window, "toggleVisibleWhitespace", Qt::DirectConnection));
+    QVERIFY(editor->isVisibleWhitespaceEnabled());
 }
 
 void TestMainWindow::inFileFindPanelNavigatesAndReplacesActiveEditor()

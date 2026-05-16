@@ -59,6 +59,7 @@ private slots:
     void previewProjectReplace();
     void applyAcceptedProjectReplaceRows();
     void insertPrintSnippet();
+    void toggleVisibleWhitespace();
     void openInFileFind();
     void updateInFileFindMatches();
     void selectNextInFileMatch();

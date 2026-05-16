@@ -512,6 +512,7 @@ void MainWindow::buildUi()
     connect(addTextOnlyMenuAction(editMenu, QString::fromUtf8("إدراج اطبع"), QKeySequence(), QStringLiteral("snippet.insertPrint")), &QAction::triggered, this, &MainWindow::insertPrintSnippet);
     commandPaletteAction->setIconVisibleInMenu(false);
     connect(addTextOnlyMenuAction(viewMenu, QString::fromUtf8("لوحة الأوامر"), QKeySequence(), QStringLiteral("command-palette")), &QAction::triggered, this, &MainWindow::openCommandPalette);
+    connect(addTextOnlyMenuAction(viewMenu, QString::fromUtf8("إظهار المسافات"), QKeySequence(), QStringLiteral("editor.toggleVisibleWhitespace")), &QAction::triggered, this, &MainWindow::toggleVisibleWhitespace);
     connect(addTextOnlyMenuAction(toolsMenu, QString::fromUtf8("فحص"), QKeySequence(), QStringLiteral("lint-current-file")), &QAction::triggered, this, &MainWindow::lintCurrentFile);
     connect(addTextOnlyMenuAction(toolsMenu, QString::fromUtf8("تنسيق"), QKeySequence(), QStringLiteral("format-current-file")), &QAction::triggered, this, &MainWindow::formatCurrentFile);
     settingsAction->setIconVisibleInMenu(false);
@@ -1196,6 +1197,14 @@ void MainWindow::registerWorkbenchCommands()
         [this]() { insertPrintSnippet(); },
         [this]() { return editor != nullptr; });
     registerCommand(
+        QStringLiteral("editor.toggleVisibleWhitespace"),
+        QString::fromUtf8("إظهار المسافات"),
+        QString::fromUtf8("عرض"),
+        QKeySequence(),
+        QString::fromUtf8("إظهار إخفاء المسافات visible whitespace tabs spaces"),
+        [this]() { toggleVisibleWhitespace(); },
+        [this]() { return editor != nullptr; });
+    registerCommand(
         QStringLiteral("run-current-file"),
         QString::fromUtf8("تشغيل الملف الحالي"),
         QString::fromUtf8("تشغيل"),
@@ -1347,6 +1356,15 @@ void MainWindow::registerWorkbenchCommands()
 void MainWindow::insertPrintSnippet()
 {
     insertSnippetById(QStringLiteral("apy.print"));
+}
+
+void MainWindow::toggleVisibleWhitespace()
+{
+    if (!editor) {
+        return;
+    }
+
+    editor->setVisibleWhitespaceEnabled(!editor->isVisibleWhitespaceEnabled());
 }
 
 bool MainWindow::insertSnippetById(const QString &id)

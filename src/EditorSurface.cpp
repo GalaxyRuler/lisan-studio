@@ -268,6 +268,25 @@ int EditorSurface::bracketMatchSelectionCountForTest() const
     return bracketMatchSelectionCount;
 }
 
+bool EditorSurface::isVisibleWhitespaceEnabled() const
+{
+    return document()->defaultTextOption().flags() & QTextOption::ShowTabsAndSpaces;
+}
+
+void EditorSurface::setVisibleWhitespaceEnabled(bool enabled)
+{
+    QTextOption option = document()->defaultTextOption();
+    QTextOption::Flags flags = option.flags();
+    if (enabled) {
+        flags |= QTextOption::ShowTabsAndSpaces;
+    } else {
+        flags &= ~QTextOption::ShowTabsAndSpaces;
+    }
+    option.setFlags(flags);
+    document()->setDefaultTextOption(option);
+    viewport()->update();
+}
+
 int EditorSurface::lineNumberAreaWidth() const
 {
     int digits = 1;
