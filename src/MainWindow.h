@@ -11,6 +11,7 @@
 #include "SearchService.h"
 #include "SettingsDialogModel.h"
 #include "SettingsStore.h"
+#include "TerminalProfileModel.h"
 #include "UnsavedChangesGuard.h"
 #include "WorkbenchState.h"
 #include "WorkspaceSettingsStore.h"
@@ -63,6 +64,7 @@ private slots:
     void showOnlyStdoutOutput();
     void showOnlyStderrOutput();
     void showOnlySystemOutput();
+    void openPowerShellTerminal();
     void appendRuntimeStdout();
     void appendRuntimeStderr();
     void finishRuntimeProcess(int exitCode, QProcess::ExitStatus exitStatus);
@@ -171,6 +173,7 @@ private:
     void closeEditorTab(int index);
     void writeOutput(const QString &title, const QString &text);
     void showOutputPanel();
+    void showTerminalPanel();
     void showProblemsPanel();
     void showSearchResultsPanel();
     QVector<SearchResultRow> currentEditorSearchResults(const QString &query) const;

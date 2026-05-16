@@ -64,6 +64,7 @@ private slots:
     void outputPanelActionsCopyAndClearTranscript();
     void outputPanelActionSavesTranscriptToUtf8File();
     void outputFilterCommandsHideAndRestoreSystemTranscript();
+    void terminalCommandRequiresTrustedWorkspace();
     void projectSearchShowsClickableResultRows();
     void projectSearchFindsCurrentUnsavedEditorImmediately();
     void projectReplacePreviewRendersRowsWithoutWritingFile();
@@ -525,6 +526,7 @@ void TestMainWindow::commandPaletteExposesRegisteredWorkbenchCommands()
         QStringLiteral("settings"),
         QStringLiteral("snippet.insertPrint"),
         QStringLiteral("stop-run"),
+        QStringLiteral("terminal.openPowerShell"),
     };
     QCOMPARE(commandIds, expectedIds);
 }
@@ -609,6 +611,7 @@ void TestMainWindow::coreCommandSurfacesDeclareRegisteredCommandIds()
         QStringLiteral("settings"),
         QStringLiteral("snippet.insertPrint"),
         QStringLiteral("stop-run"),
+        QStringLiteral("terminal.openPowerShell"),
     };
     QCOMPARE(surfaceIds, expectedSurfaceIds);
 
@@ -912,6 +915,26 @@ void TestMainWindow::outputFilterCommandsHideAndRestoreSystemTranscript()
 
     QVERIFY(QMetaObject::invokeMethod(&window, "showAllOutput", Qt::DirectConnection));
     QVERIFY2(outputPanel->toPlainText().contains(QString::fromUtf8("الأمر: تشغيل")), qPrintable(outputPanel->toPlainText()));
+}
+
+void TestMainWindow::terminalCommandRequiresTrustedWorkspace()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+
+    MainWindow window;
+    QVERIFY(window.openPath(temp.path()));
+
+    auto *terminalPanel = window.findChild<QPlainTextEdit *>(QStringLiteral("terminalPanel"));
+    QVERIFY(terminalPanel != nullptr);
+    auto *tabs = window.findChild<QTabWidget *>(QStringLiteral("bottomPanelTabs"));
+    QVERIFY(tabs != nullptr);
+
+    QVERIFY(QMetaObject::invokeMethod(&window, "openPowerShellTerminal", Qt::DirectConnection));
+
+    QCOMPARE(tabs->currentWidget(), terminalPanel);
+    QVERIFY2(terminalPanel->toPlainText().contains(QString::fromUtf8("الثقة")), qPrintable(terminalPanel->toPlainText()));
+    QVERIFY2(!terminalPanel->toPlainText().contains(QStringLiteral("powershell.exe -NoLogo")), qPrintable(terminalPanel->toPlainText()));
 }
 
 void TestMainWindow::insertPrintSnippetPlacesCursorInsideQuotes()

@@ -529,6 +529,7 @@ void MainWindow::buildUi()
     connect(addTextOnlyMenuAction(viewMenu, QString::fromUtf8("إخراج stdout فقط"), QKeySequence(), QStringLiteral("output.filter.stdout")), &QAction::triggered, this, &MainWindow::showOnlyStdoutOutput);
     connect(addTextOnlyMenuAction(viewMenu, QString::fromUtf8("إخراج stderr فقط"), QKeySequence(), QStringLiteral("output.filter.stderr")), &QAction::triggered, this, &MainWindow::showOnlyStderrOutput);
     connect(addTextOnlyMenuAction(viewMenu, QString::fromUtf8("رسائل النظام فقط"), QKeySequence(), QStringLiteral("output.filter.system")), &QAction::triggered, this, &MainWindow::showOnlySystemOutput);
+    connect(addTextOnlyMenuAction(viewMenu, QString::fromUtf8("فتح طرفية PowerShell"), QKeySequence(), QStringLiteral("terminal.openPowerShell")), &QAction::triggered, this, &MainWindow::openPowerShellTerminal);
     connect(addTextOnlyMenuAction(toolsMenu, QString::fromUtf8("فحص"), QKeySequence(), QStringLiteral("lint-current-file")), &QAction::triggered, this, &MainWindow::lintCurrentFile);
     connect(addTextOnlyMenuAction(toolsMenu, QString::fromUtf8("تنسيق"), QKeySequence(), QStringLiteral("format-current-file")), &QAction::triggered, this, &MainWindow::formatCurrentFile);
     settingsAction->setIconVisibleInMenu(false);
@@ -1343,6 +1344,14 @@ void MainWindow::registerWorkbenchCommands()
         QString::fromUtf8("عرض رسائل النظام فقط output filter"),
         [this]() { showOnlySystemOutput(); });
     registerCommand(
+        QStringLiteral("terminal.openPowerShell"),
+        QString::fromUtf8("فتح طرفية PowerShell"),
+        QString::fromUtf8("الطرفية"),
+        QKeySequence(),
+        QString::fromUtf8("فتح طرفية PowerShell terminal"),
+        [this]() { openPowerShellTerminal(); },
+        [this]() { return !projectRoot.isEmpty(); });
+    registerCommand(
         QStringLiteral("search-project"),
         QString::fromUtf8("بحث في المشروع"),
         QString::fromUtf8("بحث"),
@@ -1570,6 +1579,24 @@ void MainWindow::showOnlySystemOutput()
     filter.includeStdout = false;
     filter.includeStderr = false;
     setOutputFilter(filter);
+}
+
+void MainWindow::openPowerShellTerminal()
+{
+    const QString workingDirectory = projectRoot.isEmpty() ? runtimeWorkingDirectory() : projectRoot;
+    const TerminalProfile profile = TerminalProfileModel::defaultPowerShellProfile(workingDirectory);
+    const TerminalLaunchPlan plan = TerminalProfileModel::buildLaunchPlan(profile, workspaceSettings.trusted);
+
+    showTerminalPanel();
+    if (!plan.allowed) {
+        terminalPanel->setPlainText(plan.reason);
+        setStatus(plan.reason);
+        return;
+    }
+
+    terminalPanel->setPlainText(QString::fromUtf8("طرفية %1 جاهزة في %2. تنفيذ الطرفية سيضاف في شريحة لاحقة.")
+        .arg(profile.name, QDir::toNativeSeparators(plan.command.workingDirectory)));
+    setStatus(QString::fromUtf8("تم تجهيز الطرفية"));
 }
 
 bool MainWindow::insertSnippetById(const QString &id)
@@ -2758,6 +2785,18 @@ void MainWindow::showOutputPanel()
     }
     if (bottomPanelTabs) {
         bottomPanelTabs->setCurrentWidget(outputPanel);
+    }
+    outputDock->raise();
+    resizeDocks({outputDock}, {190}, Qt::Vertical);
+}
+
+void MainWindow::showTerminalPanel()
+{
+    if (!outputDock->isVisible()) {
+        outputDock->show();
+    }
+    if (bottomPanelTabs) {
+        bottomPanelTabs->setCurrentWidget(terminalPanel);
     }
     outputDock->raise();
     resizeDocks({outputDock}, {190}, Qt::Vertical);
