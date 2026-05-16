@@ -62,6 +62,7 @@ private slots:
     void projectTreeOpenActionOpensSelectedFile();
     void projectTreeCopyPathActionCopiesSelectedPath();
     void outputPanelActionsCopyAndClearTranscript();
+    void outputPanelActionSavesTranscriptToUtf8File();
     void projectSearchShowsClickableResultRows();
     void projectSearchFindsCurrentUnsavedEditorImmediately();
     void projectReplacePreviewRendersRowsWithoutWritingFile();
@@ -499,6 +500,7 @@ void TestMainWindow::commandPaletteExposesRegisteredWorkbenchCommands()
         QStringLiteral("open-project"),
         QStringLiteral("output.clear"),
         QStringLiteral("output.copy"),
+        QStringLiteral("output.saveAs"),
         QStringLiteral("project.file.new"),
         QStringLiteral("project.folder.new"),
         QStringLiteral("project.item.copyPath"),
@@ -579,6 +581,7 @@ void TestMainWindow::coreCommandSurfacesDeclareRegisteredCommandIds()
         QStringLiteral("open-project"),
         QStringLiteral("output.clear"),
         QStringLiteral("output.copy"),
+        QStringLiteral("output.saveAs"),
         QStringLiteral("project.file.new"),
         QStringLiteral("project.folder.new"),
         QStringLiteral("project.item.copyPath"),
@@ -857,6 +860,32 @@ void TestMainWindow::outputPanelActionsCopyAndClearTranscript()
     QCOMPARE(outputPanel->toPlainText(), QString());
     QApplication::clipboard()->setText(QString());
     QCoreApplication::processEvents();
+}
+
+void TestMainWindow::outputPanelActionSavesTranscriptToUtf8File()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+
+    MainWindow window;
+
+    auto *outputPanel = window.findChild<QPlainTextEdit *>(QStringLiteral("outputPanel"));
+    QVERIFY(outputPanel != nullptr);
+    outputPanel->setPlainText(QString::fromUtf8("[stdout]\nمرحبا من التشغيل\n"));
+
+    const QString savedPath = temp.filePath(QStringLiteral("output.txt"));
+    bool saved = false;
+    QVERIFY(QMetaObject::invokeMethod(
+        &window,
+        "saveOutputPanelToPath",
+        Qt::DirectConnection,
+        Q_RETURN_ARG(bool, saved),
+        Q_ARG(QString, savedPath)));
+    QVERIFY(saved);
+
+    QFile savedFile(savedPath);
+    QVERIFY(savedFile.open(QIODevice::ReadOnly));
+    QCOMPARE(QString::fromUtf8(savedFile.readAll()), outputPanel->toPlainText());
 }
 
 void TestMainWindow::insertPrintSnippetPlacesCursorInsideQuotes()

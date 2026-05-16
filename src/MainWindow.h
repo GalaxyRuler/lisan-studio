@@ -56,6 +56,8 @@ private slots:
     void cancelRuntimeProcess();
     void copyOutputPanel();
     void clearOutputPanel();
+    void saveOutputPanel();
+    bool saveOutputPanelToPath(const QString &path);
     void appendRuntimeStdout();
     void appendRuntimeStderr();
     void finishRuntimeProcess(int exitCode, QProcess::ExitStatus exitStatus);

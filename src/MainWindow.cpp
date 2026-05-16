@@ -1,6 +1,7 @@
 #include "MainWindow.h"
 
 #include "ApySnippetService.h"
+#include "DocumentFileIO.h"
 #include "ProjectFileOperations.h"
 #include "RuntimeProblemParser.h"
 
@@ -523,6 +524,7 @@ void MainWindow::buildUi()
     connect(addTextOnlyMenuAction(viewMenu, QString::fromUtf8("حذف فراغات آخر السطر عند الحفظ"), QKeySequence(), QStringLiteral("editor.toggleTrimTrailingWhitespace")), &QAction::triggered, this, &MainWindow::toggleTrimTrailingWhitespace);
     connect(addTextOnlyMenuAction(viewMenu, QString::fromUtf8("نسخ الإخراج"), QKeySequence(), QStringLiteral("output.copy")), &QAction::triggered, this, &MainWindow::copyOutputPanel);
     connect(addTextOnlyMenuAction(viewMenu, QString::fromUtf8("مسح الإخراج"), QKeySequence(), QStringLiteral("output.clear")), &QAction::triggered, this, &MainWindow::clearOutputPanel);
+    connect(addTextOnlyMenuAction(viewMenu, QString::fromUtf8("حفظ الإخراج باسم"), QKeySequence(), QStringLiteral("output.saveAs")), &QAction::triggered, this, &MainWindow::saveOutputPanel);
     connect(addTextOnlyMenuAction(toolsMenu, QString::fromUtf8("فحص"), QKeySequence(), QStringLiteral("lint-current-file")), &QAction::triggered, this, &MainWindow::lintCurrentFile);
     connect(addTextOnlyMenuAction(toolsMenu, QString::fromUtf8("تنسيق"), QKeySequence(), QStringLiteral("format-current-file")), &QAction::triggered, this, &MainWindow::formatCurrentFile);
     settingsAction->setIconVisibleInMenu(false);
@@ -1301,6 +1303,14 @@ void MainWindow::registerWorkbenchCommands()
         [this]() { clearOutputPanel(); },
         [this]() { return outputPanel && !outputPanel->toPlainText().isEmpty(); });
     registerCommand(
+        QStringLiteral("output.saveAs"),
+        QString::fromUtf8("حفظ الإخراج باسم"),
+        QString::fromUtf8("الإخراج"),
+        QKeySequence(),
+        QString::fromUtf8("حفظ الإخراج save output transcript"),
+        [this]() { saveOutputPanel(); },
+        [this]() { return outputPanel && !outputPanel->toPlainText().isEmpty(); });
+    registerCommand(
         QStringLiteral("search-project"),
         QString::fromUtf8("بحث في المشروع"),
         QString::fromUtf8("بحث"),
@@ -1462,6 +1472,42 @@ void MainWindow::clearOutputPanel()
     outputPanel->clear();
     showOutputPanel();
     setStatus(QString::fromUtf8("تم مسح الإخراج"));
+}
+
+void MainWindow::saveOutputPanel()
+{
+    if (!outputPanel) {
+        return;
+    }
+
+    const QString path = QFileDialog::getSaveFileName(
+        this,
+        QString::fromUtf8("حفظ الإخراج باسم"),
+        projectRoot.isEmpty() ? QDir::homePath() : projectRoot,
+        QString::fromUtf8("ملفات نصية (*.txt);;كل الملفات (*)"));
+    if (path.isEmpty()) {
+        return;
+    }
+
+    if (!saveOutputPanelToPath(path)) {
+        QMessageBox::warning(this, QString::fromUtf8("تعذر حفظ الإخراج"), statusLabel->text());
+    }
+}
+
+bool MainWindow::saveOutputPanelToPath(const QString &path)
+{
+    if (!outputPanel || path.trimmed().isEmpty()) {
+        return false;
+    }
+
+    QString error;
+    if (!DocumentFileIO::saveUtf8Atomically(path, outputPanel->toPlainText(), &error)) {
+        setStatus(error);
+        return false;
+    }
+
+    setStatus(QString::fromUtf8("تم حفظ الإخراج"));
+    return true;
 }
 
 bool MainWindow::insertSnippetById(const QString &id)
