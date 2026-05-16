@@ -853,6 +853,31 @@ void MainWindow::formatCurrentFile()
     runRuntimeAction(RuntimeAction::Format, QString::fromUtf8("تنسيق"), true);
 }
 
+void MainWindow::rerunLastRuntimeAction()
+{
+    if (activeRuntimeProcess && activeRuntimeProcess->state() != QProcess::NotRunning) {
+        showOutputPanel();
+        setStatus(QString::fromUtf8("هناك عملية قيد التشغيل"));
+        return;
+    }
+
+    const QVector<RuntimeHistoryEntry> entries = runtimeHistory.entries();
+    if (entries.isEmpty()) {
+        showOutputPanel();
+        setStatus(QString::fromUtf8("لا يوجد تشغيل سابق"));
+        return;
+    }
+
+    const RuntimeHistoryEntry lastRun = entries.first();
+    const RuntimeLaunchPlan plan = runtime.buildLaunchPlan(
+        lastRun.action,
+        lastRun.title,
+        lastRun.filePath,
+        lastRun.workingDirectory,
+        lastRun.reloadAfterSuccess);
+    startRuntimeLaunchPlan(plan, true);
+}
+
 void MainWindow::cancelRuntimeProcess()
 {
     if (!activeRuntimeProcess || activeRuntimeProcess->state() == QProcess::NotRunning) {
@@ -1229,6 +1254,14 @@ void MainWindow::registerWorkbenchCommands()
         QKeySequence(QStringLiteral("F5")),
         QString::fromUtf8("تشغيل run current file"),
         [this]() { runCurrentFile(); });
+    registerCommand(
+        QStringLiteral("run.rerunLast"),
+        QString::fromUtf8("إعادة آخر تشغيل"),
+        QString::fromUtf8("تشغيل"),
+        QKeySequence(QStringLiteral("Ctrl+F5")),
+        QString::fromUtf8("إعادة آخر تشغيل rerun last run history"),
+        [this]() { rerunLastRuntimeAction(); },
+        [this]() { return !runtimeHistory.entries().isEmpty(); });
     registerCommand(
         QStringLiteral("lint-current-file"),
         QString::fromUtf8("فحص الملف الحالي"),
@@ -2847,7 +2880,16 @@ void MainWindow::runRuntimeAction(RuntimeAction action, const QString &title, bo
 
     const QString workingDirectory = runtimeWorkingDirectory();
     const RuntimeLaunchPlan plan = runtime.buildLaunchPlan(action, title, runFilePath, workingDirectory, reloadAfterSuccess);
-    activeRuntimeTitle = title;
+    startRuntimeLaunchPlan(plan, true);
+}
+
+void MainWindow::startRuntimeLaunchPlan(const RuntimeLaunchPlan &plan, bool recordHistory)
+{
+    if (recordHistory) {
+        runtimeHistory.recordLaunch(plan);
+    }
+
+    activeRuntimeTitle = plan.title;
     activeRuntimeHandledError = false;
     activeRuntimeStdout.clear();
     activeRuntimeStderr.clear();

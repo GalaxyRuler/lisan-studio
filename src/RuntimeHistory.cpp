@@ -15,6 +15,7 @@ void RuntimeHistory::recordLaunch(const RuntimeLaunchPlan &plan)
     entry.filePath = plan.filePath;
     entry.workingDirectory = plan.command.workingDirectory;
     entry.command = plan.command;
+    entry.reloadAfterSuccess = plan.reloadAfterSuccess;
 
     recordedEntries.prepend(entry);
     while (recordedEntries.size() > capacity) {

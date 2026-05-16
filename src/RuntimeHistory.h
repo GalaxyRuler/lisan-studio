@@ -11,6 +11,7 @@ struct RuntimeHistoryEntry
     QString filePath;
     QString workingDirectory;
     RuntimeCommand command;
+    bool reloadAfterSuccess = false;
 };
 
 class RuntimeHistory final

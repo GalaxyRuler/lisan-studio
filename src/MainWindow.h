@@ -5,6 +5,7 @@
 #include "EditorSurface.h"
 #include "ProjectModel.h"
 #include "ProjectReplaceService.h"
+#include "RuntimeHistory.h"
 #include "RuntimeRunner.h"
 #include "SearchService.h"
 #include "SettingsDialogModel.h"
@@ -51,6 +52,7 @@ private slots:
     void runCurrentFile();
     void lintCurrentFile();
     void formatCurrentFile();
+    void rerunLastRuntimeAction();
     void cancelRuntimeProcess();
     void copyOutputPanel();
     void clearOutputPanel();
@@ -135,6 +137,7 @@ private:
     bool activeRuntimeHandledError = false;
     SettingsStore settings;
     RuntimeRunner runtime;
+    RuntimeHistory runtimeHistory;
     CommandRegistry commandRegistry;
     WorkbenchState workbenchState;
     WorkspaceSettings workspaceSettings;
@@ -177,6 +180,7 @@ private:
     QVector<DocumentRecord> openDocumentRecords() const;
     bool confirmUnsavedDocuments(UnsavedChangesOperation operation);
     void runRuntimeAction(RuntimeAction action, const QString &title, bool reloadAfterSuccess = false);
+    void startRuntimeLaunchPlan(const RuntimeLaunchPlan &plan, bool recordHistory);
     void appendRuntimeOutput(const QString &label, const QString &text);
     void completeRuntimeProcess(const QString &statusText);
     void setRuntimeActionsRunning(bool running);

@@ -80,6 +80,7 @@ private slots:
     void runCurrentDirtySavedFileSavesBeforeRuntime();
     void runUsesUntitledBufferWithoutOpeningSaveDialog();
     void runToolProvidesCancelableStructuredFeedback();
+    void rerunLastRuntimeActionReusesLastLaunchPlan();
     void settingsDialogExposesCategoriesAndRuntimeDiagnostics();
     void settingsDialogAppliesEditorFontVisibly();
 };
@@ -510,6 +511,7 @@ void TestMainWindow::commandPaletteExposesRegisteredWorkbenchCommands()
         QStringLiteral("replace-in-project"),
         QStringLiteral("replace-in-project.applyAccepted"),
         QStringLiteral("run-current-file"),
+        QStringLiteral("run.rerunLast"),
         QStringLiteral("save-as"),
         QStringLiteral("save-file"),
         QStringLiteral("search-project"),
@@ -1932,6 +1934,34 @@ void TestMainWindow::runToolProvidesCancelableStructuredFeedback()
     QVERIFY2(output.contains(QString::fromUtf8("ملف:")), qPrintable(output));
     QVERIFY2(output.contains(QString::fromUtf8("مجلد العمل:")), qPrintable(output));
     QVERIFY2(output.contains(QString::fromUtf8("رمز الخروج:")) || output.contains(QString::fromUtf8("تعذر بدء العملية")), qPrintable(output));
+}
+
+void TestMainWindow::rerunLastRuntimeActionReusesLastLaunchPlan()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    QDir root(temp.path());
+    const QString firstPath = writeFile(root, QStringLiteral("first.apy"), QString::fromUtf8("اطبع(\"أول\")\n"));
+    const QString secondPath = writeFile(root, QStringLiteral("second.apy"), QString::fromUtf8("اطبع(\"ثان\")\n"));
+
+    MainWindow window;
+    QVERIFY(window.openPath(firstPath));
+
+    auto *outputPanel = window.findChild<QPlainTextEdit *>(QStringLiteral("outputPanel"));
+    QVERIFY(outputPanel != nullptr);
+
+    QVERIFY(QMetaObject::invokeMethod(&window, "runCurrentFile", Qt::DirectConnection));
+    const QString expectedFirst = QDir::toNativeSeparators(firstPath);
+    QTRY_VERIFY2(outputPanel->toPlainText().contains(expectedFirst), qPrintable(outputPanel->toPlainText()));
+    QTRY_VERIFY(outputPanel->toPlainText().contains(QString::fromUtf8("رمز الخروج:"))
+        || outputPanel->toPlainText().contains(QString::fromUtf8("تعذر بدء العملية")));
+
+    QVERIFY(window.openPath(secondPath));
+    outputPanel->clear();
+
+    QVERIFY(QMetaObject::invokeMethod(&window, "rerunLastRuntimeAction", Qt::DirectConnection));
+    QTRY_VERIFY2(outputPanel->toPlainText().contains(expectedFirst), qPrintable(outputPanel->toPlainText()));
+    QVERIFY2(!outputPanel->toPlainText().contains(QDir::toNativeSeparators(secondPath)), qPrintable(outputPanel->toPlainText()));
 }
 
 void TestMainWindow::settingsDialogExposesCategoriesAndRuntimeDiagnostics()

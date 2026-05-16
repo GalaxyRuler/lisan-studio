@@ -346,6 +346,7 @@ void TestProjectSearchRuntime::runtimeHistoryRecordsMostRecentLaunchesFirst()
     QCOMPARE(entries.at(0).filePath, QStringLiteral("C:/project/src/other.apy"));
     QCOMPARE(entries.at(0).workingDirectory, QStringLiteral("C:/project/src"));
     QCOMPARE(entries.at(0).command.program, second.command.program);
+    QVERIFY(!entries.at(0).reloadAfterSuccess);
     QCOMPARE(entries.at(1).action, RuntimeAction::Run);
 }
 
