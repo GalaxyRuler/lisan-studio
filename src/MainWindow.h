@@ -108,6 +108,8 @@ private:
     QLineEdit *inFileFindInput = nullptr;
     QLineEdit *inFileReplaceInput = nullptr;
     QLabel *inFileFindStatusLabel = nullptr;
+    QLabel *breadcrumbPathLabel = nullptr;
+    QLabel *breadcrumbSymbolLabel = nullptr;
     QLineEdit *commandBox = nullptr;
     QLineEdit *projectReplaceInput = nullptr;
     QPushButton *projectReplacePreviewButton = nullptr;
@@ -174,6 +176,7 @@ private:
     void applyEditorFont(EditorSurface *surface);
     void applyWorkspaceSettings(EditorSurface *surface);
     void applyWorkspaceSettingsToOpenEditors();
+    void updateBreadcrumbBar();
     void updateStatusIndicators();
     void syncEditorSession(EditorSurface *surface);
     void setCurrentEditor(EditorSurface *surface);

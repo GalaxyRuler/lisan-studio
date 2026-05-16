@@ -693,6 +693,24 @@ void MainWindow::buildUi()
     editorColumnLayout->setContentsMargins(0, 0, 0, 0);
     editorColumnLayout->setSpacing(6);
 
+    auto *breadcrumbBar = new QWidget(editorColumn);
+    breadcrumbBar->setObjectName(QStringLiteral("breadcrumbBar"));
+    breadcrumbBar->setLayoutDirection(Qt::RightToLeft);
+    auto *breadcrumbLayout = new QHBoxLayout(breadcrumbBar);
+    breadcrumbLayout->setContentsMargins(8, 6, 8, 0);
+    breadcrumbLayout->setSpacing(8);
+    breadcrumbPathLabel = new QLabel(QString::fromUtf8("ملف جديد"), breadcrumbBar);
+    breadcrumbPathLabel->setObjectName(QStringLiteral("breadcrumbPathLabel"));
+    breadcrumbPathLabel->setLayoutDirection(Qt::LeftToRight);
+    breadcrumbPathLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    breadcrumbPathLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    breadcrumbSymbolLabel = new QLabel(QString::fromUtf8("الرموز: لاحقا"), breadcrumbBar);
+    breadcrumbSymbolLabel->setObjectName(QStringLiteral("breadcrumbSymbolLabel"));
+    breadcrumbSymbolLabel->setAlignment(Qt::AlignVCenter | Qt::AlignRight);
+    breadcrumbLayout->addWidget(breadcrumbSymbolLabel);
+    breadcrumbLayout->addWidget(breadcrumbPathLabel, 1);
+    editorColumnLayout->addWidget(breadcrumbBar);
+
     inFileFindPanel = new QWidget(editorColumn);
     inFileFindPanel->setObjectName(QStringLiteral("inFileFindPanel"));
     inFileFindPanel->setLayoutDirection(Qt::RightToLeft);
@@ -2699,6 +2717,7 @@ EditorSurface *MainWindow::createEditorTab(const QString &title)
     connect(surface, &EditorSurface::filePathChanged, this, [this, surface](const QString &) {
         syncEditorSession(surface);
         updateEditorTabTitle(surface);
+        updateBreadcrumbBar();
         updateStatusIndicators();
         if (surface == editor) {
             setWindowTitle(surface->currentFilePath().isEmpty()
@@ -2709,6 +2728,7 @@ EditorSurface *MainWindow::createEditorTab(const QString &title)
     connect(surface, &EditorSurface::dirtyStateChanged, this, [this, surface](bool) {
         syncEditorSession(surface);
         updateEditorTabTitle(surface);
+        updateBreadcrumbBar();
         updateStatusIndicators();
     });
     connect(surface->document(), &QTextDocument::contentsChanged, this, [this, surface]() {
@@ -2764,6 +2784,19 @@ void MainWindow::applyWorkspaceSettingsToOpenEditors()
     }
 }
 
+void MainWindow::updateBreadcrumbBar()
+{
+    if (!breadcrumbPathLabel || !breadcrumbSymbolLabel) {
+        return;
+    }
+
+    const QString path = editor ? editor->currentFilePath() : QString();
+    breadcrumbPathLabel->setText(path.isEmpty()
+        ? QString::fromUtf8("ملف جديد")
+        : QDir::toNativeSeparators(path));
+    breadcrumbSymbolLabel->setText(QString::fromUtf8("الرموز: لاحقا"));
+}
+
 void MainWindow::updateStatusIndicators()
 {
     if (!statusEncodingLabel || !statusLineEndingLabel || !statusIndentationLabel || !statusLanguageModeLabel || !statusRuntimeLabel || !statusGitLabel) {
@@ -2815,6 +2848,7 @@ void MainWindow::setCurrentEditor(EditorSurface *surface)
     setWindowTitle(editor->currentFilePath().isEmpty()
         ? QString::fromUtf8("استوديو لسان")
         : QString::fromUtf8("استوديو لسان - %1").arg(QFileInfo(editor->currentFilePath()).fileName()));
+    updateBreadcrumbBar();
     updateStatusIndicators();
     refreshEditorProblems();
 }

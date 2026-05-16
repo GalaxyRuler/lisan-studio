@@ -41,6 +41,7 @@ private slots:
     void exposesPremiumFutureBottomPanelTabs();
     void enforcesRtlDirectionAcrossShellContainers();
     void statusBarExposesEditorRuntimeAndGitIndicators();
+    void breadcrumbBarTracksActiveEditorPathWithSymbolPlaceholder();
     void exposesCommandPaletteAction();
     void commandPaletteExposesRegisteredWorkbenchCommands();
     void coreCommandSurfacesDeclareRegisteredCommandIds();
@@ -477,6 +478,26 @@ void TestMainWindow::statusBarExposesEditorRuntimeAndGitIndicators()
     QCOMPARE(language->text(), QStringLiteral(".apy"));
     QCOMPARE(runtime->text(), QString::fromUtf8("التشغيل: جاهز"));
     QCOMPARE(git->text(), QStringLiteral("Git: --"));
+}
+
+void TestMainWindow::breadcrumbBarTracksActiveEditorPathWithSymbolPlaceholder()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    QDir root(temp.path());
+    const QString filePath = writeFile(root, QStringLiteral("src/برنامج.apy"), QString::fromUtf8("اطبع(\"أهلا\")\n"));
+
+    MainWindow window;
+    QVERIFY(window.openPath(filePath));
+
+    auto *breadcrumb = window.findChild<QLabel *>(QStringLiteral("breadcrumbPathLabel"));
+    auto *symbol = window.findChild<QLabel *>(QStringLiteral("breadcrumbSymbolLabel"));
+    QVERIFY(breadcrumb != nullptr);
+    QVERIFY(symbol != nullptr);
+
+    QVERIFY2(breadcrumb->text().contains(QStringLiteral("src")), qPrintable(breadcrumb->text()));
+    QVERIFY2(breadcrumb->text().contains(QString::fromUtf8("برنامج.apy")), qPrintable(breadcrumb->text()));
+    QCOMPARE(symbol->text(), QString::fromUtf8("الرموز: لاحقا"));
 }
 
 void TestMainWindow::exposesCommandPaletteAction()
