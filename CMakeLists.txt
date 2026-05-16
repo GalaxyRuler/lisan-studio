@@ -52,6 +52,8 @@ add_library(acs_core
     src/SettingsDialogModel.cpp
     src/SettingsStore.h
     src/SettingsStore.cpp
+    src/WorkspaceSettingsStore.h
+    src/WorkspaceSettingsStore.cpp
 )
 
 target_include_directories(acs_core PUBLIC src)

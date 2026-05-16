@@ -11,6 +11,7 @@
 #include "SearchService.h"
 #include "SettingsDialogModel.h"
 #include "SettingsStore.h"
+#include "WorkspaceSettingsStore.h"
 
 class TestProjectSearchRuntime : public QObject
 {
@@ -35,6 +36,8 @@ private slots:
     void settingsStorePersistsArabicFontAndRecentProject();
     void settingsStorePersistsRecentFilesMostRecentFirst();
     void settingsStorePersistsWorkbenchSession();
+    void workspaceSettingsStoreDefaultsWhenMissingOrInvalid();
+    void workspaceSettingsStorePersistsTrustAndEditorPreferences();
     void settingsDialogModelBuildsUiStateFromStoreAndDiagnostics();
     void documentFileIoReadsUtf8AndRecordsIdentity();
     void documentFileIoWritesAtomicallyAndPreservesUtf8();
@@ -390,6 +393,57 @@ void TestProjectSearchRuntime::settingsStorePersistsWorkbenchSession()
     QCOMPARE(loaded.openFiles, session.openFiles);
     QCOMPARE(loaded.activeFileIndex, 1);
     QCOMPARE(loaded.bottomPanelId, QStringLiteral("search"));
+}
+
+void TestProjectSearchRuntime::workspaceSettingsStoreDefaultsWhenMissingOrInvalid()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+
+    WorkspaceSettingsStore store(temp.path());
+    QCOMPARE(QDir::toNativeSeparators(store.settingsFilePath()),
+        QDir::toNativeSeparators(QDir(temp.path()).filePath(QStringLiteral(".lisan-workspace/settings.json"))));
+
+    QString error;
+    WorkspaceSettings settings = store.load(&error);
+    QVERIFY(error.isEmpty());
+    QVERIFY(!settings.trusted);
+    QVERIFY(!settings.trimTrailingWhitespaceOnSave);
+    QVERIFY(settings.defaultRunWorkingDirectory.isEmpty());
+
+    QFile invalid(store.settingsFilePath());
+    QVERIFY(QDir().mkpath(QFileInfo(invalid).absolutePath()));
+    QVERIFY(invalid.open(QIODevice::WriteOnly | QIODevice::Text));
+    invalid.write("{");
+    invalid.close();
+
+    settings = store.load(&error);
+    QVERIFY(!error.isEmpty());
+    QVERIFY(!settings.trusted);
+    QVERIFY(!settings.trimTrailingWhitespaceOnSave);
+    QVERIFY(settings.defaultRunWorkingDirectory.isEmpty());
+}
+
+void TestProjectSearchRuntime::workspaceSettingsStorePersistsTrustAndEditorPreferences()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+
+    WorkspaceSettingsStore store(temp.path());
+    WorkspaceSettings settings;
+    settings.trusted = true;
+    settings.trimTrailingWhitespaceOnSave = true;
+    settings.defaultRunWorkingDirectory = QStringLiteral("src");
+
+    QString error;
+    QVERIFY2(store.save(settings, &error), qPrintable(error));
+
+    WorkspaceSettingsStore reloaded(temp.path());
+    const WorkspaceSettings loaded = reloaded.load(&error);
+    QVERIFY2(error.isEmpty(), qPrintable(error));
+    QVERIFY(loaded.trusted);
+    QVERIFY(loaded.trimTrailingWhitespaceOnSave);
+    QCOMPARE(loaded.defaultRunWorkingDirectory, QStringLiteral("src"));
 }
 
 void TestProjectSearchRuntime::settingsDialogModelBuildsUiStateFromStoreAndDiagnostics()
