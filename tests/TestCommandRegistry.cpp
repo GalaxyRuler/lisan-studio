@@ -1,6 +1,9 @@
 #include <QtTest/QtTest>
 
 #include "CommandRegistry.h"
+#include "ShortcutSettingsModel.h"
+
+#include <QJsonObject>
 
 class TestCommandRegistry : public QObject
 {
@@ -10,6 +13,8 @@ private slots:
     void registersMetadataAndTriggersEnabledCommand();
     void rejectsDuplicateCommandIds();
     void disabledCommandDoesNotTrigger();
+    void shortcutSettingsRoundTripsOverrides();
+    void shortcutSettingsRejectsUnknownCommandsAndConflicts();
 };
 
 static CommandDefinition makeCommand(const QString &id, bool *triggered, bool enabled = true)
@@ -69,6 +74,47 @@ void TestCommandRegistry::disabledCommandDoesNotTrigger()
     QVERIFY(!registry.isCommandEnabled(QStringLiteral("run-current-file")));
     QVERIFY(!registry.triggerCommand(QStringLiteral("run-current-file")));
     QVERIFY(!triggered);
+}
+
+void TestCommandRegistry::shortcutSettingsRoundTripsOverrides()
+{
+    bool saveTriggered = false;
+    bool runTriggered = false;
+    CommandRegistry registry;
+    QVERIFY(registry.registerCommand(makeCommand(QStringLiteral("save-file"), &saveTriggered)));
+    QVERIFY(registry.registerCommand(makeCommand(QStringLiteral("run-current-file"), &runTriggered)));
+
+    ShortcutSettingsModel settings;
+    QString error;
+    QVERIFY2(settings.setOverride(registry, QStringLiteral("save-file"), QKeySequence(QStringLiteral("Ctrl+Alt+S")), &error), qPrintable(error));
+
+    QCOMPARE(settings.effectiveShortcut(registry, QStringLiteral("save-file")), QKeySequence(QStringLiteral("Ctrl+Alt+S")));
+    QCOMPARE(settings.effectiveShortcut(registry, QStringLiteral("run-current-file")), QKeySequence(QKeySequence::New));
+
+    const QJsonObject exported = settings.toJson();
+    ShortcutSettingsModel imported;
+    QVERIFY2(imported.loadJson(exported, registry, &error), qPrintable(error));
+
+    QCOMPARE(imported.effectiveShortcut(registry, QStringLiteral("save-file")), QKeySequence(QStringLiteral("Ctrl+Alt+S")));
+    QCOMPARE(imported.effectiveShortcut(registry, QStringLiteral("run-current-file")), QKeySequence(QKeySequence::New));
+}
+
+void TestCommandRegistry::shortcutSettingsRejectsUnknownCommandsAndConflicts()
+{
+    bool firstTriggered = false;
+    bool secondTriggered = false;
+    CommandRegistry registry;
+    QVERIFY(registry.registerCommand(makeCommand(QStringLiteral("save-file"), &firstTriggered)));
+    QVERIFY(registry.registerCommand(makeCommand(QStringLiteral("open-file"), &secondTriggered)));
+
+    ShortcutSettingsModel settings;
+    QString error;
+    QVERIFY(!settings.setOverride(registry, QStringLiteral("missing-command"), QKeySequence(QStringLiteral("Ctrl+M")), &error));
+    QVERIFY2(error.contains(QStringLiteral("missing-command")), qPrintable(error));
+
+    QVERIFY2(settings.setOverride(registry, QStringLiteral("save-file"), QKeySequence(QStringLiteral("Ctrl+Alt+S")), &error), qPrintable(error));
+    QVERIFY(!settings.setOverride(registry, QStringLiteral("open-file"), QKeySequence(QStringLiteral("Ctrl+Alt+S")), &error));
+    QVERIFY2(error.contains(QStringLiteral("Ctrl+Alt+S")), qPrintable(error));
 }
 
 QTEST_MAIN(TestCommandRegistry)

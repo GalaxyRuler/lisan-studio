@@ -58,6 +58,8 @@ add_library(acs_core
     src/TerminalProfileModel.cpp
     src/SearchService.h
     src/SearchService.cpp
+    src/ShortcutSettingsModel.h
+    src/ShortcutSettingsModel.cpp
     src/SettingsDialogModel.h
     src/SettingsDialogModel.cpp
     src/SettingsStore.h
