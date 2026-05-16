@@ -65,6 +65,7 @@ private slots:
     void outputPanelActionSavesTranscriptToUtf8File();
     void outputFilterCommandsHideAndRestoreSystemTranscript();
     void terminalCommandRequiresTrustedWorkspace();
+    void trustWorkspaceCommandPersistsAndUnblocksTerminalReadiness();
     void projectSearchShowsClickableResultRows();
     void projectSearchFindsCurrentUnsavedEditorImmediately();
     void projectReplacePreviewRendersRowsWithoutWritingFile();
@@ -527,6 +528,7 @@ void TestMainWindow::commandPaletteExposesRegisteredWorkbenchCommands()
         QStringLiteral("snippet.insertPrint"),
         QStringLiteral("stop-run"),
         QStringLiteral("terminal.openPowerShell"),
+        QStringLiteral("workspace.trust"),
     };
     QCOMPARE(commandIds, expectedIds);
 }
@@ -612,6 +614,7 @@ void TestMainWindow::coreCommandSurfacesDeclareRegisteredCommandIds()
         QStringLiteral("snippet.insertPrint"),
         QStringLiteral("stop-run"),
         QStringLiteral("terminal.openPowerShell"),
+        QStringLiteral("workspace.trust"),
     };
     QCOMPARE(surfaceIds, expectedSurfaceIds);
 
@@ -935,6 +938,33 @@ void TestMainWindow::terminalCommandRequiresTrustedWorkspace()
     QCOMPARE(tabs->currentWidget(), terminalPanel);
     QVERIFY2(terminalPanel->toPlainText().contains(QString::fromUtf8("الثقة")), qPrintable(terminalPanel->toPlainText()));
     QVERIFY2(!terminalPanel->toPlainText().contains(QStringLiteral("powershell.exe -NoLogo")), qPrintable(terminalPanel->toPlainText()));
+}
+
+void TestMainWindow::trustWorkspaceCommandPersistsAndUnblocksTerminalReadiness()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+
+    MainWindow window;
+    QVERIFY(window.openPath(temp.path()));
+
+    auto *terminalPanel = window.findChild<QPlainTextEdit *>(QStringLiteral("terminalPanel"));
+    QVERIFY(terminalPanel != nullptr);
+
+    QVERIFY(QMetaObject::invokeMethod(&window, "openPowerShellTerminal", Qt::DirectConnection));
+    QVERIFY(terminalPanel->toPlainText().contains(QString::fromUtf8("الثقة")));
+
+    QVERIFY(QMetaObject::invokeMethod(&window, "trustCurrentWorkspace", Qt::DirectConnection));
+
+    WorkspaceSettingsStore store(temp.path());
+    QString error;
+    const WorkspaceSettings settings = store.load(&error);
+    QVERIFY2(error.isEmpty(), qPrintable(error));
+    QVERIFY(settings.trusted);
+
+    QVERIFY(QMetaObject::invokeMethod(&window, "openPowerShellTerminal", Qt::DirectConnection));
+    QVERIFY2(terminalPanel->toPlainText().contains(QString::fromUtf8("جاهزة")), qPrintable(terminalPanel->toPlainText()));
+    QVERIFY2(!terminalPanel->toPlainText().contains(QString::fromUtf8("الثقة")), qPrintable(terminalPanel->toPlainText()));
 }
 
 void TestMainWindow::insertPrintSnippetPlacesCursorInsideQuotes()

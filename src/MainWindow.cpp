@@ -532,6 +532,7 @@ void MainWindow::buildUi()
     connect(addTextOnlyMenuAction(viewMenu, QString::fromUtf8("فتح طرفية PowerShell"), QKeySequence(), QStringLiteral("terminal.openPowerShell")), &QAction::triggered, this, &MainWindow::openPowerShellTerminal);
     connect(addTextOnlyMenuAction(toolsMenu, QString::fromUtf8("فحص"), QKeySequence(), QStringLiteral("lint-current-file")), &QAction::triggered, this, &MainWindow::lintCurrentFile);
     connect(addTextOnlyMenuAction(toolsMenu, QString::fromUtf8("تنسيق"), QKeySequence(), QStringLiteral("format-current-file")), &QAction::triggered, this, &MainWindow::formatCurrentFile);
+    connect(addTextOnlyMenuAction(toolsMenu, QString::fromUtf8("الثقة بمساحة العمل"), QKeySequence(), QStringLiteral("workspace.trust")), &QAction::triggered, this, &MainWindow::trustCurrentWorkspace);
     settingsAction->setIconVisibleInMenu(false);
     connect(addTextOnlyMenuAction(toolsMenu, QString::fromUtf8("الإعدادات"), QKeySequence(), QStringLiteral("settings")), &QAction::triggered, this, &MainWindow::openSettings);
     connect(addTextOnlyMenuAction(helpMenu, QString::fromUtf8("عن استوديو لسان")), &QAction::triggered, this, [this]() {
@@ -1352,6 +1353,14 @@ void MainWindow::registerWorkbenchCommands()
         [this]() { openPowerShellTerminal(); },
         [this]() { return !projectRoot.isEmpty(); });
     registerCommand(
+        QStringLiteral("workspace.trust"),
+        QString::fromUtf8("الثقة بمساحة العمل"),
+        QString::fromUtf8("مساحة العمل"),
+        QKeySequence(),
+        QString::fromUtf8("الثقة بمساحة العمل workspace trust"),
+        [this]() { trustCurrentWorkspace(); },
+        [this]() { return !projectRoot.isEmpty(); });
+    registerCommand(
         QStringLiteral("search-project"),
         QString::fromUtf8("بحث في المشروع"),
         QString::fromUtf8("بحث"),
@@ -1597,6 +1606,23 @@ void MainWindow::openPowerShellTerminal()
     terminalPanel->setPlainText(QString::fromUtf8("طرفية %1 جاهزة في %2. تنفيذ الطرفية سيضاف في شريحة لاحقة.")
         .arg(profile.name, QDir::toNativeSeparators(plan.command.workingDirectory)));
     setStatus(QString::fromUtf8("تم تجهيز الطرفية"));
+}
+
+void MainWindow::trustCurrentWorkspace()
+{
+    if (projectRoot.isEmpty()) {
+        setStatus(QString::fromUtf8("لا توجد مساحة عمل مفتوحة"));
+        return;
+    }
+
+    workspaceSettings.trusted = true;
+    QString error;
+    if (!WorkspaceSettingsStore(projectRoot).save(workspaceSettings, &error)) {
+        setStatus(error);
+        return;
+    }
+
+    setStatus(QString::fromUtf8("تمت الثقة بمساحة العمل"));
 }
 
 bool MainWindow::insertSnippetById(const QString &id)
