@@ -3,6 +3,7 @@
 #include "DocumentFileIO.h"
 #include "EditorFindService.h"
 #include "ApySnippetService.h"
+#include "OutputTranscript.h"
 #include "ProjectModel.h"
 #include "ProjectFileOperations.h"
 #include "ProjectReplaceService.h"
@@ -35,6 +36,8 @@ private slots:
     void runtimeRunnerReportsMissingBundledPythonDiagnostics();
     void runtimeHistoryRecordsMostRecentLaunchesFirst();
     void runtimeHistoryCapsEntriesAndCanClear();
+    void outputTranscriptRendersAndFiltersByChannel();
+    void outputTranscriptFiltersByCaseInsensitiveText();
     void runtimeProblemParserExtractsArabicSyntaxLine();
     void settingsStorePersistsArabicFontAndRecentProject();
     void settingsStorePersistsRecentFilesMostRecentFirst();
@@ -370,6 +373,41 @@ void TestProjectSearchRuntime::runtimeHistoryCapsEntriesAndCanClear()
 
     history.clear();
     QVERIFY(history.entries().isEmpty());
+}
+
+void TestProjectSearchRuntime::outputTranscriptRendersAndFiltersByChannel()
+{
+    OutputTranscript transcript;
+    transcript.append(OutputTranscriptChannel::System, QString::fromUtf8("النظام"), QString::fromUtf8("بدأ التشغيل"));
+    transcript.append(OutputTranscriptChannel::Stdout, QStringLiteral("stdout"), QString::fromUtf8("مرحبا"));
+    transcript.append(OutputTranscriptChannel::Stderr, QStringLiteral("stderr"), QString::fromUtf8("خطأ"));
+
+    QCOMPARE(
+        transcript.render(),
+        QString::fromUtf8("[النظام]\nبدأ التشغيل\n[stdout]\nمرحبا\n[stderr]\nخطأ"));
+
+    OutputTranscriptFilter filter;
+    filter.includeStdout = false;
+    filter.includeSystem = false;
+    QCOMPARE(transcript.render(filter), QString::fromUtf8("[stderr]\nخطأ"));
+}
+
+void TestProjectSearchRuntime::outputTranscriptFiltersByCaseInsensitiveText()
+{
+    OutputTranscript transcript;
+    transcript.append(OutputTranscriptChannel::Stdout, QStringLiteral("stdout"), QString::fromUtf8("Result: مرحبا"));
+    transcript.append(OutputTranscriptChannel::Stderr, QStringLiteral("stderr"), QString::fromUtf8("warning: خافت"));
+    transcript.append(OutputTranscriptChannel::System, QString::fromUtf8("النظام"), QString::fromUtf8("انتهى"));
+
+    OutputTranscriptFilter filter;
+    filter.query = QStringLiteral("RESULT");
+    QCOMPARE(transcript.render(filter), QString::fromUtf8("[stdout]\nResult: مرحبا"));
+
+    filter.query = QString::fromUtf8("خافت");
+    QCOMPARE(transcript.render(filter), QString::fromUtf8("[stderr]\nwarning: خافت"));
+
+    transcript.clear();
+    QCOMPARE(transcript.render(), QString());
 }
 
 void TestProjectSearchRuntime::runtimeProblemParserExtractsArabicSyntaxLine()
