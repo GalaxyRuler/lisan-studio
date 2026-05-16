@@ -48,6 +48,8 @@ add_library(acs_core
     src/RuntimeRunner.cpp
     src/RuntimeRunConfiguration.h
     src/RuntimeRunConfiguration.cpp
+    src/RuntimeRunConfigurationStore.h
+    src/RuntimeRunConfigurationStore.cpp
     src/RuntimeHistory.h
     src/RuntimeHistory.cpp
     src/RuntimeProblemParser.h

@@ -10,6 +10,7 @@
 #include "RuntimeProblemParser.h"
 #include "RuntimeHistory.h"
 #include "RuntimeRunConfiguration.h"
+#include "RuntimeRunConfigurationStore.h"
 #include "RuntimeRunner.h"
 #include "SearchService.h"
 #include "SettingsDialogModel.h"
@@ -39,6 +40,8 @@ private slots:
     void runtimeHistoryCapsEntriesAndCanClear();
     void runtimeRunConfigurationModelCreatesCurrentFileDefault();
     void runtimeRunConfigurationModelRejectsInvalidAndDuplicateEntries();
+    void runtimeRunConfigurationStoreDefaultsWhenMissingOrInvalid();
+    void runtimeRunConfigurationStorePersistsConfigurations();
     void outputTranscriptRendersAndFiltersByChannel();
     void outputTranscriptFiltersByCaseInsensitiveText();
     void runtimeProblemParserExtractsArabicSyntaxLine();
@@ -428,6 +431,56 @@ void TestProjectSearchRuntime::runtimeRunConfigurationModelRejectsInvalidAndDupl
     duplicateName.name = first.name.toUpper();
     QVERIFY(!model.addConfiguration(duplicateName, &error));
     QVERIFY(error.contains(QString::fromUtf8("الاسم")));
+}
+
+void TestProjectSearchRuntime::runtimeRunConfigurationStoreDefaultsWhenMissingOrInvalid()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+
+    RuntimeRunConfigurationStore store(temp.path());
+    QString error;
+    QVERIFY(store.load(&error).isEmpty());
+    QVERIFY(error.isEmpty());
+
+    const QFileInfo info(store.configurationsFilePath());
+    QDir().mkpath(info.absolutePath());
+    QFile invalid(info.absoluteFilePath());
+    QVERIFY(invalid.open(QIODevice::WriteOnly | QIODevice::Text));
+    invalid.write("{not json");
+    invalid.close();
+
+    const QVector<RuntimeRunConfiguration> loaded = store.load(&error);
+    QVERIFY(loaded.isEmpty());
+    QVERIFY(!error.isEmpty());
+}
+
+void TestProjectSearchRuntime::runtimeRunConfigurationStorePersistsConfigurations()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+
+    RuntimeRunConfiguration configuration;
+    configuration.id = QStringLiteral("format-main");
+    configuration.name = QString::fromUtf8("تنسيق الملف الرئيسي");
+    configuration.action = RuntimeAction::Format;
+    configuration.filePath = QStringLiteral("C:/project/main.apy");
+    configuration.workingDirectory = QStringLiteral("C:/project");
+    configuration.reloadAfterSuccess = true;
+
+    RuntimeRunConfigurationStore store(temp.path());
+    QString error;
+    QVERIFY2(store.save({configuration}, &error), qPrintable(error));
+
+    const QVector<RuntimeRunConfiguration> loaded = store.load(&error);
+    QVERIFY2(error.isEmpty(), qPrintable(error));
+    QCOMPARE(loaded.size(), 1);
+    QCOMPARE(loaded.first().id, configuration.id);
+    QCOMPARE(loaded.first().name, configuration.name);
+    QCOMPARE(loaded.first().action, RuntimeAction::Format);
+    QCOMPARE(loaded.first().filePath, configuration.filePath);
+    QCOMPARE(loaded.first().workingDirectory, configuration.workingDirectory);
+    QVERIFY(loaded.first().reloadAfterSuccess);
 }
 
 void TestProjectSearchRuntime::outputTranscriptRendersAndFiltersByChannel()
