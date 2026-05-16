@@ -33,6 +33,7 @@ private slots:
     void runtimeRunnerReportsMissingBundledPythonDiagnostics();
     void runtimeProblemParserExtractsArabicSyntaxLine();
     void settingsStorePersistsArabicFontAndRecentProject();
+    void settingsStorePersistsWorkbenchSession();
     void settingsDialogModelBuildsUiStateFromStoreAndDiagnostics();
     void documentFileIoReadsUtf8AndRecordsIdentity();
     void documentFileIoWritesAtomicallyAndPreservesUtf8();
@@ -339,6 +340,36 @@ void TestProjectSearchRuntime::settingsStorePersistsArabicFontAndRecentProject()
     SettingsStore reloaded(temp.path() + QStringLiteral("/settings.ini"));
     QCOMPARE(reloaded.editorFontFamily(), QString::fromUtf8("Cascadia Code"));
     QCOMPARE(reloaded.recentProjects().first(), QString::fromUtf8("C:/مشروع"));
+}
+
+void TestProjectSearchRuntime::settingsStorePersistsWorkbenchSession()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+
+    SettingsStore empty(temp.path() + QStringLiteral("/settings.ini"));
+    const SavedWorkbenchSession emptySession = empty.savedWorkbenchSession();
+    QVERIFY(emptySession.projectRoot.isEmpty());
+    QVERIFY(emptySession.openFiles.isEmpty());
+    QCOMPARE(emptySession.activeFileIndex, -1);
+    QVERIFY(emptySession.bottomPanelId.isEmpty());
+
+    SavedWorkbenchSession session;
+    session.projectRoot = QString::fromUtf8("C:/مشروع");
+    session.openFiles = {
+        QString::fromUtf8("C:/مشروع/main.apy"),
+        QString::fromUtf8("C:/مشروع/src/ثانوي.apy"),
+    };
+    session.activeFileIndex = 1;
+    session.bottomPanelId = QStringLiteral("search");
+    empty.saveWorkbenchSession(session);
+
+    SettingsStore reloaded(temp.path() + QStringLiteral("/settings.ini"));
+    const SavedWorkbenchSession loaded = reloaded.savedWorkbenchSession();
+    QCOMPARE(loaded.projectRoot, QString::fromUtf8("C:/مشروع"));
+    QCOMPARE(loaded.openFiles, session.openFiles);
+    QCOMPARE(loaded.activeFileIndex, 1);
+    QCOMPARE(loaded.bottomPanelId, QStringLiteral("search"));
 }
 
 void TestProjectSearchRuntime::settingsDialogModelBuildsUiStateFromStoreAndDiagnostics()

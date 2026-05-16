@@ -59,6 +59,42 @@ void SettingsStore::addRecentProject(const QString &projectPath)
     settings.setValue(QStringLiteral("project/recent"), projects);
 }
 
+SavedWorkbenchSession SettingsStore::savedWorkbenchSession() const
+{
+    QSettings settings(path, QSettings::IniFormat);
+    SavedWorkbenchSession session;
+    session.projectRoot = QDir::fromNativeSeparators(settings.value(QStringLiteral("session/projectRoot")).toString());
+    session.openFiles = settings.value(QStringLiteral("session/openFiles")).toStringList();
+    for (QString &openFile : session.openFiles) {
+        openFile = QDir::fromNativeSeparators(openFile);
+    }
+    session.activeFileIndex = settings.value(QStringLiteral("session/activeFileIndex"), -1).toInt();
+    if (session.activeFileIndex < 0 || session.activeFileIndex >= session.openFiles.size()) {
+        session.activeFileIndex = session.openFiles.isEmpty() ? -1 : 0;
+    }
+    session.bottomPanelId = settings.value(QStringLiteral("session/bottomPanelId")).toString();
+    return session;
+}
+
+void SettingsStore::saveWorkbenchSession(const SavedWorkbenchSession &session)
+{
+    QStringList openFiles = session.openFiles;
+    for (QString &openFile : openFiles) {
+        openFile = QDir::fromNativeSeparators(openFile);
+    }
+
+    int activeFileIndex = session.activeFileIndex;
+    if (activeFileIndex < 0 || activeFileIndex >= openFiles.size()) {
+        activeFileIndex = openFiles.isEmpty() ? -1 : 0;
+    }
+
+    QSettings settings(path, QSettings::IniFormat);
+    settings.setValue(QStringLiteral("session/projectRoot"), QDir::fromNativeSeparators(session.projectRoot));
+    settings.setValue(QStringLiteral("session/openFiles"), openFiles);
+    settings.setValue(QStringLiteral("session/activeFileIndex"), activeFileIndex);
+    settings.setValue(QStringLiteral("session/bottomPanelId"), session.bottomPanelId);
+}
+
 QString SettingsStore::settingsPath() const
 {
     return path;

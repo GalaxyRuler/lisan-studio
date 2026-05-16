@@ -3,6 +3,14 @@
 #include <QString>
 #include <QStringList>
 
+struct SavedWorkbenchSession
+{
+    QString projectRoot;
+    QStringList openFiles;
+    int activeFileIndex = -1;
+    QString bottomPanelId;
+};
+
 class SettingsStore
 {
 public:
@@ -16,6 +24,9 @@ public:
 
     QStringList recentProjects() const;
     void addRecentProject(const QString &path);
+
+    SavedWorkbenchSession savedWorkbenchSession() const;
+    void saveWorkbenchSession(const SavedWorkbenchSession &session);
 
     QString settingsPath() const;
 
