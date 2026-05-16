@@ -15,6 +15,7 @@
 #include "SearchService.h"
 #include "SettingsDialogModel.h"
 #include "SettingsStore.h"
+#include "TerminalProfileModel.h"
 #include "WorkspaceSettingsStore.h"
 
 class TestProjectSearchRuntime : public QObject
@@ -42,6 +43,8 @@ private slots:
     void runtimeRunConfigurationModelRejectsInvalidAndDuplicateEntries();
     void runtimeRunConfigurationStoreDefaultsWhenMissingOrInvalid();
     void runtimeRunConfigurationStorePersistsConfigurations();
+    void terminalProfileModelBuildsExplicitPowerShellProfile();
+    void terminalProfileModelRequiresWorkspaceTrustForLaunch();
     void outputTranscriptRendersAndFiltersByChannel();
     void outputTranscriptFiltersByCaseInsensitiveText();
     void runtimeProblemParserExtractsArabicSyntaxLine();
@@ -481,6 +484,35 @@ void TestProjectSearchRuntime::runtimeRunConfigurationStorePersistsConfiguration
     QCOMPARE(loaded.first().filePath, configuration.filePath);
     QCOMPARE(loaded.first().workingDirectory, configuration.workingDirectory);
     QVERIFY(loaded.first().reloadAfterSuccess);
+}
+
+void TestProjectSearchRuntime::terminalProfileModelBuildsExplicitPowerShellProfile()
+{
+    const TerminalProfile profile = TerminalProfileModel::defaultPowerShellProfile(QStringLiteral("C:/project"));
+
+    QCOMPARE(profile.id, QStringLiteral("powershell"));
+    QCOMPARE(profile.name, QStringLiteral("PowerShell"));
+    QCOMPARE(profile.program, QStringLiteral("powershell.exe"));
+    QCOMPARE(profile.arguments, QStringList({QStringLiteral("-NoLogo")}));
+    QCOMPARE(profile.workingDirectory, QStringLiteral("C:/project"));
+    QVERIFY(profile.requiresTrustedWorkspace);
+    QVERIFY(!profile.arguments.join(QLatin1Char(' ')).contains(QStringLiteral("&&")));
+}
+
+void TestProjectSearchRuntime::terminalProfileModelRequiresWorkspaceTrustForLaunch()
+{
+    const TerminalProfile profile = TerminalProfileModel::defaultPowerShellProfile(QStringLiteral("C:/project"));
+
+    const TerminalLaunchPlan blocked = TerminalProfileModel::buildLaunchPlan(profile, false);
+    QVERIFY(!blocked.allowed);
+    QVERIFY(blocked.reason.contains(QString::fromUtf8("الثقة")));
+    QCOMPARE(blocked.command.program, QString());
+
+    const TerminalLaunchPlan allowed = TerminalProfileModel::buildLaunchPlan(profile, true);
+    QVERIFY(allowed.allowed);
+    QCOMPARE(allowed.command.program, QStringLiteral("powershell.exe"));
+    QCOMPARE(allowed.command.arguments, QStringList({QStringLiteral("-NoLogo")}));
+    QCOMPARE(allowed.command.workingDirectory, QStringLiteral("C:/project"));
 }
 
 void TestProjectSearchRuntime::outputTranscriptRendersAndFiltersByChannel()

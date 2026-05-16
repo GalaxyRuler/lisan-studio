@@ -54,6 +54,8 @@ add_library(acs_core
     src/RuntimeHistory.cpp
     src/RuntimeProblemParser.h
     src/RuntimeProblemParser.cpp
+    src/TerminalProfileModel.h
+    src/TerminalProfileModel.cpp
     src/SearchService.h
     src/SearchService.cpp
     src/SettingsDialogModel.h
