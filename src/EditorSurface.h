@@ -41,6 +41,7 @@ public:
     bool replaceCurrentFindMatch(const QString &replacement);
     int replaceAllFindMatches(const QString &replacement);
     int findHighlightSelectionCountForTest() const;
+    int bracketMatchSelectionCountForTest() const;
     int lineNumberAreaWidth() const;
     void lineNumberAreaPaintEvent(QPaintEvent *event);
     QMenu *createEditorContextMenu(QWidget *parent = nullptr);
@@ -56,13 +57,15 @@ private:
     QVector<EditorFindMatch> activeFindMatches;
     int activeFindIndex = -1;
     int findHighlightSelectionCount = 0;
+    int bracketMatchSelectionCount = 0;
     ApyHighlighter *highlighter = nullptr;
     LineNumberArea *lineNumberArea = nullptr;
 
     static QString unicodeName(QChar ch);
     void setCurrentFilePath(const QString &path);
     void refreshFindMatches(bool selectFirst = true);
-    void updateFindExtraSelections();
+    void updateEditorExtraSelections();
+    QVector<int> matchingDelimiterPositions() const;
     bool selectFindMatch(int index);
     void updateLineNumberAreaWidth(int blockCount);
     void updateLineNumberArea(const QRect &rect, int dy);

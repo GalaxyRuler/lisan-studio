@@ -25,6 +25,8 @@ private slots:
     void cursorCanVisitEveryLogicalPositionInMixedDirectionLongLine();
     void findNavigationSelectsArabicMatchesAndHighlightsAll();
     void replaceCurrentAndAllUseActiveFindMatches();
+    void highlightsMatchingBracketsAndQuotesInMixedText();
+    void bracketMatchingKeepsFindHighlightsVisible();
     void lineNumberAreaScalesAndStaysVisibleForLongFiles();
     void lineNumbersStayOnRightEdgeForArabicEditing();
     void emptyEditorPlaceholderPaintsFromRight();
@@ -298,6 +300,49 @@ void TestEditorSurface::replaceCurrentAndAllUseActiveFindMatches()
     QCOMPARE(editor.replaceAllFindMatches(QString::fromUtf8("قيمة")), 1);
     QCOMPARE(editor.toPlainText(), QString::fromUtf8("قيمة = 1\nاطبع(قيمة)\n"));
     QCOMPARE(editor.findMatchCount(), 0);
+}
+
+void TestEditorSurface::highlightsMatchingBracketsAndQuotesInMixedText()
+{
+    EditorSurface editor;
+    const QString text = QString::fromUtf8("اطبع(\"مرحبا\")\nقائمة = [1, 2]\nنص = «أهلا»\n");
+    editor.setPlainText(text);
+
+    QTextCursor cursor = editor.textCursor();
+    const int parenPosition = text.indexOf(QLatin1Char('('));
+    QVERIFY(parenPosition >= 0);
+    cursor.setPosition(parenPosition + 1);
+    editor.setTextCursor(cursor);
+    QCOMPARE(editor.bracketMatchSelectionCountForTest(), 2);
+
+    const int quotePosition = text.indexOf(QLatin1Char('"'));
+    QVERIFY(quotePosition >= 0);
+    cursor.setPosition(quotePosition + 1);
+    editor.setTextCursor(cursor);
+    QCOMPARE(editor.bracketMatchSelectionCountForTest(), 2);
+
+    const int guillemetPosition = text.indexOf(QString::fromUtf8("«"));
+    QVERIFY(guillemetPosition >= 0);
+    cursor.setPosition(guillemetPosition + 1);
+    editor.setTextCursor(cursor);
+    QCOMPARE(editor.bracketMatchSelectionCountForTest(), 2);
+}
+
+void TestEditorSurface::bracketMatchingKeepsFindHighlightsVisible()
+{
+    EditorSurface editor;
+    const QString text = QString::fromUtf8("عدد = 1\nاطبع(عدد)\n");
+    editor.setPlainText(text);
+    QCOMPARE(editor.setFindQuery(QString::fromUtf8("عدد")), 2);
+
+    QTextCursor cursor = editor.textCursor();
+    const int parenPosition = text.indexOf(QLatin1Char('('));
+    QVERIFY(parenPosition >= 0);
+    cursor.setPosition(parenPosition + 1);
+    editor.setTextCursor(cursor);
+
+    QCOMPARE(editor.findHighlightSelectionCountForTest(), 2);
+    QCOMPARE(editor.bracketMatchSelectionCountForTest(), 2);
 }
 
 void TestEditorSurface::lineNumberAreaScalesAndStaysVisibleForLongFiles()

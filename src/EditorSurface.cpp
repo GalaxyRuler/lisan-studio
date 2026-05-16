@@ -11,6 +11,43 @@
 
 #include <memory>
 
+static bool isQuoteDelimiter(QChar ch)
+{
+    return ch == QLatin1Char('"') || ch == QLatin1Char('\'');
+}
+
+static QChar closingDelimiterFor(QChar ch)
+{
+    switch (ch.unicode()) {
+    case '(':
+        return QLatin1Char(')');
+    case '[':
+        return QLatin1Char(']');
+    case '{':
+        return QLatin1Char('}');
+    case 0x00AB:
+        return QChar(0x00BB);
+    default:
+        return QChar();
+    }
+}
+
+static QChar openingDelimiterFor(QChar ch)
+{
+    switch (ch.unicode()) {
+    case ')':
+        return QLatin1Char('(');
+    case ']':
+        return QLatin1Char('[');
+    case '}':
+        return QLatin1Char('{');
+    case 0x00BB:
+        return QChar(0x00AB);
+    default:
+        return QChar();
+    }
+}
+
 class LineNumberArea final : public QWidget
 {
 public:
@@ -67,8 +104,11 @@ EditorSurface::EditorSurface(QWidget *parent)
     connect(document(), &QTextDocument::contentsChanged, this, [this]() {
         if (!activeFindQuery.isEmpty()) {
             refreshFindMatches(false);
+        } else {
+            updateEditorExtraSelections();
         }
     });
+    connect(this, &QPlainTextEdit::cursorPositionChanged, this, &EditorSurface::updateEditorExtraSelections);
     connect(this, &QPlainTextEdit::blockCountChanged, this, &EditorSurface::updateLineNumberAreaWidth);
     connect(this, &QPlainTextEdit::updateRequest, this, &EditorSurface::updateLineNumberArea);
 }
@@ -222,6 +262,11 @@ int EditorSurface::findHighlightSelectionCountForTest() const
     return findHighlightSelectionCount;
 }
 
+int EditorSurface::bracketMatchSelectionCountForTest() const
+{
+    return bracketMatchSelectionCount;
+}
+
 int EditorSurface::lineNumberAreaWidth() const
 {
     int digits = 1;
@@ -352,7 +397,7 @@ void EditorSurface::refreshFindMatches(bool selectFirst)
     activeFindMatches = EditorFindService::findAll(toPlainText(), activeFindQuery);
     if (activeFindMatches.isEmpty()) {
         activeFindIndex = -1;
-        updateFindExtraSelections();
+        updateEditorExtraSelections();
         return;
     }
 
@@ -361,10 +406,10 @@ void EditorSurface::refreshFindMatches(bool selectFirst)
         return;
     }
 
-    updateFindExtraSelections();
+    updateEditorExtraSelections();
 }
 
-void EditorSurface::updateFindExtraSelections()
+void EditorSurface::updateEditorExtraSelections()
 {
     QList<QTextEdit::ExtraSelection> selections;
     for (int i = 0; i < activeFindMatches.size(); ++i) {
@@ -383,7 +428,111 @@ void EditorSurface::updateFindExtraSelections()
     }
 
     findHighlightSelectionCount = selections.size();
+    bracketMatchSelectionCount = 0;
+    const QVector<int> delimiterPositions = matchingDelimiterPositions();
+    for (const int position : delimiterPositions) {
+        QTextCursor cursor(document());
+        cursor.setPosition(position);
+        cursor.setPosition(position + 1, QTextCursor::KeepAnchor);
+
+        QTextEdit::ExtraSelection selection;
+        selection.cursor = cursor;
+        selection.format.setBackground(QColor(QStringLiteral("#5B3C88")));
+        selection.format.setForeground(QColor(QStringLiteral("#FFFFFF")));
+        selections.push_back(selection);
+        ++bracketMatchSelectionCount;
+    }
+
     setExtraSelections(selections);
+}
+
+QVector<int> EditorSurface::matchingDelimiterPositions() const
+{
+    const QString text = toPlainText();
+    if (text.isEmpty()) {
+        return {};
+    }
+
+    auto matchingQuoteAt = [&](int position) -> QVector<int> {
+        const QChar quote = text.at(position);
+        const QTextBlock block = document()->findBlock(position);
+        const int blockStart = block.position();
+        const int blockEnd = blockStart + block.text().size();
+
+        for (int i = position + 1; i < blockEnd; ++i) {
+            if (text.at(i) == quote) {
+                return {position, i};
+            }
+        }
+        for (int i = position - 1; i >= blockStart; --i) {
+            if (text.at(i) == quote) {
+                return {i, position};
+            }
+        }
+        return {};
+    };
+
+    auto matchingOpenAt = [&](int position, QChar open, QChar close) -> QVector<int> {
+        int depth = 0;
+        for (int i = position + 1; i < text.size(); ++i) {
+            const QChar current = text.at(i);
+            if (current == open) {
+                ++depth;
+            } else if (current == close) {
+                if (depth == 0) {
+                    return {position, i};
+                }
+                --depth;
+            }
+        }
+        return {};
+    };
+
+    auto matchingCloseAt = [&](int position, QChar open, QChar close) -> QVector<int> {
+        int depth = 0;
+        for (int i = position - 1; i >= 0; --i) {
+            const QChar current = text.at(i);
+            if (current == close) {
+                ++depth;
+            } else if (current == open) {
+                if (depth == 0) {
+                    return {i, position};
+                }
+                --depth;
+            }
+        }
+        return {};
+    };
+
+    auto matchingAt = [&](int position) -> QVector<int> {
+        if (position < 0 || position >= text.size()) {
+            return {};
+        }
+
+        const QChar current = text.at(position);
+        if (isQuoteDelimiter(current)) {
+            return matchingQuoteAt(position);
+        }
+
+        const QChar close = closingDelimiterFor(current);
+        if (!close.isNull()) {
+            return matchingOpenAt(position, current, close);
+        }
+
+        const QChar open = openingDelimiterFor(current);
+        if (!open.isNull()) {
+            return matchingCloseAt(position, open, current);
+        }
+
+        return {};
+    };
+
+    const int cursorPosition = textCursor().position();
+    QVector<int> positions = matchingAt(cursorPosition - 1);
+    if (!positions.isEmpty()) {
+        return positions;
+    }
+    return matchingAt(cursorPosition);
 }
 
 bool EditorSurface::selectFindMatch(int index)
@@ -399,7 +548,7 @@ bool EditorSurface::selectFindMatch(int index)
     cursor.setPosition(match.start + match.length, QTextCursor::KeepAnchor);
     setTextCursor(cursor);
     ensureCursorVisible();
-    updateFindExtraSelections();
+    updateEditorExtraSelections();
     return true;
 }
 
