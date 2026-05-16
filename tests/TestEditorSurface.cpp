@@ -32,6 +32,7 @@ private slots:
     void returnKeyIndentsAfterColonBlockLine();
     void returnKeyPreservesCurrentLineIndent();
     void visibleWhitespaceCanBeToggled();
+    void indentationGuidesCanBeToggledAndComputed();
     void lineNumberAreaScalesAndStaysVisibleForLongFiles();
     void lineNumbersStayOnRightEdgeForArabicEditing();
     void emptyEditorPlaceholderPaintsFromRight();
@@ -430,6 +431,20 @@ void TestEditorSurface::visibleWhitespaceCanBeToggled()
     editor.setVisibleWhitespaceEnabled(true);
     QVERIFY(editor.isVisibleWhitespaceEnabled());
     QVERIFY(editor.document()->defaultTextOption().flags() & QTextOption::ShowTabsAndSpaces);
+}
+
+void TestEditorSurface::indentationGuidesCanBeToggledAndComputed()
+{
+    EditorSurface editor;
+
+    QVERIFY(editor.indentationGuidesEnabled());
+    QCOMPARE(editor.indentationGuideCountForLineForTest(QString::fromUtf8("اطبع(\"مرحبا\")")), 0);
+    QCOMPARE(editor.indentationGuideCountForLineForTest(QString::fromUtf8("    اطبع(\"مرحبا\")")), 1);
+    QCOMPARE(editor.indentationGuideCountForLineForTest(QString::fromUtf8("        اطبع(\"مرحبا\")")), 2);
+    QCOMPARE(editor.indentationGuideCountForLineForTest(QString::fromUtf8("\tاطبع(\"مرحبا\")")), 1);
+
+    editor.setIndentationGuidesEnabled(false);
+    QVERIFY(!editor.indentationGuidesEnabled());
 }
 
 void TestEditorSurface::lineNumberAreaScalesAndStaysVisibleForLongFiles()

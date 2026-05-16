@@ -337,6 +337,35 @@ void EditorSurface::setTrimTrailingWhitespaceOnSave(bool enabled)
     trimTrailingWhitespace = enabled;
 }
 
+bool EditorSurface::indentationGuidesEnabled() const
+{
+    return showIndentationGuides;
+}
+
+void EditorSurface::setIndentationGuidesEnabled(bool enabled)
+{
+    if (showIndentationGuides == enabled) {
+        return;
+    }
+    showIndentationGuides = enabled;
+    viewport()->update();
+}
+
+int EditorSurface::indentationGuideCountForLineForTest(const QString &line) const
+{
+    int columns = 0;
+    for (const QChar ch : line) {
+        if (ch == QLatin1Char(' ')) {
+            ++columns;
+        } else if (ch == QLatin1Char('\t')) {
+            columns += 4;
+        } else {
+            break;
+        }
+    }
+    return columns / 4;
+}
+
 int EditorSurface::lineNumberAreaWidth() const
 {
     int digits = 1;
@@ -605,6 +634,37 @@ QVector<int> EditorSurface::matchingDelimiterPositions() const
     return matchingAt(cursorPosition);
 }
 
+void EditorSurface::paintIndentationGuides(QPainter *painter)
+{
+    if (!showIndentationGuides) {
+        return;
+    }
+
+    painter->save();
+    painter->setPen(QColor(86, 96, 108, 150));
+    const int spaceWidth = qMax(1, fontMetrics().horizontalAdvance(QLatin1Char(' ')));
+    const int rightEdge = viewport()->rect().right() - 8;
+
+    QTextBlock block = firstVisibleBlock();
+    int top = qRound(blockBoundingGeometry(block).translated(contentOffset()).top());
+    int bottom = top + qRound(blockBoundingRect(block).height());
+
+    while (block.isValid() && top <= viewport()->rect().bottom()) {
+        if (block.isVisible() && bottom >= viewport()->rect().top()) {
+            const int guideCount = indentationGuideCountForLineForTest(block.text());
+            for (int level = 1; level <= guideCount; ++level) {
+                const int x = rightEdge - (level * 4 * spaceWidth);
+                painter->drawLine(x, top + 2, x, bottom - 2);
+            }
+        }
+
+        block = block.next();
+        top = bottom;
+        bottom = top + qRound(blockBoundingRect(block).height());
+    }
+    painter->restore();
+}
+
 bool EditorSurface::selectFindMatch(int index)
 {
     if (index < 0 || index >= activeFindMatches.size()) {
@@ -681,6 +741,9 @@ void EditorSurface::keyPressEvent(QKeyEvent *event)
 void EditorSurface::paintEvent(QPaintEvent *event)
 {
     QPlainTextEdit::paintEvent(event);
+
+    QPainter guidePainter(viewport());
+    paintIndentationGuides(&guidePainter);
 
     if (!toPlainText().isEmpty() || emptyPlaceholderText.isEmpty()) {
         return;

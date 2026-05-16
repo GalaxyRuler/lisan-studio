@@ -46,6 +46,9 @@ public:
     void setVisibleWhitespaceEnabled(bool enabled);
     bool trimTrailingWhitespaceOnSave() const;
     void setTrimTrailingWhitespaceOnSave(bool enabled);
+    bool indentationGuidesEnabled() const;
+    void setIndentationGuidesEnabled(bool enabled);
+    int indentationGuideCountForLineForTest(const QString &line) const;
     int lineNumberAreaWidth() const;
     void lineNumberAreaPaintEvent(QPaintEvent *event);
     QMenu *createEditorContextMenu(QWidget *parent = nullptr);
@@ -63,6 +66,7 @@ private:
     int findHighlightSelectionCount = 0;
     int bracketMatchSelectionCount = 0;
     bool trimTrailingWhitespace = false;
+    bool showIndentationGuides = true;
     ApyHighlighter *highlighter = nullptr;
     LineNumberArea *lineNumberArea = nullptr;
 
@@ -71,6 +75,7 @@ private:
     void refreshFindMatches(bool selectFirst = true);
     void updateEditorExtraSelections();
     QVector<int> matchingDelimiterPositions() const;
+    void paintIndentationGuides(QPainter *painter);
     bool selectFindMatch(int index);
     void updateLineNumberAreaWidth(int blockCount);
     void updateLineNumberArea(const QRect &rect, int dy);
