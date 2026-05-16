@@ -47,6 +47,29 @@ RuntimeCommand RuntimeRunner::buildCommand(RuntimeAction action, const QString &
     return command;
 }
 
+RuntimeLaunchPlan RuntimeRunner::buildLaunchPlan(
+    RuntimeAction action,
+    const QString &title,
+    const QString &filePath,
+    const QString &workingDirectory,
+    bool reloadAfterSuccess) const
+{
+    RuntimeLaunchPlan plan;
+    plan.action = action;
+    plan.title = title;
+    plan.filePath = filePath;
+    plan.command = buildCommand(action, filePath, workingDirectory);
+    plan.reloadAfterSuccess = reloadAfterSuccess;
+    plan.runningStatus = QString::fromUtf8("%1...").arg(title);
+    plan.initialOutput = QStringLiteral("[%1]\n%2\n%3\n%4\n\n%5\n")
+        .arg(title)
+        .arg(QString::fromUtf8("الأمر: %1").arg(title))
+        .arg(QString::fromUtf8("ملف: %1").arg(QDir::toNativeSeparators(filePath)))
+        .arg(QString::fromUtf8("مجلد العمل: %1").arg(QDir::toNativeSeparators(plan.command.workingDirectory)))
+        .arg(QString::fromUtf8("جار التنفيذ..."));
+    return plan;
+}
+
 QProcessEnvironment RuntimeRunner::processEnvironment() const
 {
     QProcessEnvironment environment = QProcessEnvironment::systemEnvironment();

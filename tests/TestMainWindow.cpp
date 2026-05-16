@@ -8,6 +8,7 @@
 #include <QFontComboBox>
 #include <QFontDatabase>
 #include <QMenuBar>
+#include <QMessageBox>
 #include <QFrame>
 #include <QLabel>
 #include <QLineEdit>
@@ -32,9 +33,13 @@ private slots:
     void exposesPremiumFutureBottomPanelTabs();
     void enforcesRtlDirectionAcrossShellContainers();
     void exposesCommandPaletteAction();
+    void commandPaletteExposesRegisteredWorkbenchCommands();
+    void coreCommandSurfacesDeclareRegisteredCommandIds();
     void commandPaletteFiltersAndExecutesSelectedCommand();
     void newFileClearsCurrentPathAndEditorText();
     void newFileCreatesANewEditorTab();
+    void dirtyBufferCancelPreventsNewFile();
+    void dirtyBufferCancelPreventsProjectSwitch();
     void openingMultipleFilesKeepsEachDocumentInATab();
     void projectTreeShowsOnlyFileNames();
     void projectTreeExposesRtlContextActions();
@@ -49,6 +54,7 @@ private slots:
     void outputPanelIsVisibleForRunFeedback();
     void outputPlaceholderPaintsFromRight();
     void untitledEditorBufferMaterializesForRunWithoutSaveDialog();
+    void runCurrentDirtySavedFileSavesBeforeRuntime();
     void runUsesUntitledBufferWithoutOpeningSaveDialog();
     void runToolProvidesCancelableStructuredFeedback();
     void settingsDialogExposesCategoriesAndRuntimeDiagnostics();
@@ -308,6 +314,113 @@ void TestMainWindow::exposesCommandPaletteAction()
     QVERIFY(settingsAction->icon().isNull());
 }
 
+void TestMainWindow::commandPaletteExposesRegisteredWorkbenchCommands()
+{
+    MainWindow window;
+    QStringList commandIds;
+
+    QTimer::singleShot(0, this, [&]() {
+        auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+        if (!dialog) {
+            return;
+        }
+
+        auto *commands = dialog->findChild<QListWidget *>(QStringLiteral("commandPaletteResults"));
+        if (!commands) {
+            dialog->reject();
+            return;
+        }
+
+        for (int row = 0; row < commands->count(); ++row) {
+            commandIds.append(commands->item(row)->data(Qt::UserRole).toString());
+        }
+        dialog->reject();
+    });
+
+    QVERIFY(QMetaObject::invokeMethod(&window, "openCommandPalette", Qt::DirectConnection));
+
+    commandIds.sort();
+    const QStringList expectedIds = {
+        QStringLiteral("command-palette"),
+        QStringLiteral("document.closeWithPrompt"),
+        QStringLiteral("document.revert"),
+        QStringLiteral("document.save"),
+        QStringLiteral("document.saveAll"),
+        QStringLiteral("format-current-file"),
+        QStringLiteral("lint-current-file"),
+        QStringLiteral("new-file"),
+        QStringLiteral("open-file"),
+        QStringLiteral("open-project"),
+        QStringLiteral("run-current-file"),
+        QStringLiteral("save-as"),
+        QStringLiteral("save-file"),
+        QStringLiteral("search-project"),
+        QStringLiteral("settings"),
+        QStringLiteral("stop-run"),
+    };
+    QCOMPARE(commandIds, expectedIds);
+}
+
+void TestMainWindow::coreCommandSurfacesDeclareRegisteredCommandIds()
+{
+    MainWindow window;
+    QStringList paletteIds;
+
+    QTimer::singleShot(0, this, [&]() {
+        auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+        if (!dialog) {
+            return;
+        }
+
+        auto *commands = dialog->findChild<QListWidget *>(QStringLiteral("commandPaletteResults"));
+        if (!commands) {
+            dialog->reject();
+            return;
+        }
+
+        for (int row = 0; row < commands->count(); ++row) {
+            paletteIds.append(commands->item(row)->data(Qt::UserRole).toString());
+        }
+        dialog->reject();
+    });
+
+    QVERIFY(QMetaObject::invokeMethod(&window, "openCommandPalette", Qt::DirectConnection));
+
+    QStringList surfaceIds;
+    for (auto *action : window.findChildren<QAction *>()) {
+        const QString commandId = action->property("commandId").toString();
+        if (!commandId.isEmpty() && !surfaceIds.contains(commandId)) {
+            surfaceIds.append(commandId);
+        }
+    }
+
+    auto *commandBox = window.findChild<QLineEdit *>(QStringLiteral("commandBox"));
+    QVERIFY(commandBox != nullptr);
+    surfaceIds.append(commandBox->property("commandId").toString());
+    surfaceIds.removeDuplicates();
+    surfaceIds.sort();
+
+    const QStringList expectedSurfaceIds = {
+        QStringLiteral("command-palette"),
+        QStringLiteral("format-current-file"),
+        QStringLiteral("lint-current-file"),
+        QStringLiteral("new-file"),
+        QStringLiteral("open-file"),
+        QStringLiteral("open-project"),
+        QStringLiteral("run-current-file"),
+        QStringLiteral("save-as"),
+        QStringLiteral("save-file"),
+        QStringLiteral("search-project"),
+        QStringLiteral("settings"),
+        QStringLiteral("stop-run"),
+    };
+    QCOMPARE(surfaceIds, expectedSurfaceIds);
+
+    for (const QString &surfaceId : surfaceIds) {
+        QVERIFY2(paletteIds.contains(surfaceId), qPrintable(QStringLiteral("Missing command registry entry for %1").arg(surfaceId)));
+    }
+}
+
 void TestMainWindow::commandPaletteFiltersAndExecutesSelectedCommand()
 {
     MainWindow window;
@@ -475,6 +588,51 @@ void TestMainWindow::newFileCreatesANewEditorTab()
     QCOMPARE(tabs->count(), before + 1);
     QCOMPARE(window.currentEditorPath(), QString());
     QCOMPARE(tabs->tabText(tabs->currentIndex()), QString::fromUtf8("ملف جديد"));
+}
+
+void TestMainWindow::dirtyBufferCancelPreventsNewFile()
+{
+    MainWindow window;
+    auto *editor = window.findChild<EditorSurface *>(QStringLiteral("editorSurface"));
+    QVERIFY(editor != nullptr);
+    editor->insertPlainText(QString::fromUtf8("عدد = 1\n"));
+    QVERIFY(editor->isDirty());
+
+    QTimer::singleShot(0, []() {
+        auto *box = qobject_cast<QMessageBox *>(QApplication::activeModalWidget());
+        QVERIFY(box != nullptr);
+        box->button(QMessageBox::Cancel)->click();
+    });
+
+    QVERIFY(QMetaObject::invokeMethod(&window, "newFile", Qt::DirectConnection));
+    auto *tabs = window.findChild<QTabWidget *>(QStringLiteral("editorTabs"));
+    QVERIFY(tabs != nullptr);
+    QCOMPARE(tabs->count(), 1);
+    QVERIFY(editor->toPlainText().contains(QString::fromUtf8("عدد")));
+}
+
+void TestMainWindow::dirtyBufferCancelPreventsProjectSwitch()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    QTemporaryDir other;
+    QVERIFY(other.isValid());
+
+    MainWindow window;
+    QVERIFY(window.openPath(temp.path()));
+    auto *editor = window.findChild<EditorSurface *>(QStringLiteral("editorSurface"));
+    QVERIFY(editor != nullptr);
+    editor->insertPlainText(QString::fromUtf8("عدد = 1\n"));
+    QVERIFY(editor->isDirty());
+
+    QTimer::singleShot(0, []() {
+        auto *box = qobject_cast<QMessageBox *>(QApplication::activeModalWidget());
+        QVERIFY(box != nullptr);
+        box->button(QMessageBox::Cancel)->click();
+    });
+
+    QVERIFY(!window.openPath(other.path()));
+    QCOMPARE(QDir::toNativeSeparators(window.currentProjectRoot()), QDir::toNativeSeparators(temp.path()));
 }
 
 void TestMainWindow::openingMultipleFilesKeepsEachDocumentInATab()
@@ -1028,6 +1186,29 @@ void TestMainWindow::untitledEditorBufferMaterializesForRunWithoutSaveDialog()
     QFile materialized(materializedPath);
     QVERIFY(materialized.open(QIODevice::ReadOnly | QIODevice::Text));
     QCOMPARE(QString::fromUtf8(materialized.readAll()), editor->toPlainText());
+}
+
+void TestMainWindow::runCurrentDirtySavedFileSavesBeforeRuntime()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    QDir root(temp.path());
+    const QString filePath = writeFile(root, QStringLiteral("main.apy"), QString::fromUtf8("عدد = 1\n"));
+
+    MainWindow window;
+    QVERIFY(window.openPath(filePath));
+
+    auto *editor = window.findChild<EditorSurface *>(QStringLiteral("editorSurface"));
+    QVERIFY(editor != nullptr);
+    editor->selectAll();
+    editor->insertPlainText(QString::fromUtf8("عدد = 2\n"));
+    QVERIFY(editor->isDirty());
+
+    QVERIFY(QMetaObject::invokeMethod(&window, "runCurrentFile", Qt::DirectConnection));
+
+    QFile saved(filePath);
+    QVERIFY(saved.open(QIODevice::ReadOnly));
+    QCOMPARE(saved.readAll(), QString::fromUtf8("عدد = 2\n").toUtf8());
 }
 
 void TestMainWindow::runUsesUntitledBufferWithoutOpeningSaveDialog()

@@ -1,7 +1,8 @@
 #include "EditorSurface.h"
 
+#include "DocumentFileIO.h"
+
 #include <QPainter>
-#include <QFile>
 #include <QFontDatabase>
 #include <QKeySequence>
 #include <QPaintEvent>
@@ -69,17 +70,14 @@ EditorSurface::EditorSurface(QWidget *parent)
 
 bool EditorSurface::openFile(const QString &path, QString *error)
 {
-    QFile file(path);
-    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        if (error) {
-            *error = file.errorString();
-        }
+    const DocumentLoadResult loaded = DocumentFileIO::loadUtf8(path, error);
+    if (loaded.text.isEmpty() && error && !error->isEmpty()) {
         return false;
     }
 
-    setPlainText(QString::fromUtf8(file.readAll()));
+    setPlainText(loaded.text);
     document()->setModified(false);
-    setCurrentFilePath(path);
+    setCurrentFilePath(loaded.identity.path);
     return true;
 }
 
@@ -103,17 +101,12 @@ bool EditorSurface::saveFile(QString *error)
 
 bool EditorSurface::saveFileAs(const QString &path, QString *error)
 {
-    QFile file(path);
-    if (!file.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate)) {
-        if (error) {
-            *error = file.errorString();
-        }
+    if (!DocumentFileIO::saveUtf8Atomically(path, toPlainText(), error)) {
         return false;
     }
 
-    file.write(toPlainText().toUtf8());
     document()->setModified(false);
-    setCurrentFilePath(path);
+    setCurrentFilePath(DocumentFileIO::identityForPath(path).path);
     return true;
 }
 

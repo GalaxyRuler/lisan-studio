@@ -211,7 +211,7 @@ QString MainWindow::currentProjectRoot() const
 
 QString MainWindow::currentEditorPath() const
 {
-    return editor->currentFilePath();
+    return workbenchState.currentEditorPath();
 }
 
 QString MainWindow::materializeRunnableBuffer(QString *error)
@@ -265,6 +265,7 @@ QString MainWindow::materializeRunnableBuffer(QString *error)
 void MainWindow::buildUi()
 {
     setLayoutDirection(Qt::RightToLeft);
+    registerWorkbenchCommands();
 
     setStyleSheet(QStringLiteral(
         "QMainWindow, QWidget { background: #0f141a; color: #E8ECF2; font-family: 'IBM Plex Sans Arabic', 'Segoe UI'; }"
@@ -422,33 +423,48 @@ void MainWindow::buildUi()
     };
 
     auto *saveAction = makeAction(style()->standardIcon(QStyle::SP_DialogSaveButton), QString::fromUtf8("حفظ"), &MainWindow::saveFile);
+    saveAction->setProperty("commandId", QStringLiteral("save-file"));
     auto *openProjectAction = makeAction(style()->standardIcon(QStyle::SP_DirOpenIcon), QString::fromUtf8("فتح مشروع"), &MainWindow::openFolder);
+    openProjectAction->setProperty("commandId", QStringLiteral("open-project"));
     runAction = makeAction(lightPlayIcon(), QString::fromUtf8("تشغيل"), &MainWindow::runCurrentFile);
     runAction->setObjectName(QStringLiteral("runAction"));
+    runAction->setProperty("commandId", QStringLiteral("run-current-file"));
     runAction->setShortcut(QKeySequence(QStringLiteral("F5")));
     runAction->setShortcutContext(Qt::ApplicationShortcut);
     cancelRunAction = makeAction(style()->standardIcon(QStyle::SP_MediaStop), QString::fromUtf8("إيقاف"), &MainWindow::cancelRuntimeProcess);
     cancelRunAction->setObjectName(QStringLiteral("cancelRunAction"));
+    cancelRunAction->setProperty("commandId", QStringLiteral("stop-run"));
     cancelRunAction->setShortcut(QKeySequence(QStringLiteral("Shift+F5")));
     cancelRunAction->setShortcutContext(Qt::ApplicationShortcut);
     cancelRunAction->setEnabled(false);
     lintAction = makeAction(style()->standardIcon(QStyle::SP_MessageBoxInformation), QString::fromUtf8("فحص"), &MainWindow::lintCurrentFile);
     lintAction->setObjectName(QStringLiteral("lintAction"));
+    lintAction->setProperty("commandId", QStringLiteral("lint-current-file"));
     formatAction = makeAction(style()->standardIcon(QStyle::SP_BrowserReload), QString::fromUtf8("تنسيق"), &MainWindow::formatCurrentFile);
     formatAction->setObjectName(QStringLiteral("formatAction"));
+    formatAction->setProperty("commandId", QStringLiteral("format-current-file"));
     commandPaletteAction = makeAction(style()->standardIcon(QStyle::SP_FileDialogListView), QString::fromUtf8("لوحة الأوامر"), &MainWindow::openCommandPalette);
     commandPaletteAction->setObjectName(QStringLiteral("commandPaletteAction"));
+    commandPaletteAction->setProperty("commandId", QStringLiteral("command-palette"));
     commandPaletteAction->setShortcuts({QKeySequence(QStringLiteral("Ctrl+Shift+P"))});
     auto *settingsAction = makeAction(QIcon(), QString::fromUtf8("الإعدادات"), &MainWindow::openSettings);
     settingsAction->setObjectName(QStringLiteral("settingsAction"));
+    settingsAction->setProperty("commandId", QStringLiteral("settings"));
 
     addTopButton(QStringLiteral("topRunButton"), runAction, "primaryAction", Qt::ToolButtonTextBesideIcon);
 
-    auto addTextOnlyMenuAction = [this](QFrame *menu, const QString &text, const QKeySequence &shortcut = QKeySequence()) {
+    auto addTextOnlyMenuAction = [this](
+        QFrame *menu,
+        const QString &text,
+        const QKeySequence &shortcut = QKeySequence(),
+        const QString &commandId = QString()) {
         auto *action = new QAction(text, this);
         action->setText(text);
         action->setIcon(QIcon());
         action->setIconVisibleInMenu(false);
+        if (!commandId.isEmpty()) {
+            action->setProperty("commandId", commandId);
+        }
         if (!shortcut.isEmpty()) {
             action->setShortcut(shortcut);
             action->setShortcutContext(Qt::ApplicationShortcut);
@@ -462,6 +478,9 @@ void MainWindow::buildUi()
         row->setCursor(Qt::PointingHandCursor);
         row->setMinimumWidth(menu->minimumWidth());
         row->setFlat(true);
+        if (!commandId.isEmpty()) {
+            row->setProperty("commandId", commandId);
+        }
         if (auto *menuLayout = qobject_cast<QVBoxLayout *>(menu->layout())) {
             menuLayout->addWidget(row);
         }
@@ -470,11 +489,11 @@ void MainWindow::buildUi()
         return action;
     };
 
-    connect(addTextOnlyMenuAction(fileMenu, QString::fromUtf8("ملف جديد"), QKeySequence::New), &QAction::triggered, this, &MainWindow::newFile);
-    connect(addTextOnlyMenuAction(fileMenu, QString::fromUtf8("فتح ملف"), QKeySequence::Open), &QAction::triggered, this, &MainWindow::openFile);
-    connect(addTextOnlyMenuAction(fileMenu, QString::fromUtf8("فتح مشروع")), &QAction::triggered, this, &MainWindow::openFolder);
-    connect(addTextOnlyMenuAction(fileMenu, QString::fromUtf8("حفظ"), QKeySequence::Save), &QAction::triggered, this, &MainWindow::saveFile);
-    connect(addTextOnlyMenuAction(fileMenu, QString::fromUtf8("حفظ باسم"), QKeySequence::SaveAs), &QAction::triggered, this, &MainWindow::saveFileAs);
+    connect(addTextOnlyMenuAction(fileMenu, QString::fromUtf8("ملف جديد"), QKeySequence::New, QStringLiteral("new-file")), &QAction::triggered, this, &MainWindow::newFile);
+    connect(addTextOnlyMenuAction(fileMenu, QString::fromUtf8("فتح ملف"), QKeySequence::Open, QStringLiteral("open-file")), &QAction::triggered, this, &MainWindow::openFile);
+    connect(addTextOnlyMenuAction(fileMenu, QString::fromUtf8("فتح مشروع"), QKeySequence(), QStringLiteral("open-project")), &QAction::triggered, this, &MainWindow::openFolder);
+    connect(addTextOnlyMenuAction(fileMenu, QString::fromUtf8("حفظ"), QKeySequence::Save, QStringLiteral("save-file")), &QAction::triggered, this, &MainWindow::saveFile);
+    connect(addTextOnlyMenuAction(fileMenu, QString::fromUtf8("حفظ باسم"), QKeySequence::SaveAs, QStringLiteral("save-as")), &QAction::triggered, this, &MainWindow::saveFileAs);
     connect(addTextOnlyMenuAction(editMenu, QString::fromUtf8("تراجع"), QKeySequence::Undo), &QAction::triggered, this, [this]() {
         if (editor) {
             editor->undo();
@@ -486,11 +505,11 @@ void MainWindow::buildUi()
         }
     });
     commandPaletteAction->setIconVisibleInMenu(false);
-    connect(addTextOnlyMenuAction(viewMenu, QString::fromUtf8("لوحة الأوامر")), &QAction::triggered, this, &MainWindow::openCommandPalette);
-    connect(addTextOnlyMenuAction(toolsMenu, QString::fromUtf8("فحص")), &QAction::triggered, this, &MainWindow::lintCurrentFile);
-    connect(addTextOnlyMenuAction(toolsMenu, QString::fromUtf8("تنسيق")), &QAction::triggered, this, &MainWindow::formatCurrentFile);
+    connect(addTextOnlyMenuAction(viewMenu, QString::fromUtf8("لوحة الأوامر"), QKeySequence(), QStringLiteral("command-palette")), &QAction::triggered, this, &MainWindow::openCommandPalette);
+    connect(addTextOnlyMenuAction(toolsMenu, QString::fromUtf8("فحص"), QKeySequence(), QStringLiteral("lint-current-file")), &QAction::triggered, this, &MainWindow::lintCurrentFile);
+    connect(addTextOnlyMenuAction(toolsMenu, QString::fromUtf8("تنسيق"), QKeySequence(), QStringLiteral("format-current-file")), &QAction::triggered, this, &MainWindow::formatCurrentFile);
     settingsAction->setIconVisibleInMenu(false);
-    connect(addTextOnlyMenuAction(toolsMenu, QString::fromUtf8("الإعدادات")), &QAction::triggered, this, &MainWindow::openSettings);
+    connect(addTextOnlyMenuAction(toolsMenu, QString::fromUtf8("الإعدادات"), QKeySequence(), QStringLiteral("settings")), &QAction::triggered, this, &MainWindow::openSettings);
     connect(addTextOnlyMenuAction(helpMenu, QString::fromUtf8("عن استوديو لسان")), &QAction::triggered, this, [this]() {
         QMessageBox::information(this, QString::fromUtf8("عن استوديو لسان"), QString::fromUtf8("استوديو لسان\nبيئة عربية أصلية لملفات .apy"));
     });
@@ -503,6 +522,7 @@ void MainWindow::buildUi()
 
     commandBox = new QLineEdit(this);
     commandBox->setObjectName(QStringLiteral("commandBox"));
+    commandBox->setProperty("commandId", QStringLiteral("search-project"));
     commandBox->setPlaceholderText(QString::fromUtf8("ابحث في الأوامر والملفات..."));
     commandBox->setLayoutDirection(Qt::RightToLeft);
     commandBox->setFixedWidth(440);
@@ -566,6 +586,7 @@ void MainWindow::buildUi()
     editorTabs->setTabsClosable(true);
     editorTabs->setLayoutDirection(Qt::RightToLeft);
     connect(editorTabs, &QTabWidget::currentChanged, this, [this](int index) {
+        workbenchState.setCurrentEditorSessionIndex(index);
         setCurrentEditor(qobject_cast<EditorSurface *>(editorTabs->widget(index)));
     });
     connect(editorTabs, &QTabWidget::tabCloseRequested, this, &MainWindow::closeEditorTab);
@@ -842,94 +863,11 @@ void MainWindow::openCommandPalette()
     commands->setLayoutDirection(Qt::RightToLeft);
     commands->setUniformItemSizes(false);
 
-    struct PaletteCommand {
-        QString id;
-        QString title;
-        QString shortcut;
-        QString keywords;
-        std::function<void()> trigger;
-    };
-
-    const QVector<PaletteCommand> paletteCommands = {
-        {
-            QStringLiteral("new-file"),
-            QString::fromUtf8("ملف جديد"),
-            QStringLiteral("Ctrl+N"),
-            QString::fromUtf8("ملف جديد new file"),
-            [this]() { newFile(); },
-        },
-        {
-            QStringLiteral("open-file"),
-            QString::fromUtf8("فتح ملف"),
-            QStringLiteral("Ctrl+O"),
-            QString::fromUtf8("فتح ملف open file"),
-            [this]() { openFile(); },
-        },
-        {
-            QStringLiteral("open-project"),
-            QString::fromUtf8("فتح مشروع"),
-            QString(),
-            QString::fromUtf8("فتح مشروع مجلد open project folder"),
-            [this]() { openFolder(); },
-        },
-        {
-            QStringLiteral("save-file"),
-            QString::fromUtf8("حفظ"),
-            QStringLiteral("Ctrl+S"),
-            QString::fromUtf8("حفظ save"),
-            [this]() { saveFile(); },
-        },
-        {
-            QStringLiteral("save-as"),
-            QString::fromUtf8("حفظ باسم"),
-            QStringLiteral("Ctrl+Shift+S"),
-            QString::fromUtf8("حفظ باسم save as"),
-            [this]() { saveFileAs(); },
-        },
-        {
-            QStringLiteral("run-current-file"),
-            QString::fromUtf8("تشغيل الملف الحالي"),
-            QStringLiteral("F5"),
-            QString::fromUtf8("تشغيل run current file"),
-            [this]() { runCurrentFile(); },
-        },
-        {
-            QStringLiteral("stop-run"),
-            QString::fromUtf8("إيقاف التشغيل"),
-            QStringLiteral("Shift+F5"),
-            QString::fromUtf8("إيقاف التشغيل stop cancel run"),
-            [this]() { cancelRuntimeProcess(); },
-        },
-        {
-            QStringLiteral("search-project"),
-            QString::fromUtf8("بحث في المشروع"),
-            QStringLiteral("Enter"),
-            QString::fromUtf8("بحث في المشروع search find"),
-            [this]() {
-                if (!commandBox) {
-                    return;
-                }
-                commandBox->setFocus(Qt::ShortcutFocusReason);
-                commandBox->selectAll();
-                if (!commandBox->text().trimmed().isEmpty()) {
-                    findInProject();
-                }
-            },
-        },
-        {
-            QStringLiteral("settings"),
-            QString::fromUtf8("الإعدادات"),
-            QStringLiteral("Ctrl+,"),
-            QString::fromUtf8("الإعدادات settings preferences"),
-            [this]() { openSettings(); },
-        },
-    };
-
-    auto addCommandRow = [&](const PaletteCommand &command) {
+    auto addCommandRow = [&](const CommandDefinition &command) {
         auto *item = new QListWidgetItem(commands);
         item->setData(Qt::UserRole, command.id);
         item->setData(Qt::UserRole + 1, command.title);
-        item->setData(Qt::UserRole + 2, command.shortcut);
+        item->setData(Qt::UserRole + 2, command.defaultShortcut.toString(QKeySequence::NativeText));
         item->setData(Qt::UserRole + 3, command.keywords);
         item->setSizeHint(QSize(0, 44));
 
@@ -939,7 +877,7 @@ void MainWindow::openCommandPalette()
         rowLayout->setContentsMargins(12, 6, 12, 6);
         rowLayout->setSpacing(12);
 
-        auto *shortcut = new QLabel(command.shortcut, row);
+        auto *shortcut = new QLabel(command.defaultShortcut.toString(QKeySequence::NativeText), row);
         shortcut->setObjectName(QStringLiteral("commandPaletteShortcutLabel"));
         shortcut->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
         shortcut->setMinimumWidth(120);
@@ -957,7 +895,7 @@ void MainWindow::openCommandPalette()
         commands->setItemWidget(item, row);
     };
 
-    for (const PaletteCommand &command : paletteCommands) {
+    for (const CommandDefinition &command : commandRegistry.commands()) {
         addCommandRow(command);
     }
 
@@ -1007,14 +945,7 @@ void MainWindow::openCommandPalette()
         }
 
         const QString commandId = item->data(Qt::UserRole).toString();
-        const auto command = std::find_if(paletteCommands.cbegin(), paletteCommands.cend(), [&commandId](const PaletteCommand &candidate) {
-            return candidate.id == commandId;
-        });
-        if (command == paletteCommands.cend()) {
-            return;
-        }
-
-        selectedCommand = command->trigger;
+        selectedCommand = [this, commandId]() { commandRegistry.triggerCommand(commandId); };
         dialog.accept();
     };
 
@@ -1031,6 +962,186 @@ void MainWindow::openCommandPalette()
     }
 }
 
+void MainWindow::registerWorkbenchCommands()
+{
+    auto registerCommand = [this](
+        const QString &id,
+        const QString &title,
+        const QString &category,
+        const QKeySequence &shortcut,
+        const QString &keywords,
+        std::function<void()> trigger,
+        std::function<bool()> isEnabled = {}) {
+        CommandDefinition command;
+        command.id = id;
+        command.title = title;
+        command.category = category;
+        command.defaultShortcut = shortcut;
+        command.keywords = keywords;
+        command.isEnabled = isEnabled ? isEnabled : []() { return true; };
+        command.trigger = trigger;
+        commandRegistry.registerCommand(command);
+    };
+
+    registerCommand(
+        QStringLiteral("new-file"),
+        QString::fromUtf8("ملف جديد"),
+        QString::fromUtf8("ملف"),
+        QKeySequence::New,
+        QString::fromUtf8("ملف جديد new file"),
+        [this]() { newFile(); });
+    registerCommand(
+        QStringLiteral("open-file"),
+        QString::fromUtf8("فتح ملف"),
+        QString::fromUtf8("ملف"),
+        QKeySequence::Open,
+        QString::fromUtf8("فتح ملف open file"),
+        [this]() { openFile(); });
+    registerCommand(
+        QStringLiteral("open-project"),
+        QString::fromUtf8("فتح مشروع"),
+        QString::fromUtf8("ملف"),
+        QKeySequence(),
+        QString::fromUtf8("فتح مشروع مجلد open project folder"),
+        [this]() { openFolder(); });
+    registerCommand(
+        QStringLiteral("save-file"),
+        QString::fromUtf8("حفظ"),
+        QString::fromUtf8("ملف"),
+        QKeySequence::Save,
+        QString::fromUtf8("حفظ save"),
+        [this]() { saveFile(); });
+    registerCommand(
+        QStringLiteral("save-as"),
+        QString::fromUtf8("حفظ باسم"),
+        QString::fromUtf8("ملف"),
+        QKeySequence::SaveAs,
+        QString::fromUtf8("حفظ باسم save as"),
+        [this]() { saveFileAs(); });
+    registerCommand(
+        QStringLiteral("document.save"),
+        QString::fromUtf8("حفظ المستند"),
+        QString::fromUtf8("المستند"),
+        QKeySequence::Save,
+        QString::fromUtf8("حفظ المستند الحالي save document"),
+        [this]() { saveFile(); },
+        [this]() { return editor != nullptr; });
+    registerCommand(
+        QStringLiteral("document.saveAll"),
+        QString::fromUtf8("حفظ كل المستندات"),
+        QString::fromUtf8("المستند"),
+        QKeySequence(),
+        QString::fromUtf8("حفظ كل المستندات المفتوحة save all"),
+        [this]() {
+            for (int i = 0; editorTabs && i < editorTabs->count(); ++i) {
+                auto *surface = qobject_cast<EditorSurface *>(editorTabs->widget(i));
+                if (!surface || !surface->isDirty()) {
+                    continue;
+                }
+                setCurrentEditor(surface);
+                saveFile();
+                if (surface->isDirty()) {
+                    return;
+                }
+            }
+        },
+        [this]() { return editorTabs && editorTabs->count() > 0; });
+    registerCommand(
+        QStringLiteral("document.revert"),
+        QString::fromUtf8("إعادة تحميل المستند"),
+        QString::fromUtf8("المستند"),
+        QKeySequence(),
+        QString::fromUtf8("إعادة تحميل المستند الحالي من القرص revert reload"),
+        [this]() {
+            if (!editor || editor->currentFilePath().isEmpty()) {
+                return;
+            }
+            if (editor->isDirty() && !confirmUnsavedDocuments(UnsavedChangesOperation::OpenFile)) {
+                return;
+            }
+            const QString path = editor->currentFilePath();
+            QString error;
+            if (!editor->openFile(path, &error)) {
+                QMessageBox::warning(this, QString::fromUtf8("تعذر فتح الملف"), error);
+                return;
+            }
+            syncEditorSession(editor);
+            updateEditorTabTitle(editor);
+        },
+        [this]() { return editor && !editor->currentFilePath().isEmpty(); });
+    registerCommand(
+        QStringLiteral("document.closeWithPrompt"),
+        QString::fromUtf8("إغلاق المستند"),
+        QString::fromUtf8("المستند"),
+        QKeySequence::Close,
+        QString::fromUtf8("إغلاق المستند الحالي مع حماية التغييرات close document"),
+        [this]() {
+            if (editorTabs) {
+                closeEditorTab(editorTabs->currentIndex());
+            }
+        },
+        [this]() { return editorTabs && editorTabs->count() > 0; });
+    registerCommand(
+        QStringLiteral("run-current-file"),
+        QString::fromUtf8("تشغيل الملف الحالي"),
+        QString::fromUtf8("تشغيل"),
+        QKeySequence(QStringLiteral("F5")),
+        QString::fromUtf8("تشغيل run current file"),
+        [this]() { runCurrentFile(); });
+    registerCommand(
+        QStringLiteral("lint-current-file"),
+        QString::fromUtf8("فحص الملف الحالي"),
+        QString::fromUtf8("تشغيل"),
+        QKeySequence(),
+        QString::fromUtf8("فحص lint current file"),
+        [this]() { lintCurrentFile(); });
+    registerCommand(
+        QStringLiteral("format-current-file"),
+        QString::fromUtf8("تنسيق الملف الحالي"),
+        QString::fromUtf8("تشغيل"),
+        QKeySequence(),
+        QString::fromUtf8("تنسيق format current file"),
+        [this]() { formatCurrentFile(); });
+    registerCommand(
+        QStringLiteral("stop-run"),
+        QString::fromUtf8("إيقاف التشغيل"),
+        QString::fromUtf8("تشغيل"),
+        QKeySequence(QStringLiteral("Shift+F5")),
+        QString::fromUtf8("إيقاف التشغيل stop cancel run"),
+        [this]() { cancelRuntimeProcess(); },
+        [this]() { return activeRuntimeProcess && activeRuntimeProcess->state() != QProcess::NotRunning; });
+    registerCommand(
+        QStringLiteral("search-project"),
+        QString::fromUtf8("بحث في المشروع"),
+        QString::fromUtf8("بحث"),
+        QKeySequence(Qt::Key_Return),
+        QString::fromUtf8("بحث في المشروع search find"),
+        [this]() {
+            if (!commandBox) {
+                return;
+            }
+            commandBox->setFocus(Qt::ShortcutFocusReason);
+            commandBox->selectAll();
+            if (!commandBox->text().trimmed().isEmpty()) {
+                findInProject();
+            }
+        });
+    registerCommand(
+        QStringLiteral("settings"),
+        QString::fromUtf8("الإعدادات"),
+        QString::fromUtf8("النظام"),
+        QKeySequence(QStringLiteral("Ctrl+,")),
+        QString::fromUtf8("الإعدادات settings preferences"),
+        [this]() { openSettings(); });
+    registerCommand(
+        QStringLiteral("command-palette"),
+        QString::fromUtf8("لوحة الأوامر"),
+        QString::fromUtf8("النظام"),
+        QKeySequence(QStringLiteral("Ctrl+Shift+P")),
+        QString::fromUtf8("لوحة الأوامر command palette"),
+        [this]() { openCommandPalette(); });
+}
+
 void MainWindow::findInProject()
 {
     if (projectRoot.isEmpty()) {
@@ -1044,7 +1155,7 @@ void MainWindow::findInProject()
     }
 
     const QString root = projectRoot;
-    const int generation = ++searchGeneration;
+    const int generation = workbenchState.nextSearchGeneration();
     const QVector<SearchResultRow> immediateRows = currentEditorSearchResults(query);
     renderSearchResults(immediateRows);
     showSearchResultsPanel();
@@ -1060,18 +1171,10 @@ void MainWindow::findInProject()
         if (activeSearchWatcher == watcher) {
             activeSearchWatcher = nullptr;
         }
-        if (generation != searchGeneration) {
+        if (!workbenchState.isCurrentSearchGeneration(generation)) {
             return;
         }
-        QVector<SearchResultRow> mergedRows = immediateRows;
-        for (const auto &row : rows) {
-            const bool duplicate = std::any_of(mergedRows.cbegin(), mergedRows.cend(), [&row](const SearchResultRow &existing) {
-                return existing.path == row.path && existing.line == row.line;
-            });
-            if (!duplicate) {
-                mergedRows.push_back(row);
-            }
-        }
+        const QVector<SearchResultRow> mergedRows = SearchService::mergeRows(immediateRows, rows);
         renderSearchResults(mergedRows);
         setStatus(QString::fromUtf8("نتائج البحث: %1").arg(mergedRows.size()));
     });
@@ -1083,19 +1186,12 @@ void MainWindow::findInProject()
 
 QVector<SearchResultRow> MainWindow::currentEditorSearchResults(const QString &query) const
 {
-    QVector<SearchResultRow> rows;
     if (!editor || query.trimmed().isEmpty()) {
-        return rows;
+        return {};
     }
 
-    const QStringList lines = editor->toPlainText().split(QLatin1Char('\n'));
-    for (int i = 0; i < lines.size(); ++i) {
-        const QString preview = lines.at(i).trimmed();
-        if (preview.contains(query, Qt::CaseInsensitive)) {
-            rows.push_back({editor->currentFilePath(), i + 1, preview});
-        }
-    }
-    return rows;
+    SearchService service;
+    return service.searchText(editor->currentFilePath(), editor->toPlainText(), query);
 }
 
 void MainWindow::renderSearchResults(const QVector<SearchResultRow> &rows)
@@ -1258,7 +1354,7 @@ void MainWindow::createProjectTreeFile()
     if (!accepted || name.isEmpty()) {
         return;
     }
-    if (!isValidProjectChildName(name)) {
+    if (!ProjectModel::isValidChildName(name)) {
         QMessageBox::warning(this, QString::fromUtf8("اسم غير صالح"), QString::fromUtf8("استخدم اسم ملف فقط بدون مسارات."));
         return;
     }
@@ -1298,7 +1394,7 @@ void MainWindow::createProjectTreeFolder()
     if (!accepted || name.isEmpty()) {
         return;
     }
-    if (!isValidProjectChildName(name)) {
+    if (!ProjectModel::isValidChildName(name)) {
         QMessageBox::warning(this, QString::fromUtf8("اسم غير صالح"), QString::fromUtf8("استخدم اسم مجلد فقط بدون مسارات."));
         return;
     }
@@ -1347,7 +1443,7 @@ void MainWindow::renameProjectTreeItem()
     if (!accepted || newName.isEmpty() || newName == info.fileName()) {
         return;
     }
-    if (!isValidProjectChildName(newName)) {
+    if (!ProjectModel::isValidChildName(newName)) {
         QMessageBox::warning(this, QString::fromUtf8("اسم غير صالح"), QString::fromUtf8("استخدم اسما فقط بدون مسارات."));
         return;
     }
@@ -1466,19 +1562,8 @@ QString MainWindow::activeProjectTreeFolderPath() const
     return info.isDir() ? info.absoluteFilePath() : info.absolutePath();
 }
 
-bool MainWindow::isValidProjectChildName(const QString &name) const
-{
-    const QString trimmed = name.trimmed();
-    return !trimmed.isEmpty()
-        && trimmed != QStringLiteral(".")
-        && trimmed != QStringLiteral("..")
-        && !trimmed.contains(QLatin1Char('/'))
-        && !trimmed.contains(QLatin1Char('\\'));
-}
-
 void MainWindow::clearEditorsForDeletedPath(const QString &path)
 {
-    const QString deletedPath = QFileInfo(path).absoluteFilePath();
     for (int i = editorTabs ? editorTabs->count() - 1 : -1; i >= 0; --i) {
         auto *surface = qobject_cast<EditorSurface *>(editorTabs->widget(i));
         if (!surface) {
@@ -1486,7 +1571,7 @@ void MainWindow::clearEditorsForDeletedPath(const QString &path)
         }
 
         const QString openPath = QFileInfo(surface->currentFilePath()).absoluteFilePath();
-        if (openPath.isEmpty() || (openPath != deletedPath && !openPath.startsWith(deletedPath + QDir::separator()))) {
+        if (openPath.isEmpty() || !ProjectModel::pathIsSameOrInside(openPath, path)) {
             continue;
         }
 
@@ -1507,6 +1592,10 @@ void MainWindow::clearEditorsForDeletedPath(const QString &path)
 
 void MainWindow::openSettings()
 {
+    const QStringList orderedFamilies = arabicEditorFontFamilies();
+    const RuntimeDiagnostics diagnostics = runtime.diagnostics(1500);
+    const SettingsDialogState settingsState = SettingsDialogModel::build(settings, diagnostics, orderedFamilies);
+
     QDialog dialog(this);
     dialog.setObjectName(QStringLiteral("settingsDialog"));
     dialog.setWindowFlags(Qt::Dialog | Qt::FramelessWindowHint);
@@ -1535,9 +1624,7 @@ void MainWindow::openSettings()
     categories->setObjectName(QStringLiteral("settingsCategories"));
     categories->setLayoutDirection(Qt::RightToLeft);
     categories->setFixedWidth(180);
-    categories->addItem(QString::fromUtf8("المحرر"));
-    categories->addItem(QString::fromUtf8("التشغيل"));
-    categories->addItem(QString::fromUtf8("المشاريع"));
+    categories->addItems(settingsState.categories);
 
     auto *pages = new QTabWidget(&dialog);
     pages->setObjectName(QStringLiteral("settingsPages"));
@@ -1553,37 +1640,35 @@ void MainWindow::openSettings()
     fontFamilyCombo->setObjectName(QStringLiteral("editorFontFamilyCombo"));
     fontFamilyCombo->setLayoutDirection(Qt::RightToLeft);
     fontFamilyCombo->setEditable(false);
-    const QStringList orderedFamilies = arabicEditorFontFamilies();
-    fontFamilyCombo->addItems(orderedFamilies);
-    const int configuredFontIndex = fontFamilyCombo->findText(resolvedArabicEditorFontFamily(settings.editorFontFamily()));
+    fontFamilyCombo->addItems(settingsState.editorFontFamilies);
+    const int configuredFontIndex = fontFamilyCombo->findText(settingsState.selectedEditorFontFamily);
     fontFamilyCombo->setCurrentIndex(configuredFontIndex >= 0 ? configuredFontIndex : 0);
     auto *fontSizeInput = new QSpinBox(editorPage);
     fontSizeInput->setObjectName(QStringLiteral("editorFontSizeInput"));
     fontSizeInput->setRange(8, 28);
-    fontSizeInput->setValue(settings.editorFontSize());
-    auto *themeValue = new QLabel(QString::fromUtf8("داكن مستقبلي"), editorPage);
+    fontSizeInput->setValue(settingsState.editorFontSize);
+    auto *themeValue = new QLabel(settingsState.themeLabel, editorPage);
     themeValue->setObjectName(QStringLiteral("settingsThemeValue"));
     editorForm->addRow(QString::fromUtf8("خط المحرر"), fontFamilyCombo);
     editorForm->addRow(QString::fromUtf8("حجم الخط"), fontSizeInput);
     editorForm->addRow(QString::fromUtf8("السمة"), themeValue);
 
-    const RuntimeDiagnostics diagnostics = runtime.diagnostics(1500);
     auto *runtimePage = new QWidget(pages);
     runtimePage->setObjectName(QStringLiteral("runtimeDiagnosticsPage"));
     runtimePage->setLayoutDirection(Qt::RightToLeft);
     auto *runtimeForm = new QFormLayout(runtimePage);
     runtimeForm->setLabelAlignment(Qt::AlignRight);
-    auto *runtimePythonPath = new QLabel(QDir::toNativeSeparators(diagnostics.pythonExecutable), runtimePage);
+    auto *runtimePythonPath = new QLabel(settingsState.runtimePythonPath, runtimePage);
     runtimePythonPath->setObjectName(QStringLiteral("runtimePythonPathValue"));
     runtimePythonPath->setTextInteractionFlags(Qt::TextSelectableByMouse);
-    auto *runtimePackageStatus = new QLabel(diagnostics.statusText, runtimePage);
+    auto *runtimePackageStatus = new QLabel(settingsState.runtimePackageStatus, runtimePage);
     runtimePackageStatus->setObjectName(QStringLiteral("runtimePackageStatusValue"));
     runtimePackageStatus->setTextInteractionFlags(Qt::TextSelectableByMouse);
-    auto *runtimeRunStatus = new QLabel(diagnostics.runModuleAvailable ? QString::fromUtf8("جاهز") : QString::fromUtf8("غير متوفر"), runtimePage);
+    auto *runtimeRunStatus = new QLabel(settingsState.runtimeRunStatus, runtimePage);
     runtimeRunStatus->setObjectName(QStringLiteral("runtimeRunStatusValue"));
-    auto *runtimeLintStatus = new QLabel(diagnostics.lintModuleAvailable ? QString::fromUtf8("جاهز") : QString::fromUtf8("غير متوفر"), runtimePage);
+    auto *runtimeLintStatus = new QLabel(settingsState.runtimeLintStatus, runtimePage);
     runtimeLintStatus->setObjectName(QStringLiteral("runtimeLintStatusValue"));
-    auto *runtimeFormatStatus = new QLabel(diagnostics.formatModuleAvailable ? QString::fromUtf8("جاهز") : QString::fromUtf8("غير متوفر"), runtimePage);
+    auto *runtimeFormatStatus = new QLabel(settingsState.runtimeFormatStatus, runtimePage);
     runtimeFormatStatus->setObjectName(QStringLiteral("runtimeFormatStatusValue"));
     runtimeForm->addRow(QString::fromUtf8("مسار Python"), runtimePythonPath);
     runtimeForm->addRow(QString::fromUtf8("حزمة لغة الثعبان"), runtimePackageStatus);
@@ -1598,9 +1683,7 @@ void MainWindow::openSettings()
     auto *recentProjects = new QListWidget(projectsPage);
     recentProjects->setObjectName(QStringLiteral("recentProjectsList"));
     recentProjects->setLayoutDirection(Qt::RightToLeft);
-    for (const QString &project : settings.recentProjects()) {
-        recentProjects->addItem(QDir::toNativeSeparators(project));
-    }
+    recentProjects->addItems(settingsState.recentProjects);
     projectsLayout->addWidget(recentProjects);
 
     pages->addTab(editorPage, QString::fromUtf8("المحرر"));
@@ -1648,7 +1731,15 @@ bool MainWindow::loadProject(const QString &path)
     if (!info.exists() || !info.isDir()) {
         return false;
     }
-    projectRoot = QDir(path).absolutePath();
+
+    const QString requestedRoot = QDir(path).absolutePath();
+    if (!projectRoot.isEmpty()
+        && QDir::cleanPath(projectRoot) != QDir::cleanPath(requestedRoot)
+        && !confirmUnsavedDocuments(UnsavedChangesOperation::ProjectSwitch)) {
+        return false;
+    }
+
+    projectRoot = requestedRoot;
     fileSystemModel->setRootPath(projectRoot);
     projectTree->setRootIndex(fileSystemModel->index(projectRoot));
     settings.addRecentProject(projectRoot);
@@ -1659,12 +1750,14 @@ bool MainWindow::loadProject(const QString &path)
 bool MainWindow::openEditorFile(const QString &path)
 {
     const QString normalizedPath = QFileInfo(path).absoluteFilePath();
-    for (int i = 0; editorTabs && i < editorTabs->count(); ++i) {
-        auto *surface = qobject_cast<EditorSurface *>(editorTabs->widget(i));
-        if (surface && QFileInfo(surface->currentFilePath()).absoluteFilePath() == normalizedPath) {
-            editorTabs->setCurrentIndex(i);
-            return true;
-        }
+    const int existingIndex = workbenchState.findEditorSessionByPath(normalizedPath);
+    if (existingIndex >= 0 && editorTabs && existingIndex < editorTabs->count()) {
+        editorTabs->setCurrentIndex(existingIndex);
+        return true;
+    }
+
+    if (editor && editor->isDirty() && !confirmUnsavedDocuments(UnsavedChangesOperation::OpenFile)) {
+        return false;
     }
 
     EditorSurface *target = editor;
@@ -1678,6 +1771,7 @@ bool MainWindow::openEditorFile(const QString &path)
         return false;
     }
     setCurrentEditor(target);
+    syncEditorSession(target);
     updateEditorTabTitle(target);
     if (projectRoot.isEmpty()) {
         loadProject(QFileInfo(normalizedPath).absolutePath());
@@ -1691,10 +1785,13 @@ EditorSurface *MainWindow::createEditorTab(const QString &title)
     auto *surface = new EditorSurface(editorTabs);
     applyEditorFont(surface);
     const int index = editorTabs->addTab(surface, title);
+    workbenchState.addEditorSession(surface->currentFilePath());
+    workbenchState.setCurrentEditorSessionIndex(index);
     editorTabs->setCurrentIndex(index);
     setCurrentEditor(surface);
 
     connect(surface, &EditorSurface::filePathChanged, this, [this, surface](const QString &) {
+        syncEditorSession(surface);
         updateEditorTabTitle(surface);
         if (surface == editor) {
             setWindowTitle(surface->currentFilePath().isEmpty()
@@ -1703,6 +1800,7 @@ EditorSurface *MainWindow::createEditorTab(const QString &title)
         }
     });
     connect(surface, &EditorSurface::dirtyStateChanged, this, [this, surface](bool) {
+        syncEditorSession(surface);
         updateEditorTabTitle(surface);
     });
     connect(surface->document(), &QTextDocument::contentsChanged, this, [this, surface]() {
@@ -1737,11 +1835,30 @@ void MainWindow::applyEditorFont(EditorSurface *surface)
     surface->setTabStopDistance(surface->fontMetrics().horizontalAdvance(QLatin1Char(' ')) * 4);
 }
 
+void MainWindow::syncEditorSession(EditorSurface *surface)
+{
+    if (!surface || !editorTabs) {
+        return;
+    }
+
+    const int index = editorTabs->indexOf(surface);
+    if (index < 0) {
+        return;
+    }
+
+    workbenchState.setEditorSessionPath(index, surface->currentFilePath());
+    workbenchState.setEditorSessionDirty(index, surface->isDirty());
+}
+
 void MainWindow::setCurrentEditor(EditorSurface *surface)
 {
     if (!surface) {
         return;
     }
+
+    const int currentIndex = editorTabs ? editorTabs->indexOf(surface) : -1;
+    workbenchState.setCurrentEditorSessionIndex(currentIndex);
+    syncEditorSession(surface);
 
     for (int i = 0; editorTabs && i < editorTabs->count(); ++i) {
         if (auto *tabEditor = qobject_cast<EditorSurface *>(editorTabs->widget(i))) {
@@ -1767,10 +1884,14 @@ void MainWindow::updateEditorTabTitle(EditorSurface *surface)
         return;
     }
 
-    QString title = surface->currentFilePath().isEmpty()
+    syncEditorSession(surface);
+    const auto sessions = workbenchState.editorSessions();
+    const EditorSessionState session = index < sessions.size() ? sessions.at(index) : EditorSessionState {};
+
+    QString title = session.path.isEmpty()
         ? QString::fromUtf8("ملف جديد")
-        : QFileInfo(surface->currentFilePath()).fileName();
-    if (surface->isDirty()) {
+        : QFileInfo(session.path).fileName();
+    if (session.dirty) {
         title.prepend(QLatin1Char('*'));
     }
     editorTabs->setTabText(index, title);
@@ -1792,12 +1913,14 @@ void MainWindow::closeEditorTab(int index)
 
     if (editorTabs->count() == 1) {
         surface->resetForNewFile();
+        syncEditorSession(surface);
         updateEditorTabTitle(surface);
         refreshEditorProblems();
         return;
     }
 
     editorTabs->removeTab(index);
+    workbenchState.removeEditorSession(index);
     surface->deleteLater();
     setCurrentEditor(qobject_cast<EditorSurface *>(editorTabs->currentWidget()));
     refreshEditorProblems();
@@ -1957,21 +2080,65 @@ void MainWindow::goToEditorLine(int line)
 
 bool MainWindow::confirmSaveIfDirty()
 {
-    if (!editor->isDirty()) {
+    return confirmUnsavedDocuments(UnsavedChangesOperation::CloseDocument);
+}
+
+QVector<DocumentRecord> MainWindow::openDocumentRecords() const
+{
+    QVector<DocumentRecord> records;
+    if (!editorTabs) {
+        return records;
+    }
+
+    for (int i = 0; i < editorTabs->count(); ++i) {
+        auto *surface = qobject_cast<EditorSurface *>(editorTabs->widget(i));
+        if (!surface) {
+            continue;
+        }
+
+        DocumentRecord record;
+        record.id = DocumentId(i + 1);
+        record.path = surface->currentFilePath();
+        record.text = surface->toPlainText();
+        record.dirty = surface->isDirty();
+        record.identity = record.path.isEmpty() ? DocumentFileIdentity {} : DocumentFileIO::identityForPath(record.path);
+        record.lineEnding = DocumentFileIO::detectLineEnding(record.text);
+        records.push_back(record);
+    }
+    return records;
+}
+
+bool MainWindow::confirmUnsavedDocuments(UnsavedChangesOperation operation)
+{
+    const UnsavedChangesRequest request = UnsavedChangesGuard::requestFor(openDocumentRecords(), operation);
+    if (!request.required) {
         return true;
     }
 
     const auto answer = QMessageBox::question(
         this,
-        QString::fromUtf8("حفظ التغييرات"),
-        QString::fromUtf8("هل تريد حفظ التغييرات قبل المتابعة؟"),
+        request.title,
+        request.message,
         QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel);
 
     if (answer == QMessageBox::Cancel) {
         return false;
     }
-    if (answer == QMessageBox::Save) {
+    if (answer == QMessageBox::Discard) {
+        return true;
+    }
+
+    for (int i = 0; editorTabs && i < editorTabs->count(); ++i) {
+        auto *surface = qobject_cast<EditorSurface *>(editorTabs->widget(i));
+        if (!surface || !surface->isDirty()) {
+            continue;
+        }
+
+        setCurrentEditor(surface);
         saveFile();
+        if (surface->isDirty()) {
+            return false;
+        }
     }
     return true;
 }
@@ -2003,28 +2170,23 @@ void MainWindow::runRuntimeAction(RuntimeAction action, const QString &title, bo
     }
 
     const QString workingDirectory = runtimeWorkingDirectory();
-    const RuntimeCommand command = runtime.buildCommand(action, runFilePath, workingDirectory);
+    const RuntimeLaunchPlan plan = runtime.buildLaunchPlan(action, title, runFilePath, workingDirectory, reloadAfterSuccess);
     activeRuntimeTitle = title;
     activeRuntimeHandledError = false;
     activeRuntimeStdout.clear();
     activeRuntimeStderr.clear();
     showOutputPanel();
-    outputPanel->setPlainText(QStringLiteral("[%1]\n%2\n%3\n%4\n\n%5\n")
-        .arg(title)
-        .arg(QString::fromUtf8("الأمر: %1").arg(title))
-        .arg(QString::fromUtf8("ملف: %1").arg(QDir::toNativeSeparators(runFilePath)))
-        .arg(QString::fromUtf8("مجلد العمل: %1").arg(QDir::toNativeSeparators(command.workingDirectory)))
-        .arg(QString::fromUtf8("جار التنفيذ...")));
-    setStatus(QString::fromUtf8("%1...").arg(title));
+    outputPanel->setPlainText(plan.initialOutput);
+    setStatus(plan.runningStatus);
     setRuntimeActionsRunning(true);
 
     activeRuntimeProcess = new QProcess(this);
-    activeRuntimeProcess->setProgram(command.program);
-    activeRuntimeProcess->setArguments(command.arguments);
-    activeRuntimeProcess->setWorkingDirectory(command.workingDirectory);
+    activeRuntimeProcess->setProgram(plan.command.program);
+    activeRuntimeProcess->setArguments(plan.command.arguments);
+    activeRuntimeProcess->setWorkingDirectory(plan.command.workingDirectory);
     activeRuntimeProcess->setProcessEnvironment(runtime.processEnvironment());
-    activeRuntimeProcess->setProperty("reloadAfterSuccess", reloadAfterSuccess);
-    activeRuntimeProcess->setProperty("runFilePath", runFilePath);
+    activeRuntimeProcess->setProperty("reloadAfterSuccess", plan.reloadAfterSuccess);
+    activeRuntimeProcess->setProperty("runFilePath", plan.filePath);
     connect(activeRuntimeProcess, &QProcess::readyReadStandardOutput, this, &MainWindow::appendRuntimeStdout);
     connect(activeRuntimeProcess, &QProcess::readyReadStandardError, this, &MainWindow::appendRuntimeStderr);
     connect(activeRuntimeProcess, &QProcess::finished, this, &MainWindow::finishRuntimeProcess);

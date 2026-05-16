@@ -1,10 +1,15 @@
 #pragma once
 
+#include "CommandRegistry.h"
+#include "DocumentRegistry.h"
 #include "EditorSurface.h"
 #include "ProjectModel.h"
 #include "RuntimeRunner.h"
 #include "SearchService.h"
+#include "SettingsDialogModel.h"
 #include "SettingsStore.h"
+#include "UnsavedChangesGuard.h"
+#include "WorkbenchState.h"
 
 #include <QFileSystemModel>
 #include <QAction>
@@ -99,22 +104,24 @@ private:
     QString activeRuntimeStderr;
     QModelIndex projectTreeContextIndex;
     bool activeRuntimeHandledError = false;
-    int searchGeneration = 0;
     SettingsStore settings;
     RuntimeRunner runtime;
+    CommandRegistry commandRegistry;
+    WorkbenchState workbenchState;
     QString projectRoot;
 
     void buildUi();
+    void registerWorkbenchCommands();
     void setStatus(const QString &text);
     bool loadProject(const QString &path);
     bool openEditorFile(const QString &path);
     QModelIndex activeProjectTreeIndex() const;
     QString activeProjectTreePath() const;
     QString activeProjectTreeFolderPath() const;
-    bool isValidProjectChildName(const QString &name) const;
     void clearEditorsForDeletedPath(const QString &path);
     EditorSurface *createEditorTab(const QString &title);
     void applyEditorFont(EditorSurface *surface);
+    void syncEditorSession(EditorSurface *surface);
     void setCurrentEditor(EditorSurface *surface);
     void updateEditorTabTitle(EditorSurface *surface);
     void closeEditorTab(int index);
@@ -129,6 +136,8 @@ private:
     void goToEditorLine(int line);
     QString runtimeWorkingDirectory() const;
     bool confirmSaveIfDirty();
+    QVector<DocumentRecord> openDocumentRecords() const;
+    bool confirmUnsavedDocuments(UnsavedChangesOperation operation);
     void runRuntimeAction(RuntimeAction action, const QString &title, bool reloadAfterSuccess = false);
     void appendRuntimeOutput(const QString &label, const QString &text);
     void completeRuntimeProcess(const QString &statusText);

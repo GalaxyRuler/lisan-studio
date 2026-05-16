@@ -12,6 +12,8 @@ public:
     QStringList files() const;
     static bool isIgnoredDirectoryName(const QString &name);
     static bool isOpenableFile(const QString &path);
+    static bool isValidChildName(const QString &name);
+    static bool pathIsSameOrInside(const QString &candidatePath, const QString &rootPath);
 
 private:
     QString root;

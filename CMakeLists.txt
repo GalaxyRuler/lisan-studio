@@ -18,6 +18,16 @@ find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Test Concurrent)
 qt_standard_project_setup()
 
 add_library(acs_core
+    src/CommandRegistry.h
+    src/CommandRegistry.cpp
+    src/DocumentFileIO.h
+    src/DocumentFileIO.cpp
+    src/DocumentRegistry.h
+    src/DocumentRegistry.cpp
+    src/UnsavedChangesGuard.h
+    src/UnsavedChangesGuard.cpp
+    src/WorkbenchState.h
+    src/WorkbenchState.cpp
     src/ApyHighlighter.h
     src/ApyHighlighter.cpp
     src/EditorSurface.h
@@ -30,6 +40,8 @@ add_library(acs_core
     src/RuntimeProblemParser.cpp
     src/SearchService.h
     src/SearchService.cpp
+    src/SettingsDialogModel.h
+    src/SettingsDialogModel.cpp
     src/SettingsStore.h
     src/SettingsStore.cpp
 )
@@ -58,6 +70,18 @@ qt_add_executable(acs_editor_tests
 
 target_link_libraries(acs_editor_tests PRIVATE acs_core Qt6::Test)
 
+qt_add_executable(acs_command_registry_tests
+    tests/TestCommandRegistry.cpp
+)
+
+target_link_libraries(acs_command_registry_tests PRIVATE acs_core Qt6::Test)
+
+qt_add_executable(acs_workbench_state_tests
+    tests/TestWorkbenchState.cpp
+)
+
+target_link_libraries(acs_workbench_state_tests PRIVATE acs_core Qt6::Test)
+
 qt_add_executable(acs_project_runtime_tests
     tests/TestProjectSearchRuntime.cpp
 )
@@ -73,6 +97,15 @@ qt_add_executable(acs_main_window_tests
 
 target_link_libraries(acs_main_window_tests PRIVATE acs_core Qt6::Test Qt6::Concurrent)
 
+qt_add_executable(acs_editor_torture_tests
+    tests/TestEditorTorture.cpp
+)
+
+target_link_libraries(acs_editor_torture_tests PRIVATE acs_core Qt6::Test)
+
 add_test(NAME acs_editor_tests COMMAND acs_editor_tests)
+add_test(NAME acs_command_registry_tests COMMAND acs_command_registry_tests)
+add_test(NAME acs_workbench_state_tests COMMAND acs_workbench_state_tests)
 add_test(NAME acs_project_runtime_tests COMMAND acs_project_runtime_tests)
 add_test(NAME acs_main_window_tests COMMAND acs_main_window_tests)
+add_test(NAME acs_editor_torture_tests COMMAND acs_editor_torture_tests)

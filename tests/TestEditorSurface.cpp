@@ -14,6 +14,8 @@ class TestEditorSurface : public QObject
 private slots:
     void preservesMixedArabicCodeText();
     void saveAndReopenPreservesUtf8TortureText();
+    void openRejectsInvalidUtf8ByPolicy();
+    void saveUsesDocumentIoAndRejectsInvalidTarget();
     void rejectsHiddenBidiControls();
     void detectsAllHiddenBidiControls();
     void highlightsArabicKeywordsStringsCommentsAndNumbers();
@@ -72,6 +74,45 @@ void TestEditorSurface::saveAndReopenPreservesUtf8TortureText()
     QVERIFY(reopened.openFile(path));
     QCOMPARE(reopened.toPlainText(), text);
     QVERIFY(!reopened.isDirty());
+}
+
+void TestEditorSurface::openRejectsInvalidUtf8ByPolicy()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    const QString path = temp.filePath(QStringLiteral("bad.apy"));
+    QFile file(path);
+    QVERIFY(file.open(QIODevice::WriteOnly));
+    file.write(QByteArray::fromHex("fffe4100"));
+    file.close();
+
+    EditorSurface editor;
+    QString error;
+    QVERIFY(!editor.openFile(path, &error));
+    QVERIFY(error.contains(QString::fromUtf8("UTF-8")));
+    QVERIFY(editor.toPlainText().isEmpty());
+    QVERIFY(editor.currentFilePath().isEmpty());
+}
+
+void TestEditorSurface::saveUsesDocumentIoAndRejectsInvalidTarget()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    const QString path = temp.filePath(QStringLiteral("main.apy"));
+
+    EditorSurface editor;
+    editor.setPlainText(QString::fromUtf8("اطبع(\"مرحبا\")\n"));
+    QVERIFY(editor.saveFileAs(path));
+    QVERIFY(!editor.isDirty());
+    QVERIFY(QDir(temp.path()).entryList(QStringList(QStringLiteral("*.tmp")), QDir::Files).isEmpty());
+
+    QFile saved(path);
+    QVERIFY(saved.open(QIODevice::ReadOnly));
+    QCOMPARE(saved.readAll(), QString::fromUtf8("اطبع(\"مرحبا\")\n").toUtf8());
+
+    QString error;
+    QVERIFY(!editor.saveFileAs(QDir(temp.path()).filePath(QStringLiteral("missing-dir/main.apy")), &error));
+    QVERIFY(!error.isEmpty());
 }
 
 void TestEditorSurface::rejectsHiddenBidiControls()

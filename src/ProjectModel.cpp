@@ -4,6 +4,13 @@
 #include <QDirIterator>
 #include <QFileInfo>
 
+namespace {
+QString comparableAbsolutePath(const QString &path)
+{
+    return QDir::cleanPath(QDir::fromNativeSeparators(QFileInfo(path).absoluteFilePath()));
+}
+}
+
 void ProjectModel::openRoot(const QString &path)
 {
     root = QDir(path).absolutePath();
@@ -68,4 +75,23 @@ bool ProjectModel::isOpenableFile(const QString &path)
         || suffix == QStringLiteral("py")
         || suffix == QStringLiteral("md")
         || suffix == QStringLiteral("txt");
+}
+
+bool ProjectModel::isValidChildName(const QString &name)
+{
+    const QString trimmed = name.trimmed();
+    return !trimmed.isEmpty()
+        && trimmed != QStringLiteral(".")
+        && trimmed != QStringLiteral("..")
+        && !trimmed.contains(QLatin1Char('/'))
+        && !trimmed.contains(QLatin1Char('\\'));
+}
+
+bool ProjectModel::pathIsSameOrInside(const QString &candidatePath, const QString &rootPath)
+{
+    const QString candidate = comparableAbsolutePath(candidatePath);
+    const QString root = comparableAbsolutePath(rootPath);
+    return !candidate.isEmpty()
+        && !root.isEmpty()
+        && (candidate == root || candidate.startsWith(root + QLatin1Char('/')));
 }

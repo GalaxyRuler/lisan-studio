@@ -6,6 +6,9 @@
 #include <QDirIterator>
 #include <QFile>
 #include <QFileInfo>
+#include <QStringList>
+
+#include <utility>
 
 namespace {
 constexpr int MaxScannedFiles = 500;
@@ -61,5 +64,54 @@ QVector<SearchResultRow> SearchService::search(const QString &rootPath, const QS
         }
     }
 
+    return rows;
+}
+
+QVector<SearchResultRow> SearchService::searchText(const QString &path, const QString &text, const QString &query, int limit) const
+{
+    QVector<SearchResultRow> rows;
+    if (query.trimmed().isEmpty()) {
+        return rows;
+    }
+
+    const QStringList lines = text.split(QLatin1Char('\n'));
+    for (int i = 0; i < lines.size(); ++i) {
+        const QString preview = lines.at(i).trimmed();
+        if (preview.contains(query, Qt::CaseInsensitive)) {
+            rows.push_back({path, i + 1, preview});
+            if (rows.size() >= limit) {
+                return rows;
+            }
+        }
+    }
+    return rows;
+}
+
+QVector<SearchResultRow> SearchService::mergeRows(
+    const QVector<SearchResultRow> &priorityRows,
+    const QVector<SearchResultRow> &secondaryRows,
+    int limit)
+{
+    QVector<SearchResultRow> rows = priorityRows;
+    if (rows.size() > limit) {
+        rows.resize(limit);
+        return rows;
+    }
+
+    for (const auto &row : secondaryRows) {
+        bool duplicate = false;
+        for (const auto &existing : std::as_const(rows)) {
+            if (existing.path == row.path && existing.line == row.line) {
+                duplicate = true;
+                break;
+            }
+        }
+        if (!duplicate) {
+            rows.push_back(row);
+            if (rows.size() >= limit) {
+                return rows;
+            }
+        }
+    }
     return rows;
 }

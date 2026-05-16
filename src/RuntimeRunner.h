@@ -19,6 +19,17 @@ struct RuntimeCommand
     QString workingDirectory;
 };
 
+struct RuntimeLaunchPlan
+{
+    RuntimeAction action = RuntimeAction::Run;
+    QString title;
+    QString filePath;
+    RuntimeCommand command;
+    bool reloadAfterSuccess = false;
+    QString initialOutput;
+    QString runningStatus;
+};
+
 struct RuntimeResult
 {
     int exitCode = -1;
@@ -50,6 +61,12 @@ public:
 
     RuntimeCommand buildCommand(RuntimeAction action, const QString &filePath) const;
     RuntimeCommand buildCommand(RuntimeAction action, const QString &filePath, const QString &workingDirectory) const;
+    RuntimeLaunchPlan buildLaunchPlan(
+        RuntimeAction action,
+        const QString &title,
+        const QString &filePath,
+        const QString &workingDirectory,
+        bool reloadAfterSuccess = false) const;
     QProcessEnvironment processEnvironment() const;
     RuntimeDiagnostics diagnostics(int timeoutMs = 5000) const;
     RuntimeResult runBlocking(RuntimeAction action, const QString &filePath, int timeoutMs = 30000) const;

@@ -42,12 +42,12 @@ Already present in the private beta:
 - WiX MSI packaging, installed smoke, MSI smoke, release evidence, screenshot capture, and professional manual QA packet generation.
 - Homelab route for GUI/MSI/release validation inside `LisanStudio-QA`, with active `WHITEDRAGON` forbidden for GUI/MSI validation.
 
-Known follow-up polish from the private beta:
+Private beta polish completed after this roadmap was first drafted:
 
-- App launch shows a command window.
-- Right-click Undo/Redo menu actions are not clickable while shortcuts work.
-- Search result text has poor column spacing.
-- Problems panel diagnostic subtext is visually too far left.
+- Normal app launch is configured as a Windows GUI executable.
+- Right-click Undo/Redo menu actions are Lisan-owned and trigger editor commands.
+- Search result metadata spacing is guarded by Qt geometry tests.
+- Problems panel diagnostic subtext alignment is guarded by Qt geometry tests.
 
 ## Product Assumptions
 
@@ -88,11 +88,11 @@ The versions are product milestones. They do not need to match the current `0.1.
 
 ### V1 Feature Scope
 
-- [ ] Fix current beta polish issues:
-  - [ ] Remove the extra command window on normal app launch.
-  - [ ] Make context-menu Undo/Redo actions clickable and consistent with keyboard shortcuts.
-  - [ ] Tighten search result row layout.
-  - [ ] Tighten Problems panel subtext alignment.
+- [x] Fix current beta polish issues:
+  - [x] Remove the extra command window on normal app launch.
+  - [x] Make context-menu Undo/Redo actions clickable and consistent with keyboard shortcuts.
+  - [x] Tighten search result row layout.
+  - [x] Tighten Problems panel subtext alignment.
 - [ ] Strengthen core editing:
   - [ ] In-file find and replace with RTL-aware match highlighting.
   - [ ] Project-wide replace with preview and per-file acceptance.
@@ -351,10 +351,11 @@ The versions are product milestones. They do not need to match the current `0.1.
 
 Create these narrower plans before implementation starts. Each should follow the same `docs/superpowers/plans/YYYY-MM-DD-<feature-name>.md` format and include exact tests.
 
-- [ ] `docs/superpowers/plans/2026-05-15-v1-core-workbench.md`
-- [ ] `docs/superpowers/plans/2026-05-15-v2-language-debug.md`
-- [ ] `docs/superpowers/plans/2026-05-15-v3-team-workbench.md`
-- [ ] `docs/superpowers/plans/2026-05-15-v4-ecosystem-remote-ai.md`
+- [x] `docs/superpowers/plans/2026-05-16-v1-foundation.md`
+- [x] `docs/superpowers/plans/2026-05-16-v1-core-workbench.md`
+- [x] `docs/superpowers/plans/2026-05-16-v2-language-debug.md`
+- [x] `docs/superpowers/plans/2026-05-16-v3-team-workbench.md`
+- [x] `docs/superpowers/plans/2026-05-16-v4-ecosystem-ai.md`
 
 ## Immediate Next Slice Recommendation
 
