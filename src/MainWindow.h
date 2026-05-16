@@ -55,6 +55,12 @@ private slots:
     void handleRuntimeTimeout();
     void openCommandPalette();
     void findInProject();
+    void openInFileFind();
+    void updateInFileFindMatches();
+    void selectNextInFileMatch();
+    void selectPreviousInFileMatch();
+    void replaceCurrentInFileMatch();
+    void replaceAllInFileMatches();
     void openSearchResult(QListWidgetItem *item);
     void openProblemResult(QListWidgetItem *item);
     void openSelectedProjectFile(const QModelIndex &index);
@@ -73,6 +79,10 @@ private:
     QTabWidget *editorTabs = nullptr;
     QTreeView *projectTree = nullptr;
     QFileSystemModel *fileSystemModel = nullptr;
+    QWidget *inFileFindPanel = nullptr;
+    QLineEdit *inFileFindInput = nullptr;
+    QLineEdit *inFileReplaceInput = nullptr;
+    QLabel *inFileFindStatusLabel = nullptr;
     QLineEdit *commandBox = nullptr;
     QPlainTextEdit *outputPanel = nullptr;
     QPlainTextEdit *terminalPanel = nullptr;

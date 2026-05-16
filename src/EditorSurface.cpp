@@ -64,6 +64,11 @@ EditorSurface::EditorSurface(QWidget *parent)
     highlighter = new ApyHighlighter(document());
 
     connect(document(), &QTextDocument::modificationChanged, this, &EditorSurface::dirtyStateChanged);
+    connect(document(), &QTextDocument::contentsChanged, this, [this]() {
+        if (!activeFindQuery.isEmpty()) {
+            refreshFindMatches(false);
+        }
+    });
     connect(this, &QPlainTextEdit::blockCountChanged, this, &EditorSurface::updateLineNumberAreaWidth);
     connect(this, &QPlainTextEdit::updateRequest, this, &EditorSurface::updateLineNumberArea);
 }
@@ -130,6 +135,91 @@ QVector<HiddenBidiFinding> EditorSurface::findHiddenBidiControls(const QString &
         }
     }
     return findings;
+}
+
+int EditorSurface::setFindQuery(const QString &query)
+{
+    activeFindQuery = query;
+    refreshFindMatches(true);
+    return activeFindMatches.size();
+}
+
+QString EditorSurface::findQuery() const
+{
+    return activeFindQuery;
+}
+
+int EditorSurface::findMatchCount() const
+{
+    return activeFindMatches.size();
+}
+
+int EditorSurface::currentFindMatchIndex() const
+{
+    return activeFindIndex;
+}
+
+bool EditorSurface::selectNextFindMatch()
+{
+    if (activeFindMatches.isEmpty()) {
+        return false;
+    }
+
+    const int nextIndex = activeFindIndex < 0
+        ? 0
+        : (activeFindIndex + 1) % activeFindMatches.size();
+    return selectFindMatch(nextIndex);
+}
+
+bool EditorSurface::selectPreviousFindMatch()
+{
+    if (activeFindMatches.isEmpty()) {
+        return false;
+    }
+
+    const int previousIndex = activeFindIndex <= 0
+        ? activeFindMatches.size() - 1
+        : activeFindIndex - 1;
+    return selectFindMatch(previousIndex);
+}
+
+bool EditorSurface::replaceCurrentFindMatch(const QString &replacement)
+{
+    if (activeFindIndex < 0 || activeFindIndex >= activeFindMatches.size()) {
+        return false;
+    }
+
+    const EditorFindMatch match = activeFindMatches.at(activeFindIndex);
+    QTextCursor cursor(document());
+    cursor.setPosition(match.start);
+    cursor.setPosition(match.start + match.length, QTextCursor::KeepAnchor);
+    cursor.insertText(replacement);
+    refreshFindMatches(true);
+    return true;
+}
+
+int EditorSurface::replaceAllFindMatches(const QString &replacement)
+{
+    if (activeFindQuery.isEmpty()) {
+        return 0;
+    }
+
+    int replaced = 0;
+    const QString replacedText = EditorFindService::replaceAll(toPlainText(), activeFindQuery, replacement, &replaced);
+    if (replaced <= 0) {
+        return 0;
+    }
+
+    QTextCursor cursor(document());
+    cursor.select(QTextCursor::Document);
+    cursor.insertText(replacedText);
+    refreshFindMatches(true);
+    return replaced;
+}
+
+int EditorSurface::findHighlightSelectionCountForTest() const
+{
+    return findHighlightSelectionCount;
 }
 
 int EditorSurface::lineNumberAreaWidth() const
@@ -255,6 +345,62 @@ void EditorSurface::setCurrentFilePath(const QString &path)
     }
     filePath = path;
     emit filePathChanged(filePath);
+}
+
+void EditorSurface::refreshFindMatches(bool selectFirst)
+{
+    activeFindMatches = EditorFindService::findAll(toPlainText(), activeFindQuery);
+    if (activeFindMatches.isEmpty()) {
+        activeFindIndex = -1;
+        updateFindExtraSelections();
+        return;
+    }
+
+    if (selectFirst || activeFindIndex < 0 || activeFindIndex >= activeFindMatches.size()) {
+        selectFindMatch(0);
+        return;
+    }
+
+    updateFindExtraSelections();
+}
+
+void EditorSurface::updateFindExtraSelections()
+{
+    QList<QTextEdit::ExtraSelection> selections;
+    for (int i = 0; i < activeFindMatches.size(); ++i) {
+        const EditorFindMatch match = activeFindMatches.at(i);
+        QTextCursor cursor(document());
+        cursor.setPosition(match.start);
+        cursor.setPosition(match.start + match.length, QTextCursor::KeepAnchor);
+
+        QTextEdit::ExtraSelection selection;
+        selection.cursor = cursor;
+        selection.format.setBackground(i == activeFindIndex
+            ? QColor(QStringLiteral("#4C8DFF"))
+            : QColor(QStringLiteral("#3A2F12")));
+        selection.format.setForeground(QColor(QStringLiteral("#FFFFFF")));
+        selections.push_back(selection);
+    }
+
+    findHighlightSelectionCount = selections.size();
+    setExtraSelections(selections);
+}
+
+bool EditorSurface::selectFindMatch(int index)
+{
+    if (index < 0 || index >= activeFindMatches.size()) {
+        return false;
+    }
+
+    activeFindIndex = index;
+    const EditorFindMatch match = activeFindMatches.at(index);
+    QTextCursor cursor(document());
+    cursor.setPosition(match.start);
+    cursor.setPosition(match.start + match.length, QTextCursor::KeepAnchor);
+    setTextCursor(cursor);
+    ensureCursorVisible();
+    updateFindExtraSelections();
+    return true;
 }
 
 void EditorSurface::updateLineNumberAreaWidth(int)

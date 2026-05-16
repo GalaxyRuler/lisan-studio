@@ -504,6 +504,7 @@ void MainWindow::buildUi()
             editor->redo();
         }
     });
+    connect(addTextOnlyMenuAction(editMenu, QString::fromUtf8("بحث واستبدال"), QKeySequence::Find, QStringLiteral("find-in-file")), &QAction::triggered, this, &MainWindow::openInFileFind);
     commandPaletteAction->setIconVisibleInMenu(false);
     connect(addTextOnlyMenuAction(viewMenu, QString::fromUtf8("لوحة الأوامر"), QKeySequence(), QStringLiteral("command-palette")), &QAction::triggered, this, &MainWindow::openCommandPalette);
     connect(addTextOnlyMenuAction(toolsMenu, QString::fromUtf8("فحص"), QKeySequence(), QStringLiteral("lint-current-file")), &QAction::triggered, this, &MainWindow::lintCurrentFile);
@@ -580,7 +581,60 @@ void MainWindow::buildUi()
     projectTreeRefreshAction->setObjectName(QStringLiteral("projectTreeRefreshAction"));
     connect(projectTreeRefreshAction, &QAction::triggered, this, &MainWindow::refreshProjectTree);
 
-    editorTabs = new QTabWidget(splitter);
+    auto *editorColumn = new QWidget(splitter);
+    editorColumn->setObjectName(QStringLiteral("editorColumn"));
+    editorColumn->setLayoutDirection(Qt::RightToLeft);
+    auto *editorColumnLayout = new QVBoxLayout(editorColumn);
+    editorColumnLayout->setContentsMargins(0, 0, 0, 0);
+    editorColumnLayout->setSpacing(6);
+
+    inFileFindPanel = new QWidget(editorColumn);
+    inFileFindPanel->setObjectName(QStringLiteral("inFileFindPanel"));
+    inFileFindPanel->setLayoutDirection(Qt::RightToLeft);
+    inFileFindPanel->hide();
+    auto *findLayout = new QHBoxLayout(inFileFindPanel);
+    findLayout->setContentsMargins(8, 6, 8, 0);
+    findLayout->setSpacing(6);
+
+    inFileFindInput = new QLineEdit(inFileFindPanel);
+    inFileFindInput->setObjectName(QStringLiteral("inFileFindInput"));
+    inFileFindInput->setPlaceholderText(QString::fromUtf8("بحث في الملف"));
+    inFileFindInput->setLayoutDirection(Qt::RightToLeft);
+
+    inFileReplaceInput = new QLineEdit(inFileFindPanel);
+    inFileReplaceInput->setObjectName(QStringLiteral("inFileReplaceInput"));
+    inFileReplaceInput->setPlaceholderText(QString::fromUtf8("استبدال"));
+    inFileReplaceInput->setLayoutDirection(Qt::RightToLeft);
+
+    auto *previousFindButton = new QPushButton(QString::fromUtf8("السابق"), inFileFindPanel);
+    previousFindButton->setObjectName(QStringLiteral("inFileFindPreviousButton"));
+    auto *nextFindButton = new QPushButton(QString::fromUtf8("التالي"), inFileFindPanel);
+    nextFindButton->setObjectName(QStringLiteral("inFileFindNextButton"));
+    auto *replaceButton = new QPushButton(QString::fromUtf8("استبدال"), inFileFindPanel);
+    replaceButton->setObjectName(QStringLiteral("inFileReplaceButton"));
+    auto *replaceAllButton = new QPushButton(QString::fromUtf8("استبدال الكل"), inFileFindPanel);
+    replaceAllButton->setObjectName(QStringLiteral("inFileReplaceAllButton"));
+    inFileFindStatusLabel = new QLabel(QStringLiteral("0"), inFileFindPanel);
+    inFileFindStatusLabel->setObjectName(QStringLiteral("inFileFindStatusLabel"));
+    inFileFindStatusLabel->setMinimumWidth(48);
+    inFileFindStatusLabel->setAlignment(Qt::AlignCenter);
+
+    findLayout->addWidget(inFileFindInput, 2);
+    findLayout->addWidget(previousFindButton);
+    findLayout->addWidget(nextFindButton);
+    findLayout->addWidget(inFileReplaceInput, 2);
+    findLayout->addWidget(replaceButton);
+    findLayout->addWidget(replaceAllButton);
+    findLayout->addWidget(inFileFindStatusLabel);
+
+    connect(inFileFindInput, &QLineEdit::textChanged, this, &MainWindow::updateInFileFindMatches);
+    connect(previousFindButton, &QPushButton::clicked, this, &MainWindow::selectPreviousInFileMatch);
+    connect(nextFindButton, &QPushButton::clicked, this, &MainWindow::selectNextInFileMatch);
+    connect(replaceButton, &QPushButton::clicked, this, &MainWindow::replaceCurrentInFileMatch);
+    connect(replaceAllButton, &QPushButton::clicked, this, &MainWindow::replaceAllInFileMatches);
+    editorColumnLayout->addWidget(inFileFindPanel);
+
+    editorTabs = new QTabWidget(editorColumn);
     editorTabs->setObjectName(QStringLiteral("editorTabs"));
     editorTabs->setDocumentMode(true);
     editorTabs->setTabsClosable(true);
@@ -591,9 +645,10 @@ void MainWindow::buildUi()
     });
     connect(editorTabs, &QTabWidget::tabCloseRequested, this, &MainWindow::closeEditorTab);
     createEditorTab(QString::fromUtf8("ملف جديد"));
+    editorColumnLayout->addWidget(editorTabs, 1);
 
     splitter->addWidget(projectTree);
-    splitter->addWidget(editorTabs);
+    splitter->addWidget(editorColumn);
     splitter->setStretchFactor(0, 0);
     splitter->setStretchFactor(1, 1);
     setCentralWidget(splitter);
@@ -1082,6 +1137,14 @@ void MainWindow::registerWorkbenchCommands()
         },
         [this]() { return editorTabs && editorTabs->count() > 0; });
     registerCommand(
+        QStringLiteral("find-in-file"),
+        QString::fromUtf8("بحث واستبدال في الملف"),
+        QString::fromUtf8("تحرير"),
+        QKeySequence::Find,
+        QString::fromUtf8("بحث استبدال في الملف find replace"),
+        [this]() { openInFileFind(); },
+        [this]() { return editor != nullptr; });
+    registerCommand(
         QStringLiteral("run-current-file"),
         QString::fromUtf8("تشغيل الملف الحالي"),
         QString::fromUtf8("تشغيل"),
@@ -1140,6 +1203,78 @@ void MainWindow::registerWorkbenchCommands()
         QKeySequence(QStringLiteral("Ctrl+Shift+P")),
         QString::fromUtf8("لوحة الأوامر command palette"),
         [this]() { openCommandPalette(); });
+}
+
+void MainWindow::openInFileFind()
+{
+    if (!inFileFindPanel || !inFileFindInput) {
+        return;
+    }
+
+    inFileFindPanel->show();
+    if (editor && editor->textCursor().hasSelection() && inFileFindInput->text().isEmpty()) {
+        inFileFindInput->setText(editor->textCursor().selectedText());
+    } else {
+        updateInFileFindMatches();
+    }
+    inFileFindInput->setFocus(Qt::ShortcutFocusReason);
+    inFileFindInput->selectAll();
+}
+
+void MainWindow::updateInFileFindMatches()
+{
+    const QString query = inFileFindInput ? inFileFindInput->text() : QString();
+    const int count = editor ? editor->setFindQuery(query) : 0;
+    const int current = editor ? editor->currentFindMatchIndex() : -1;
+    if (inFileFindStatusLabel) {
+        inFileFindStatusLabel->setText(count <= 0
+            ? QStringLiteral("0")
+            : QStringLiteral("%1/%2").arg(current + 1).arg(count));
+    }
+}
+
+void MainWindow::selectNextInFileMatch()
+{
+    if (editor) {
+        editor->selectNextFindMatch();
+    }
+    if (inFileFindStatusLabel && editor) {
+        const int count = editor->findMatchCount();
+        const int current = editor->currentFindMatchIndex();
+        inFileFindStatusLabel->setText(count <= 0
+            ? QStringLiteral("0")
+            : QStringLiteral("%1/%2").arg(current + 1).arg(count));
+    }
+}
+
+void MainWindow::selectPreviousInFileMatch()
+{
+    if (editor) {
+        editor->selectPreviousFindMatch();
+    }
+    if (inFileFindStatusLabel && editor) {
+        const int count = editor->findMatchCount();
+        const int current = editor->currentFindMatchIndex();
+        inFileFindStatusLabel->setText(count <= 0
+            ? QStringLiteral("0")
+            : QStringLiteral("%1/%2").arg(current + 1).arg(count));
+    }
+}
+
+void MainWindow::replaceCurrentInFileMatch()
+{
+    if (editor && inFileReplaceInput) {
+        editor->replaceCurrentFindMatch(inFileReplaceInput->text());
+    }
+    updateInFileFindMatches();
+}
+
+void MainWindow::replaceAllInFileMatches()
+{
+    if (editor && inFileReplaceInput) {
+        editor->replaceAllFindMatches(inFileReplaceInput->text());
+    }
+    updateInFileFindMatches();
 }
 
 void MainWindow::findInProject()

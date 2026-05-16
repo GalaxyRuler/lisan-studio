@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ApyHighlighter.h"
+#include "EditorFindService.h"
 
 #include <QContextMenuEvent>
 #include <QMenu>
@@ -31,6 +32,15 @@ public:
     QString currentFilePath() const;
     bool isDirty() const;
     QVector<HiddenBidiFinding> findHiddenBidiControls(const QString &text) const;
+    int setFindQuery(const QString &query);
+    QString findQuery() const;
+    int findMatchCount() const;
+    int currentFindMatchIndex() const;
+    bool selectNextFindMatch();
+    bool selectPreviousFindMatch();
+    bool replaceCurrentFindMatch(const QString &replacement);
+    int replaceAllFindMatches(const QString &replacement);
+    int findHighlightSelectionCountForTest() const;
     int lineNumberAreaWidth() const;
     void lineNumberAreaPaintEvent(QPaintEvent *event);
     QMenu *createEditorContextMenu(QWidget *parent = nullptr);
@@ -42,11 +52,18 @@ signals:
 private:
     QString filePath;
     QString emptyPlaceholderText;
+    QString activeFindQuery;
+    QVector<EditorFindMatch> activeFindMatches;
+    int activeFindIndex = -1;
+    int findHighlightSelectionCount = 0;
     ApyHighlighter *highlighter = nullptr;
     LineNumberArea *lineNumberArea = nullptr;
 
     static QString unicodeName(QChar ch);
     void setCurrentFilePath(const QString &path);
+    void refreshFindMatches(bool selectFirst = true);
+    void updateFindExtraSelections();
+    bool selectFindMatch(int index);
     void updateLineNumberAreaWidth(int blockCount);
     void updateLineNumberArea(const QRect &rect, int dy);
     void contextMenuEvent(QContextMenuEvent *event) override;

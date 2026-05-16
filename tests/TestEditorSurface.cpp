@@ -23,6 +23,8 @@ private slots:
     void supportsCopyPasteUndoRedoAndDeleteAroundMixedDirectionText();
     void contextMenuUndoRedoActionsAreEnabledAndTriggerEditorCommands();
     void cursorCanVisitEveryLogicalPositionInMixedDirectionLongLine();
+    void findNavigationSelectsArabicMatchesAndHighlightsAll();
+    void replaceCurrentAndAllUseActiveFindMatches();
     void lineNumberAreaScalesAndStaysVisibleForLongFiles();
     void lineNumbersStayOnRightEdgeForArabicEditing();
     void emptyEditorPlaceholderPaintsFromRight();
@@ -265,6 +267,37 @@ void TestEditorSurface::cursorCanVisitEveryLogicalPositionInMixedDirectionLongLi
     cursor.movePosition(QTextCursor::NextCharacter, QTextCursor::KeepAnchor, line.size());
     editor.setTextCursor(cursor);
     QCOMPARE(editor.textCursor().selectedText(), line);
+}
+
+void TestEditorSurface::findNavigationSelectsArabicMatchesAndHighlightsAll()
+{
+    EditorSurface editor;
+    editor.setPlainText(QString::fromUtf8("عدد = 1\nاطبع(عدد)\n"));
+
+    QCOMPARE(editor.setFindQuery(QString::fromUtf8("عدد")), 2);
+    QCOMPARE(editor.findMatchCount(), 2);
+    QCOMPARE(editor.currentFindMatchIndex(), 0);
+    QCOMPARE(editor.textCursor().selectedText(), QString::fromUtf8("عدد"));
+    QVERIFY(editor.findHighlightSelectionCountForTest() >= 2);
+
+    QVERIFY(editor.selectNextFindMatch());
+    QCOMPARE(editor.currentFindMatchIndex(), 1);
+    QCOMPARE(editor.textCursor().selectedText(), QString::fromUtf8("عدد"));
+}
+
+void TestEditorSurface::replaceCurrentAndAllUseActiveFindMatches()
+{
+    EditorSurface editor;
+    editor.setPlainText(QString::fromUtf8("عدد = 1\nاطبع(عدد)\n"));
+
+    QCOMPARE(editor.setFindQuery(QString::fromUtf8("عدد")), 2);
+    QVERIFY(editor.replaceCurrentFindMatch(QString::fromUtf8("قيمة")));
+    QCOMPARE(editor.toPlainText(), QString::fromUtf8("قيمة = 1\nاطبع(عدد)\n"));
+    QCOMPARE(editor.findMatchCount(), 1);
+
+    QCOMPARE(editor.replaceAllFindMatches(QString::fromUtf8("قيمة")), 1);
+    QCOMPARE(editor.toPlainText(), QString::fromUtf8("قيمة = 1\nاطبع(قيمة)\n"));
+    QCOMPARE(editor.findMatchCount(), 0);
 }
 
 void TestEditorSurface::lineNumberAreaScalesAndStaysVisibleForLongFiles()

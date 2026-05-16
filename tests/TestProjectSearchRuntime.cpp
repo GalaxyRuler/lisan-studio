@@ -1,6 +1,7 @@
 #include <QtTest/QtTest>
 
 #include "DocumentFileIO.h"
+#include "EditorFindService.h"
 #include "ProjectModel.h"
 #include "RuntimeProblemParser.h"
 #include "RuntimeRunner.h"
@@ -31,6 +32,8 @@ private slots:
     void documentFileIoReadsUtf8AndRecordsIdentity();
     void documentFileIoWritesAtomicallyAndPreservesUtf8();
     void documentFileIoRejectsInvalidUtf8ByPolicy();
+    void editorFindServiceFindsArabicEnglishAndMixedMatches();
+    void editorFindServiceReplacesCurrentAndAllMatches();
 };
 
 static QString writeFile(const QDir &root, const QString &relative, const QString &text)
@@ -349,6 +352,44 @@ void TestProjectSearchRuntime::documentFileIoRejectsInvalidUtf8ByPolicy()
 
     QVERIFY(result.text.isEmpty());
     QVERIFY(error.contains(QString::fromUtf8("UTF-8")));
+}
+
+void TestProjectSearchRuntime::editorFindServiceFindsArabicEnglishAndMixedMatches()
+{
+    const QString text = QString::fromUtf8(
+        "عدد = 1\n"
+        "path = \"C:/Users/Admin/مشروع/main.apy\"\n"
+        "اطبع(عدد)\n"
+        "اسم = \"سارة\"\u202E\n");
+
+    const auto arabic = EditorFindService::findAll(text, QString::fromUtf8("عدد"));
+    QCOMPARE(arabic.size(), 2);
+    QCOMPARE(arabic.first().start, 0);
+    QCOMPARE(arabic.first().length, QString::fromUtf8("عدد").size());
+
+    const auto english = EditorFindService::findAll(text, QStringLiteral("path"));
+    QCOMPARE(english.size(), 1);
+
+    const auto mixed = EditorFindService::findAll(text, QString::fromUtf8("مشروع/main.apy"));
+    QCOMPARE(mixed.size(), 1);
+
+    const auto hiddenAdjacent = EditorFindService::findAll(text, QString::fromUtf8("سارة"));
+    QCOMPARE(hiddenAdjacent.size(), 1);
+}
+
+void TestProjectSearchRuntime::editorFindServiceReplacesCurrentAndAllMatches()
+{
+    QString text = QString::fromUtf8("عدد = 1\nاطبع(عدد)\n");
+    const auto matches = EditorFindService::findAll(text, QString::fromUtf8("عدد"));
+    QCOMPARE(matches.size(), 2);
+
+    QVERIFY(EditorFindService::replaceAt(&text, matches.first(), QString::fromUtf8("قيمة")));
+    QCOMPARE(text, QString::fromUtf8("قيمة = 1\nاطبع(عدد)\n"));
+
+    int replaced = 0;
+    text = EditorFindService::replaceAll(text, QString::fromUtf8("عدد"), QString::fromUtf8("قيمة"), &replaced);
+    QCOMPARE(replaced, 1);
+    QCOMPARE(text, QString::fromUtf8("قيمة = 1\nاطبع(قيمة)\n"));
 }
 
 QTEST_MAIN(TestProjectSearchRuntime)

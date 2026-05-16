@@ -24,6 +24,8 @@ add_library(acs_core
     src/DocumentFileIO.cpp
     src/DocumentRegistry.h
     src/DocumentRegistry.cpp
+    src/EditorFindService.h
+    src/EditorFindService.cpp
     src/UnsavedChangesGuard.h
     src/UnsavedChangesGuard.cpp
     src/WorkbenchState.h

@@ -35,7 +35,9 @@ private slots:
     void exposesCommandPaletteAction();
     void commandPaletteExposesRegisteredWorkbenchCommands();
     void coreCommandSurfacesDeclareRegisteredCommandIds();
+    void commandPaletteIncludesInFileFindCommand();
     void commandPaletteFiltersAndExecutesSelectedCommand();
+    void inFileFindPanelNavigatesAndReplacesActiveEditor();
     void newFileClearsCurrentPathAndEditorText();
     void newFileCreatesANewEditorTab();
     void dirtyBufferCancelPreventsNewFile();
@@ -346,6 +348,7 @@ void TestMainWindow::commandPaletteExposesRegisteredWorkbenchCommands()
         QStringLiteral("document.revert"),
         QStringLiteral("document.save"),
         QStringLiteral("document.saveAll"),
+        QStringLiteral("find-in-file"),
         QStringLiteral("format-current-file"),
         QStringLiteral("lint-current-file"),
         QStringLiteral("new-file"),
@@ -402,6 +405,7 @@ void TestMainWindow::coreCommandSurfacesDeclareRegisteredCommandIds()
 
     const QStringList expectedSurfaceIds = {
         QStringLiteral("command-palette"),
+        QStringLiteral("find-in-file"),
         QStringLiteral("format-current-file"),
         QStringLiteral("lint-current-file"),
         QStringLiteral("new-file"),
@@ -419,6 +423,33 @@ void TestMainWindow::coreCommandSurfacesDeclareRegisteredCommandIds()
     for (const QString &surfaceId : surfaceIds) {
         QVERIFY2(paletteIds.contains(surfaceId), qPrintable(QStringLiteral("Missing command registry entry for %1").arg(surfaceId)));
     }
+}
+
+void TestMainWindow::commandPaletteIncludesInFileFindCommand()
+{
+    MainWindow window;
+    QStringList commandIds;
+
+    QTimer::singleShot(0, this, [&]() {
+        auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+        if (!dialog) {
+            return;
+        }
+
+        auto *commands = dialog->findChild<QListWidget *>(QStringLiteral("commandPaletteResults"));
+        if (!commands) {
+            dialog->reject();
+            return;
+        }
+
+        for (int row = 0; row < commands->count(); ++row) {
+            commandIds.append(commands->item(row)->data(Qt::UserRole).toString());
+        }
+        dialog->reject();
+    });
+
+    QVERIFY(QMetaObject::invokeMethod(&window, "openCommandPalette", Qt::DirectConnection));
+    QVERIFY(commandIds.contains(QStringLiteral("find-in-file")));
 }
 
 void TestMainWindow::commandPaletteFiltersAndExecutesSelectedCommand()
@@ -548,6 +579,45 @@ void TestMainWindow::commandPaletteFiltersAndExecutesSelectedCommand()
     QCOMPARE(doubleClickVisibleRows, 1);
     QCOMPARE(doubleClickCommandId, QStringLiteral("new-file"));
     QCOMPARE(tabs->count(), beforeTabCount + 2);
+}
+
+void TestMainWindow::inFileFindPanelNavigatesAndReplacesActiveEditor()
+{
+    MainWindow window;
+    auto *editor = window.findChild<EditorSurface *>(QStringLiteral("editorSurface"));
+    QVERIFY(editor != nullptr);
+    editor->setPlainText(QString::fromUtf8("عدد = 1\nاطبع(عدد)\n"));
+
+    QVERIFY(QMetaObject::invokeMethod(&window, "openInFileFind", Qt::DirectConnection));
+
+    auto *panel = window.findChild<QWidget *>(QStringLiteral("inFileFindPanel"));
+    auto *findInput = window.findChild<QLineEdit *>(QStringLiteral("inFileFindInput"));
+    auto *replaceInput = window.findChild<QLineEdit *>(QStringLiteral("inFileReplaceInput"));
+    auto *nextButton = window.findChild<QPushButton *>(QStringLiteral("inFileFindNextButton"));
+    auto *replaceButton = window.findChild<QPushButton *>(QStringLiteral("inFileReplaceButton"));
+    auto *replaceAllButton = window.findChild<QPushButton *>(QStringLiteral("inFileReplaceAllButton"));
+    auto *status = window.findChild<QLabel *>(QStringLiteral("inFileFindStatusLabel"));
+
+    QVERIFY(panel != nullptr);
+    QVERIFY(!panel->isHidden());
+    QVERIFY(findInput != nullptr);
+    QVERIFY(replaceInput != nullptr);
+    QVERIFY(nextButton != nullptr);
+    QVERIFY(replaceButton != nullptr);
+    QVERIFY(replaceAllButton != nullptr);
+    QVERIFY(status != nullptr);
+
+    findInput->setText(QString::fromUtf8("عدد"));
+    QVERIFY(status->text().contains(QStringLiteral("2")));
+
+    nextButton->click();
+    replaceInput->setText(QString::fromUtf8("قيمة"));
+    replaceButton->click();
+    QCOMPARE(editor->toPlainText(), QString::fromUtf8("عدد = 1\nاطبع(قيمة)\n"));
+
+    replaceAllButton->click();
+    QCOMPARE(editor->toPlainText(), QString::fromUtf8("قيمة = 1\nاطبع(قيمة)\n"));
+    QVERIFY(status->text().contains(QStringLiteral("0")));
 }
 
 void TestMainWindow::newFileClearsCurrentPathAndEditorText()
