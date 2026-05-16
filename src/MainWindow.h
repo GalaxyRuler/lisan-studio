@@ -3,6 +3,7 @@
 #include "CommandRegistry.h"
 #include "DocumentRegistry.h"
 #include "EditorSurface.h"
+#include "OutputTranscript.h"
 #include "ProjectModel.h"
 #include "ProjectReplaceService.h"
 #include "RuntimeHistory.h"
@@ -58,6 +59,10 @@ private slots:
     void clearOutputPanel();
     void saveOutputPanel();
     bool saveOutputPanelToPath(const QString &path);
+    void showAllOutput();
+    void showOnlyStdoutOutput();
+    void showOnlyStderrOutput();
+    void showOnlySystemOutput();
     void appendRuntimeStdout();
     void appendRuntimeStderr();
     void finishRuntimeProcess(int exitCode, QProcess::ExitStatus exitStatus);
@@ -143,6 +148,8 @@ private:
     CommandRegistry commandRegistry;
     WorkbenchState workbenchState;
     WorkspaceSettings workspaceSettings;
+    OutputTranscript outputTranscript;
+    OutputTranscriptFilter outputFilter;
     QString projectRoot;
 
     void buildUi();
@@ -184,6 +191,8 @@ private:
     void runRuntimeAction(RuntimeAction action, const QString &title, bool reloadAfterSuccess = false);
     void startRuntimeLaunchPlan(const RuntimeLaunchPlan &plan, bool recordHistory);
     void appendRuntimeOutput(const QString &label, const QString &text);
+    void setOutputFilter(const OutputTranscriptFilter &filter);
+    void renderOutputTranscript();
     void completeRuntimeProcess(const QString &statusText);
     void setRuntimeActionsRunning(bool running);
     void restoreWorkbenchSession();

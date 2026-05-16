@@ -63,6 +63,7 @@ private slots:
     void projectTreeCopyPathActionCopiesSelectedPath();
     void outputPanelActionsCopyAndClearTranscript();
     void outputPanelActionSavesTranscriptToUtf8File();
+    void outputFilterCommandsHideAndRestoreSystemTranscript();
     void projectSearchShowsClickableResultRows();
     void projectSearchFindsCurrentUnsavedEditorImmediately();
     void projectReplacePreviewRendersRowsWithoutWritingFile();
@@ -500,6 +501,10 @@ void TestMainWindow::commandPaletteExposesRegisteredWorkbenchCommands()
         QStringLiteral("open-project"),
         QStringLiteral("output.clear"),
         QStringLiteral("output.copy"),
+        QStringLiteral("output.filter.all"),
+        QStringLiteral("output.filter.stderr"),
+        QStringLiteral("output.filter.stdout"),
+        QStringLiteral("output.filter.system"),
         QStringLiteral("output.saveAs"),
         QStringLiteral("project.file.new"),
         QStringLiteral("project.folder.new"),
@@ -581,6 +586,10 @@ void TestMainWindow::coreCommandSurfacesDeclareRegisteredCommandIds()
         QStringLiteral("open-project"),
         QStringLiteral("output.clear"),
         QStringLiteral("output.copy"),
+        QStringLiteral("output.filter.all"),
+        QStringLiteral("output.filter.stderr"),
+        QStringLiteral("output.filter.stdout"),
+        QStringLiteral("output.filter.system"),
         QStringLiteral("output.saveAs"),
         QStringLiteral("project.file.new"),
         QStringLiteral("project.folder.new"),
@@ -886,6 +895,23 @@ void TestMainWindow::outputPanelActionSavesTranscriptToUtf8File()
     QFile savedFile(savedPath);
     QVERIFY(savedFile.open(QIODevice::ReadOnly));
     QCOMPARE(QString::fromUtf8(savedFile.readAll()), outputPanel->toPlainText());
+}
+
+void TestMainWindow::outputFilterCommandsHideAndRestoreSystemTranscript()
+{
+    MainWindow window;
+
+    auto *outputPanel = window.findChild<QPlainTextEdit *>(QStringLiteral("outputPanel"));
+    QVERIFY(outputPanel != nullptr);
+
+    QVERIFY(QMetaObject::invokeMethod(&window, "runCurrentFile", Qt::DirectConnection));
+    QTRY_VERIFY2(outputPanel->toPlainText().contains(QString::fromUtf8("الأمر: تشغيل")), qPrintable(outputPanel->toPlainText()));
+
+    QVERIFY(QMetaObject::invokeMethod(&window, "showOnlyStdoutOutput", Qt::DirectConnection));
+    QCOMPARE(outputPanel->toPlainText(), QString());
+
+    QVERIFY(QMetaObject::invokeMethod(&window, "showAllOutput", Qt::DirectConnection));
+    QVERIFY2(outputPanel->toPlainText().contains(QString::fromUtf8("الأمر: تشغيل")), qPrintable(outputPanel->toPlainText()));
 }
 
 void TestMainWindow::insertPrintSnippetPlacesCursorInsideQuotes()

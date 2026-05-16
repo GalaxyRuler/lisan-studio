@@ -525,6 +525,10 @@ void MainWindow::buildUi()
     connect(addTextOnlyMenuAction(viewMenu, QString::fromUtf8("نسخ الإخراج"), QKeySequence(), QStringLiteral("output.copy")), &QAction::triggered, this, &MainWindow::copyOutputPanel);
     connect(addTextOnlyMenuAction(viewMenu, QString::fromUtf8("مسح الإخراج"), QKeySequence(), QStringLiteral("output.clear")), &QAction::triggered, this, &MainWindow::clearOutputPanel);
     connect(addTextOnlyMenuAction(viewMenu, QString::fromUtf8("حفظ الإخراج باسم"), QKeySequence(), QStringLiteral("output.saveAs")), &QAction::triggered, this, &MainWindow::saveOutputPanel);
+    connect(addTextOnlyMenuAction(viewMenu, QString::fromUtf8("كل الإخراج"), QKeySequence(), QStringLiteral("output.filter.all")), &QAction::triggered, this, &MainWindow::showAllOutput);
+    connect(addTextOnlyMenuAction(viewMenu, QString::fromUtf8("إخراج stdout فقط"), QKeySequence(), QStringLiteral("output.filter.stdout")), &QAction::triggered, this, &MainWindow::showOnlyStdoutOutput);
+    connect(addTextOnlyMenuAction(viewMenu, QString::fromUtf8("إخراج stderr فقط"), QKeySequence(), QStringLiteral("output.filter.stderr")), &QAction::triggered, this, &MainWindow::showOnlyStderrOutput);
+    connect(addTextOnlyMenuAction(viewMenu, QString::fromUtf8("رسائل النظام فقط"), QKeySequence(), QStringLiteral("output.filter.system")), &QAction::triggered, this, &MainWindow::showOnlySystemOutput);
     connect(addTextOnlyMenuAction(toolsMenu, QString::fromUtf8("فحص"), QKeySequence(), QStringLiteral("lint-current-file")), &QAction::triggered, this, &MainWindow::lintCurrentFile);
     connect(addTextOnlyMenuAction(toolsMenu, QString::fromUtf8("تنسيق"), QKeySequence(), QStringLiteral("format-current-file")), &QAction::triggered, this, &MainWindow::formatCurrentFile);
     settingsAction->setIconVisibleInMenu(false);
@@ -1311,6 +1315,34 @@ void MainWindow::registerWorkbenchCommands()
         [this]() { saveOutputPanel(); },
         [this]() { return outputPanel && !outputPanel->toPlainText().isEmpty(); });
     registerCommand(
+        QStringLiteral("output.filter.all"),
+        QString::fromUtf8("عرض كل الإخراج"),
+        QString::fromUtf8("الإخراج"),
+        QKeySequence(),
+        QString::fromUtf8("عرض كل الإخراج output all"),
+        [this]() { showAllOutput(); });
+    registerCommand(
+        QStringLiteral("output.filter.stdout"),
+        QString::fromUtf8("عرض stdout فقط"),
+        QString::fromUtf8("الإخراج"),
+        QKeySequence(),
+        QString::fromUtf8("عرض stdout فقط output filter"),
+        [this]() { showOnlyStdoutOutput(); });
+    registerCommand(
+        QStringLiteral("output.filter.stderr"),
+        QString::fromUtf8("عرض stderr فقط"),
+        QString::fromUtf8("الإخراج"),
+        QKeySequence(),
+        QString::fromUtf8("عرض stderr فقط output filter"),
+        [this]() { showOnlyStderrOutput(); });
+    registerCommand(
+        QStringLiteral("output.filter.system"),
+        QString::fromUtf8("عرض رسائل النظام فقط"),
+        QString::fromUtf8("الإخراج"),
+        QKeySequence(),
+        QString::fromUtf8("عرض رسائل النظام فقط output filter"),
+        [this]() { showOnlySystemOutput(); });
+    registerCommand(
         QStringLiteral("search-project"),
         QString::fromUtf8("بحث في المشروع"),
         QString::fromUtf8("بحث"),
@@ -1469,7 +1501,8 @@ void MainWindow::clearOutputPanel()
         return;
     }
 
-    outputPanel->clear();
+    outputTranscript.clear();
+    renderOutputTranscript();
     showOutputPanel();
     setStatus(QString::fromUtf8("تم مسح الإخراج"));
 }
@@ -1508,6 +1541,35 @@ bool MainWindow::saveOutputPanelToPath(const QString &path)
 
     setStatus(QString::fromUtf8("تم حفظ الإخراج"));
     return true;
+}
+
+void MainWindow::showAllOutput()
+{
+    setOutputFilter(OutputTranscriptFilter());
+}
+
+void MainWindow::showOnlyStdoutOutput()
+{
+    OutputTranscriptFilter filter;
+    filter.includeStderr = false;
+    filter.includeSystem = false;
+    setOutputFilter(filter);
+}
+
+void MainWindow::showOnlyStderrOutput()
+{
+    OutputTranscriptFilter filter;
+    filter.includeStdout = false;
+    filter.includeSystem = false;
+    setOutputFilter(filter);
+}
+
+void MainWindow::showOnlySystemOutput()
+{
+    OutputTranscriptFilter filter;
+    filter.includeStdout = false;
+    filter.includeStderr = false;
+    setOutputFilter(filter);
 }
 
 bool MainWindow::insertSnippetById(const QString &id)
@@ -2684,7 +2746,9 @@ void MainWindow::closeEditorTab(int index)
 void MainWindow::writeOutput(const QString &title, const QString &text)
 {
     showOutputPanel();
-    outputPanel->setPlainText(QStringLiteral("[%1]\n%2").arg(title, text));
+    outputTranscript.clear();
+    outputTranscript.append(OutputTranscriptChannel::System, title, text);
+    renderOutputTranscript();
 }
 
 void MainWindow::showOutputPanel()
@@ -2940,7 +3004,10 @@ void MainWindow::startRuntimeLaunchPlan(const RuntimeLaunchPlan &plan, bool reco
     activeRuntimeStdout.clear();
     activeRuntimeStderr.clear();
     showOutputPanel();
-    outputPanel->setPlainText(plan.initialOutput);
+    outputTranscript.clear();
+    const QString initialText = plan.initialOutput.section(QLatin1Char('\n'), 1).trimmed();
+    outputTranscript.append(OutputTranscriptChannel::System, plan.title, initialText);
+    renderOutputTranscript();
     setStatus(plan.runningStatus);
     setRuntimeActionsRunning(true);
 
@@ -2968,11 +3035,30 @@ void MainWindow::appendRuntimeOutput(const QString &label, const QString &text)
     }
 
     showOutputPanel();
-    QTextCursor cursor = outputPanel->textCursor();
-    cursor.movePosition(QTextCursor::End);
-    outputPanel->setTextCursor(cursor);
-    outputPanel->appendPlainText(QStringLiteral("[%1]").arg(label));
-    outputPanel->appendPlainText(text.trimmed());
+    OutputTranscriptChannel channel = OutputTranscriptChannel::System;
+    if (label == QStringLiteral("stdout")) {
+        channel = OutputTranscriptChannel::Stdout;
+    } else if (label == QStringLiteral("stderr")) {
+        channel = OutputTranscriptChannel::Stderr;
+    }
+    outputTranscript.append(channel, label, text);
+    renderOutputTranscript();
+}
+
+void MainWindow::setOutputFilter(const OutputTranscriptFilter &filter)
+{
+    outputFilter = filter;
+    renderOutputTranscript();
+    showOutputPanel();
+}
+
+void MainWindow::renderOutputTranscript()
+{
+    if (!outputPanel) {
+        return;
+    }
+
+    outputPanel->setPlainText(outputTranscript.render(outputFilter));
 }
 
 void MainWindow::completeRuntimeProcess(const QString &statusText)
