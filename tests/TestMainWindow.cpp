@@ -40,6 +40,7 @@ private slots:
     void exposesLisanLogoAssetInShell();
     void exposesPremiumFutureBottomPanelTabs();
     void enforcesRtlDirectionAcrossShellContainers();
+    void statusBarExposesEditorRuntimeAndGitIndicators();
     void exposesCommandPaletteAction();
     void commandPaletteExposesRegisteredWorkbenchCommands();
     void coreCommandSurfacesDeclareRegisteredCommandIds();
@@ -444,6 +445,38 @@ void TestMainWindow::enforcesRtlDirectionAcrossShellContainers()
     auto *statusBar = window.statusBar();
     QVERIFY(statusBar != nullptr);
     QCOMPARE(statusBar->layoutDirection(), Qt::RightToLeft);
+}
+
+void TestMainWindow::statusBarExposesEditorRuntimeAndGitIndicators()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    QDir root(temp.path());
+    const QString filePath = writeFile(root, QStringLiteral("برنامج.apy"), QString::fromUtf8("اطبع(\"أهلا\")\r\n"));
+
+    MainWindow window;
+    QVERIFY(window.openPath(filePath));
+
+    auto *encoding = window.findChild<QLabel *>(QStringLiteral("statusEncodingLabel"));
+    auto *lineEnding = window.findChild<QLabel *>(QStringLiteral("statusLineEndingLabel"));
+    auto *indentation = window.findChild<QLabel *>(QStringLiteral("statusIndentationLabel"));
+    auto *language = window.findChild<QLabel *>(QStringLiteral("statusLanguageModeLabel"));
+    auto *runtime = window.findChild<QLabel *>(QStringLiteral("statusRuntimeLabel"));
+    auto *git = window.findChild<QLabel *>(QStringLiteral("statusGitLabel"));
+
+    QVERIFY(encoding != nullptr);
+    QVERIFY(lineEnding != nullptr);
+    QVERIFY(indentation != nullptr);
+    QVERIFY(language != nullptr);
+    QVERIFY(runtime != nullptr);
+    QVERIFY(git != nullptr);
+
+    QCOMPARE(encoding->text(), QStringLiteral("UTF-8"));
+    QCOMPARE(lineEnding->text(), QStringLiteral("LF"));
+    QCOMPARE(indentation->text(), QString::fromUtf8("مسافات: 4"));
+    QCOMPARE(language->text(), QStringLiteral(".apy"));
+    QCOMPARE(runtime->text(), QString::fromUtf8("التشغيل: جاهز"));
+    QCOMPARE(git->text(), QStringLiteral("Git: --"));
 }
 
 void TestMainWindow::exposesCommandPaletteAction()

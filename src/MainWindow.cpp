@@ -150,6 +150,49 @@ static QStringList arabicEditorFontFamilies()
     return orderedFamilies;
 }
 
+static QString lineEndingStatusText(DocumentLineEnding lineEnding)
+{
+    switch (lineEnding) {
+    case DocumentLineEnding::Lf:
+        return QStringLiteral("LF");
+    case DocumentLineEnding::Crlf:
+        return QStringLiteral("CRLF");
+    case DocumentLineEnding::Mixed:
+        return QString::fromUtf8("مختلط");
+    case DocumentLineEnding::None:
+        return QString::fromUtf8("بدون نهاية");
+    }
+    return QString::fromUtf8("بدون نهاية");
+}
+
+static QString languageModeStatusText(const QString &path)
+{
+    const QString suffix = QFileInfo(path).suffix().toLower();
+    if (suffix == QStringLiteral("apy")) {
+        return QStringLiteral(".apy");
+    }
+    if (suffix == QStringLiteral("py")) {
+        return QStringLiteral("Python");
+    }
+    if (suffix == QStringLiteral("md")) {
+        return QStringLiteral("Markdown");
+    }
+    if (suffix == QStringLiteral("txt")) {
+        return QString::fromUtf8("نص");
+    }
+    return QString::fromUtf8("نص عادي");
+}
+
+static QLabel *createStatusIndicator(const QString &objectName, const QString &text, QWidget *parent)
+{
+    auto *label = new QLabel(text, parent);
+    label->setObjectName(objectName);
+    label->setLayoutDirection(Qt::LeftToRight);
+    label->setAlignment(Qt::AlignVCenter | Qt::AlignHCenter);
+    label->setMinimumWidth(72);
+    return label;
+}
+
 static bool isArabicEditorFontFamily(const QString &family)
 {
     const QStringList families = arabicEditorFontFamilies();
@@ -781,6 +824,19 @@ void MainWindow::buildUi()
 
     statusLabel = new QLabel(QString::fromUtf8("جاهز"), this);
     statusBar()->addPermanentWidget(statusLabel, 1);
+    statusEncodingLabel = createStatusIndicator(QStringLiteral("statusEncodingLabel"), QStringLiteral("UTF-8"), this);
+    statusLineEndingLabel = createStatusIndicator(QStringLiteral("statusLineEndingLabel"), QString::fromUtf8("بدون نهاية"), this);
+    statusIndentationLabel = createStatusIndicator(QStringLiteral("statusIndentationLabel"), QString::fromUtf8("مسافات: 4"), this);
+    statusLanguageModeLabel = createStatusIndicator(QStringLiteral("statusLanguageModeLabel"), QString::fromUtf8("نص عادي"), this);
+    statusRuntimeLabel = createStatusIndicator(QStringLiteral("statusRuntimeLabel"), QString::fromUtf8("التشغيل: جاهز"), this);
+    statusGitLabel = createStatusIndicator(QStringLiteral("statusGitLabel"), QStringLiteral("Git: --"), this);
+    statusBar()->addPermanentWidget(statusEncodingLabel);
+    statusBar()->addPermanentWidget(statusLineEndingLabel);
+    statusBar()->addPermanentWidget(statusIndentationLabel);
+    statusBar()->addPermanentWidget(statusLanguageModeLabel);
+    statusBar()->addPermanentWidget(statusRuntimeLabel);
+    statusBar()->addPermanentWidget(statusGitLabel);
+    updateStatusIndicators();
 }
 
 void MainWindow::newFile()
@@ -2643,6 +2699,7 @@ EditorSurface *MainWindow::createEditorTab(const QString &title)
     connect(surface, &EditorSurface::filePathChanged, this, [this, surface](const QString &) {
         syncEditorSession(surface);
         updateEditorTabTitle(surface);
+        updateStatusIndicators();
         if (surface == editor) {
             setWindowTitle(surface->currentFilePath().isEmpty()
                 ? QString::fromUtf8("استوديو لسان")
@@ -2652,10 +2709,12 @@ EditorSurface *MainWindow::createEditorTab(const QString &title)
     connect(surface, &EditorSurface::dirtyStateChanged, this, [this, surface](bool) {
         syncEditorSession(surface);
         updateEditorTabTitle(surface);
+        updateStatusIndicators();
     });
     connect(surface->document(), &QTextDocument::contentsChanged, this, [this, surface]() {
         if (surface == editor) {
             refreshEditorProblems();
+            updateStatusIndicators();
         }
     });
 
@@ -2705,6 +2764,22 @@ void MainWindow::applyWorkspaceSettingsToOpenEditors()
     }
 }
 
+void MainWindow::updateStatusIndicators()
+{
+    if (!statusEncodingLabel || !statusLineEndingLabel || !statusIndentationLabel || !statusLanguageModeLabel || !statusRuntimeLabel || !statusGitLabel) {
+        return;
+    }
+
+    const QString text = editor ? editor->toPlainText() : QString();
+    const QString path = editor ? editor->currentFilePath() : QString();
+    statusEncodingLabel->setText(QStringLiteral("UTF-8"));
+    statusLineEndingLabel->setText(lineEndingStatusText(DocumentFileIO::detectLineEnding(text)));
+    statusIndentationLabel->setText(QString::fromUtf8("مسافات: 4"));
+    statusLanguageModeLabel->setText(languageModeStatusText(path));
+    statusRuntimeLabel->setText(QString::fromUtf8("التشغيل: جاهز"));
+    statusGitLabel->setText(QStringLiteral("Git: --"));
+}
+
 void MainWindow::syncEditorSession(EditorSurface *surface)
 {
     if (!surface || !editorTabs) {
@@ -2740,6 +2815,7 @@ void MainWindow::setCurrentEditor(EditorSurface *surface)
     setWindowTitle(editor->currentFilePath().isEmpty()
         ? QString::fromUtf8("استوديو لسان")
         : QString::fromUtf8("استوديو لسان - %1").arg(QFileInfo(editor->currentFilePath()).fileName()));
+    updateStatusIndicators();
     refreshEditorProblems();
 }
 

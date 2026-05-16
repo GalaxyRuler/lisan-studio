@@ -120,6 +120,12 @@ private:
     QTabWidget *bottomPanelTabs = nullptr;
     QDockWidget *outputDock = nullptr;
     QLabel *statusLabel = nullptr;
+    QLabel *statusEncodingLabel = nullptr;
+    QLabel *statusLineEndingLabel = nullptr;
+    QLabel *statusIndentationLabel = nullptr;
+    QLabel *statusLanguageModeLabel = nullptr;
+    QLabel *statusRuntimeLabel = nullptr;
+    QLabel *statusGitLabel = nullptr;
     QLabel *brandLogoLabel = nullptr;
     QAction *commandPaletteAction = nullptr;
     QAction *runAction = nullptr;
@@ -168,6 +174,7 @@ private:
     void applyEditorFont(EditorSurface *surface);
     void applyWorkspaceSettings(EditorSurface *surface);
     void applyWorkspaceSettingsToOpenEditors();
+    void updateStatusIndicators();
     void syncEditorSession(EditorSurface *surface);
     void setCurrentEditor(EditorSurface *surface);
     void updateEditorTabTitle(EditorSurface *surface);
