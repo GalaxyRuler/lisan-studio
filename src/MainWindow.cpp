@@ -2567,11 +2567,16 @@ void MainWindow::openSettings()
     fontSizeInput->setObjectName(QStringLiteral("editorFontSizeInput"));
     fontSizeInput->setRange(8, 28);
     fontSizeInput->setValue(settingsState.editorFontSize);
-    auto *themeValue = new QLabel(settingsState.themeLabel, editorPage);
-    themeValue->setObjectName(QStringLiteral("settingsThemeValue"));
+    auto *themePreferenceCombo = new QComboBox(editorPage);
+    themePreferenceCombo->setObjectName(QStringLiteral("themePreferenceCombo"));
+    themePreferenceCombo->setLayoutDirection(Qt::RightToLeft);
+    themePreferenceCombo->addItem(QString::fromUtf8("داكن"), QStringLiteral("dark"));
+    themePreferenceCombo->addItem(QString::fromUtf8("فاتح"), QStringLiteral("light"));
+    const int configuredThemeIndex = themePreferenceCombo->findData(settings.themePreference());
+    themePreferenceCombo->setCurrentIndex(configuredThemeIndex >= 0 ? configuredThemeIndex : 0);
     editorForm->addRow(QString::fromUtf8("خط المحرر"), fontFamilyCombo);
     editorForm->addRow(QString::fromUtf8("حجم الخط"), fontSizeInput);
-    editorForm->addRow(QString::fromUtf8("السمة"), themeValue);
+    editorForm->addRow(QString::fromUtf8("السمة"), themePreferenceCombo);
 
     auto *runtimePage = new QWidget(pages);
     runtimePage->setObjectName(QStringLiteral("runtimeDiagnosticsPage"));
@@ -2632,6 +2637,7 @@ void MainWindow::openSettings()
         ? arabicEditorFontFamilies().first()
         : fontFamilyCombo->currentText().trimmed());
     settings.setEditorFontSize(fontSizeInput->value());
+    settings.setThemePreference(themePreferenceCombo->currentData().toString());
     for (int i = 0; editorTabs && i < editorTabs->count(); ++i) {
         if (auto *surface = qobject_cast<EditorSurface *>(editorTabs->widget(i))) {
             applyEditorFont(surface);

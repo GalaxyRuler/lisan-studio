@@ -89,6 +89,7 @@ private slots:
     void rerunLastRuntimeActionReusesLastLaunchPlan();
     void settingsDialogExposesCategoriesAndRuntimeDiagnostics();
     void settingsDialogAppliesEditorFontVisibly();
+    void settingsDialogPersistsThemePreference();
 };
 
 static QString writeFile(const QDir &root, const QString &relative, const QString &text)
@@ -2245,6 +2246,60 @@ void TestMainWindow::settingsDialogAppliesEditorFontVisibly()
         qPrintable(editor->styleSheet()));
     QVERIFY2(editor->styleSheet().contains(QStringLiteral("font-size: 18pt")),
         qPrintable(editor->styleSheet()));
+}
+
+void TestMainWindow::settingsDialogPersistsThemePreference()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    const QString settingsPath = temp.path() + QStringLiteral("/settings.ini");
+
+    MainWindow window(nullptr, settingsPath);
+    bool inspected = false;
+    QString failure;
+
+    QTimer::singleShot(0, &window, [&window]() {
+        QMetaObject::invokeMethod(&window, "openSettings", Qt::DirectConnection);
+    });
+    QTimer::singleShot(150, &window, [&inspected, &failure]() {
+        auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+        if (!dialog) {
+            failure = QStringLiteral("settings dialog did not open");
+            return;
+        }
+
+        auto *themeCombo = dialog->findChild<QComboBox *>(QStringLiteral("themePreferenceCombo"));
+        auto *buttons = dialog->findChild<QDialogButtonBox *>();
+        inspected = true;
+        if (!themeCombo) {
+            failure = QStringLiteral("theme preference combo missing");
+            dialog->reject();
+            return;
+        }
+        if (!buttons) {
+            failure = QStringLiteral("settings buttons missing");
+            dialog->reject();
+            return;
+        }
+        if (themeCombo->layoutDirection() != Qt::RightToLeft) {
+            failure = QStringLiteral("theme combo is not RTL");
+            dialog->reject();
+            return;
+        }
+
+        const int lightIndex = themeCombo->findData(QStringLiteral("light"));
+        if (lightIndex < 0) {
+            failure = QStringLiteral("theme combo has no light item");
+            dialog->reject();
+            return;
+        }
+        themeCombo->setCurrentIndex(lightIndex);
+        buttons->button(QDialogButtonBox::Ok)->click();
+    });
+
+    QTRY_VERIFY2(inspected, qPrintable(failure));
+    QVERIFY2(failure.isEmpty(), qPrintable(failure));
+    QTRY_COMPARE(SettingsStore(settingsPath).themePreference(), QStringLiteral("light"));
 }
 
 QTEST_MAIN(TestMainWindow)
