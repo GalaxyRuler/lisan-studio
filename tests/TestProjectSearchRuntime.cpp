@@ -3,6 +3,7 @@
 #include "DocumentFileIO.h"
 #include "EditorFindService.h"
 #include "ProjectModel.h"
+#include "ProjectFileOperations.h"
 #include "RuntimeProblemParser.h"
 #include "RuntimeRunner.h"
 #include "SearchService.h"
@@ -17,6 +18,8 @@ private slots:
     void projectModelIgnoresBuildAndCacheDirectories();
     void projectModelValidatesSafeChildNames();
     void projectModelDetectsPathsCoveredByProjectOperations();
+    void projectFileOperationsRejectUnsafeTargetsAndCollisions();
+    void projectFileOperationsProtectRootAndResolveContainingFolder();
     void searchServiceFindsUtf8ArabicMatches();
     void searchServiceFindsUnsavedEditorMatches();
     void searchServiceMergesImmediateRowsBeforeProjectRows();
@@ -86,6 +89,67 @@ void TestProjectSearchRuntime::projectModelDetectsPathsCoveredByProjectOperation
     QVERIFY(!ProjectModel::pathIsSameOrInside(
         QStringLiteral("C:/Users/Admin/project/src-other/main.apy"),
         QStringLiteral("C:/Users/Admin/project/src")));
+}
+
+void TestProjectSearchRuntime::projectFileOperationsRejectUnsafeTargetsAndCollisions()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    QDir root(temp.path());
+    const QString existing = writeFile(root, QStringLiteral("main.apy"), QString::fromUtf8("اطبع(\"مرحبا\")\n"));
+
+    QString error;
+    const ProjectFileOperationTarget safe = ProjectFileOperations::childTarget(
+        root.absolutePath(),
+        root.absolutePath(),
+        QString::fromUtf8("ملف.apy"),
+        true,
+        &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error));
+    QCOMPARE(safe.path, root.filePath(QString::fromUtf8("ملف.apy")));
+
+    const ProjectFileOperationTarget duplicate = ProjectFileOperations::childTarget(
+        root.absolutePath(),
+        root.absolutePath(),
+        QStringLiteral("main.apy"),
+        true,
+        &error);
+    QVERIFY(!duplicate.allowed);
+    QVERIFY(error.contains(QString::fromUtf8("موجود")));
+
+    const ProjectFileOperationTarget escaped = ProjectFileOperations::childTarget(
+        root.absolutePath(),
+        root.absolutePath(),
+        QStringLiteral("../escape.apy"),
+        true,
+        &error);
+    QVERIFY(!escaped.allowed);
+    QVERIFY(error.contains(QString::fromUtf8("اسم")));
+
+    const ProjectFileOperationTarget renameCollision = ProjectFileOperations::renameTarget(
+        existing,
+        QStringLiteral("main.apy"),
+        root.absolutePath(),
+        &error);
+    QVERIFY(!renameCollision.allowed);
+    QVERIFY(error.contains(QString::fromUtf8("مستخدم")) || error.contains(QString::fromUtf8("موجود")));
+}
+
+void TestProjectSearchRuntime::projectFileOperationsProtectRootAndResolveContainingFolder()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    QDir root(temp.path());
+    const QString filePath = writeFile(root, QStringLiteral("src/main.apy"), QString::fromUtf8("اطبع(\"مرحبا\")\n"));
+
+    QString error;
+    QVERIFY(!ProjectFileOperations::canDelete(root.absolutePath(), root.absolutePath(), &error));
+    QVERIFY(error.contains(QString::fromUtf8("جذر")));
+    QVERIFY(ProjectFileOperations::canDelete(filePath, root.absolutePath(), &error));
+
+    QCOMPARE(ProjectFileOperations::pathForClipboard(filePath), QDir::toNativeSeparators(QFileInfo(filePath).absoluteFilePath()));
+    QCOMPARE(ProjectFileOperations::containingFolder(filePath), QFileInfo(filePath).absolutePath());
+    QCOMPARE(ProjectFileOperations::containingFolder(root.absolutePath()), QFileInfo(root.absolutePath()).absoluteFilePath());
 }
 
 void TestProjectSearchRuntime::searchServiceFindsUtf8ArabicMatches()

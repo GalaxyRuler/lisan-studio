@@ -2,6 +2,7 @@
 
 #include "MainWindow.h"
 
+#include <QClipboard>
 #include <QComboBox>
 #include <QDialog>
 #include <QDialogButtonBox>
@@ -46,6 +47,7 @@ private slots:
     void projectTreeShowsOnlyFileNames();
     void projectTreeExposesRtlContextActions();
     void projectTreeOpenActionOpensSelectedFile();
+    void projectTreeCopyPathActionCopiesSelectedPath();
     void projectSearchShowsClickableResultRows();
     void projectSearchFindsCurrentUnsavedEditorImmediately();
     void projectSearchResultRowsFillRtlViewport();
@@ -354,6 +356,15 @@ void TestMainWindow::commandPaletteExposesRegisteredWorkbenchCommands()
         QStringLiteral("new-file"),
         QStringLiteral("open-file"),
         QStringLiteral("open-project"),
+        QStringLiteral("project.file.new"),
+        QStringLiteral("project.folder.new"),
+        QStringLiteral("project.item.copyPath"),
+        QStringLiteral("project.item.deleteWithPrompt"),
+        QStringLiteral("project.item.open"),
+        QStringLiteral("project.item.openContainingFolder"),
+        QStringLiteral("project.item.rename"),
+        QStringLiteral("project.item.reveal"),
+        QStringLiteral("project.refresh"),
         QStringLiteral("run-current-file"),
         QStringLiteral("save-as"),
         QStringLiteral("save-file"),
@@ -411,6 +422,15 @@ void TestMainWindow::coreCommandSurfacesDeclareRegisteredCommandIds()
         QStringLiteral("new-file"),
         QStringLiteral("open-file"),
         QStringLiteral("open-project"),
+        QStringLiteral("project.file.new"),
+        QStringLiteral("project.folder.new"),
+        QStringLiteral("project.item.copyPath"),
+        QStringLiteral("project.item.deleteWithPrompt"),
+        QStringLiteral("project.item.open"),
+        QStringLiteral("project.item.openContainingFolder"),
+        QStringLiteral("project.item.rename"),
+        QStringLiteral("project.item.reveal"),
+        QStringLiteral("project.refresh"),
         QStringLiteral("run-current-file"),
         QStringLiteral("save-as"),
         QStringLiteral("save-file"),
@@ -501,7 +521,7 @@ void TestMainWindow::commandPaletteFiltersAndExecutesSelectedCommand()
             sawCommandWidgets = sawCommandWidgets && item && commands->itemWidget(item) != nullptr;
         }
 
-        input->setText(QString::fromUtf8("جديد"));
+        input->setText(QKeySequence(QKeySequence::New).toString(QKeySequence::NativeText));
         QCoreApplication::processEvents();
 
         int visibleRow = -1;
@@ -554,7 +574,7 @@ void TestMainWindow::commandPaletteFiltersAndExecutesSelectedCommand()
             return;
         }
 
-        input->setText(QStringLiteral("new"));
+        input->setText(QKeySequence(QKeySequence::New).toString(QKeySequence::NativeText));
         QCoreApplication::processEvents();
 
         int visibleRow = -1;
@@ -755,6 +775,8 @@ void TestMainWindow::projectTreeExposesRtlContextActions()
     auto *rename = window.findChild<QAction *>(QStringLiteral("projectTreeRenameAction"));
     auto *deleteAction = window.findChild<QAction *>(QStringLiteral("projectTreeDeleteAction"));
     auto *reveal = window.findChild<QAction *>(QStringLiteral("projectTreeRevealAction"));
+    auto *copyPath = window.findChild<QAction *>(QStringLiteral("projectTreeCopyPathAction"));
+    auto *openContaining = window.findChild<QAction *>(QStringLiteral("projectTreeOpenContainingFolderAction"));
     auto *refresh = window.findChild<QAction *>(QStringLiteral("projectTreeRefreshAction"));
 
     QVERIFY(newFile != nullptr);
@@ -763,6 +785,8 @@ void TestMainWindow::projectTreeExposesRtlContextActions()
     QVERIFY(rename != nullptr);
     QVERIFY(deleteAction != nullptr);
     QVERIFY(reveal != nullptr);
+    QVERIFY(copyPath != nullptr);
+    QVERIFY(openContaining != nullptr);
     QVERIFY(refresh != nullptr);
 
     QCOMPARE(newFile->text(), QString::fromUtf8("ملف جديد"));
@@ -771,7 +795,19 @@ void TestMainWindow::projectTreeExposesRtlContextActions()
     QCOMPARE(rename->text(), QString::fromUtf8("إعادة تسمية"));
     QCOMPARE(deleteAction->text(), QString::fromUtf8("حذف"));
     QCOMPARE(reveal->text(), QString::fromUtf8("إظهار في مستكشف الملفات"));
+    QCOMPARE(copyPath->text(), QString::fromUtf8("نسخ المسار"));
+    QCOMPARE(openContaining->text(), QString::fromUtf8("فتح المجلد الحاوي"));
     QCOMPARE(refresh->text(), QString::fromUtf8("تحديث"));
+
+    QCOMPARE(newFile->property("commandId").toString(), QStringLiteral("project.file.new"));
+    QCOMPARE(newFolder->property("commandId").toString(), QStringLiteral("project.folder.new"));
+    QCOMPARE(open->property("commandId").toString(), QStringLiteral("project.item.open"));
+    QCOMPARE(rename->property("commandId").toString(), QStringLiteral("project.item.rename"));
+    QCOMPARE(deleteAction->property("commandId").toString(), QStringLiteral("project.item.deleteWithPrompt"));
+    QCOMPARE(reveal->property("commandId").toString(), QStringLiteral("project.item.reveal"));
+    QCOMPARE(copyPath->property("commandId").toString(), QStringLiteral("project.item.copyPath"));
+    QCOMPARE(openContaining->property("commandId").toString(), QStringLiteral("project.item.openContainingFolder"));
+    QCOMPARE(refresh->property("commandId").toString(), QStringLiteral("project.refresh"));
 }
 
 void TestMainWindow::projectTreeOpenActionOpensSelectedFile()
@@ -798,6 +834,35 @@ void TestMainWindow::projectTreeOpenActionOpensSelectedFile()
     open->trigger();
 
     QCOMPARE(QDir::toNativeSeparators(window.currentEditorPath()), QDir::toNativeSeparators(filePath));
+}
+
+void TestMainWindow::projectTreeCopyPathActionCopiesSelectedPath()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    QDir root(temp.path());
+    const QString filePath = writeFile(root, QStringLiteral("copy-target.apy"), QString::fromUtf8("اطبع(\"مسار\")\n"));
+
+    MainWindow window;
+    QVERIFY(window.openPath(root.absolutePath()));
+
+    auto *tree = window.findChild<QTreeView *>(QStringLiteral("projectTree"));
+    auto *model = qobject_cast<QFileSystemModel *>(tree ? tree->model() : nullptr);
+    auto *copyPath = window.findChild<QAction *>(QStringLiteral("projectTreeCopyPathAction"));
+    QVERIFY(tree != nullptr);
+    QVERIFY(model != nullptr);
+    QVERIFY(copyPath != nullptr);
+    QVERIFY(QApplication::clipboard() != nullptr);
+
+    QApplication::clipboard()->clear();
+
+    QModelIndex fileIndex;
+    QTRY_VERIFY((fileIndex = model->index(filePath)).isValid());
+    tree->setCurrentIndex(fileIndex);
+
+    copyPath->trigger();
+
+    QCOMPARE(QApplication::clipboard()->text(), QDir::toNativeSeparators(filePath));
 }
 
 void TestMainWindow::projectSearchShowsClickableResultRows()

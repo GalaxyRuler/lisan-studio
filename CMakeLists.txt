@@ -36,6 +36,8 @@ add_library(acs_core
     src/EditorSurface.cpp
     src/ProjectModel.h
     src/ProjectModel.cpp
+    src/ProjectFileOperations.h
+    src/ProjectFileOperations.cpp
     src/RuntimeRunner.h
     src/RuntimeRunner.cpp
     src/RuntimeProblemParser.h

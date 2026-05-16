@@ -71,6 +71,8 @@ private slots:
     void renameProjectTreeItem();
     void deleteProjectTreeItem();
     void revealProjectTreeItem();
+    void copyProjectTreeItemPath();
+    void openProjectTreeContainingFolder();
     void refreshProjectTree();
     void openSettings();
 
@@ -104,6 +106,8 @@ private:
     QAction *projectTreeRenameAction = nullptr;
     QAction *projectTreeDeleteAction = nullptr;
     QAction *projectTreeRevealAction = nullptr;
+    QAction *projectTreeCopyPathAction = nullptr;
+    QAction *projectTreeOpenContainingFolderAction = nullptr;
     QAction *projectTreeRefreshAction = nullptr;
     QProcess *activeRuntimeProcess = nullptr;
     QTimer *runtimeTimeoutTimer = nullptr;
