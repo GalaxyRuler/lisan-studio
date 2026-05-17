@@ -62,6 +62,7 @@ private slots:
     void settingsStorePersistsShortcutSettingsJson();
     void packageScriptDerivesMsiArtifactNameFromProductVersion();
     void packageScriptStampsInstallerBuildId();
+    void releaseEvidenceScriptDerivesMsiPathFromProductVersion();
     void workspaceSettingsStoreDefaultsWhenMissingOrInvalid();
     void workspaceSettingsStorePersistsTrustAndEditorPreferences();
     void settingsDialogModelBuildsUiStateFromStoreAndDiagnostics();
@@ -790,6 +791,23 @@ void TestProjectSearchRuntime::packageScriptStampsInstallerBuildId()
 
     QVERIFY(wxsSource.contains(QStringLiteral("Name=\"BuildId\"")));
     QVERIFY(wxsSource.contains(QStringLiteral("$(var.BuildId)")));
+}
+
+void TestProjectSearchRuntime::releaseEvidenceScriptDerivesMsiPathFromProductVersion()
+{
+    QString scriptPath = QDir::current().absoluteFilePath(QStringLiteral("scripts/release-evidence.ps1"));
+    if (!QFileInfo::exists(scriptPath)) {
+        scriptPath = QDir::current().absoluteFilePath(QStringLiteral("../scripts/release-evidence.ps1"));
+    }
+    QFile script(scriptPath);
+    QVERIFY2(script.open(QIODevice::ReadOnly | QIODevice::Text), qPrintable(scriptPath));
+
+    const QString source = QString::fromUtf8(script.readAll());
+
+    QVERIFY(!source.contains(QStringLiteral("LisanStudio-0.1.0-beta.msi")));
+    QVERIFY(source.contains(QStringLiteral("ProductVersion")));
+    QVERIFY(source.contains(QStringLiteral("LisanStudio-$ProductVersion-beta.msi")));
+    QVERIFY(source.contains(QStringLiteral("-MsiPath $msiPath")));
 }
 
 void TestProjectSearchRuntime::workspaceSettingsStoreDefaultsWhenMissingOrInvalid()

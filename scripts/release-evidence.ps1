@@ -19,7 +19,8 @@ if (-not $SourceMetadataPath) {
 $releaseDir = Join-Path $repo "artifacts\release\$ReleaseLabel"
 $logsDir = Join-Path $releaseDir "logs"
 $screenshotsDir = Join-Path $releaseDir "screenshots"
-$msiPath = Join-Path $repo "artifacts\LisanStudio-0.1.0-beta.msi"
+$msiFileName = "LisanStudio-$ProductVersion-beta.msi"
+$msiPath = Join-Path (Join-Path $repo "artifacts") $msiFileName
 $installRoot = Join-Path $env:LOCALAPPDATA "LisanStudio"
 $app = Join-Path $installRoot "LisanStudio.exe"
 
@@ -169,7 +170,9 @@ $steps += Invoke-LoggedStep -Name "package" -Command {
         -WixPath $WixPath `
         -QtLicenseRoot $QtLicenseRoot
 }
-$steps += Invoke-LoggedStep -Name "msi-smoke-keep-installed" -Command { & (Join-Path $PSScriptRoot "msi-smoke.ps1") -KeepInstalled }
+$steps += Invoke-LoggedStep -Name "msi-smoke-keep-installed" -Command {
+    & (Join-Path $PSScriptRoot "msi-smoke.ps1") -MsiPath $msiPath -KeepInstalled
+}
 
 if (-not (Test-Path -LiteralPath $msiPath)) {
     throw "Release MSI missing after package step: $msiPath"
