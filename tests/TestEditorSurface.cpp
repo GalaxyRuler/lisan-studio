@@ -16,6 +16,10 @@ private slots:
     void asciiOnlyCodeUsesLtrDocumentPolicy();
     void saveAndReopenPreservesUtf8TortureText();
     void saveFileRoundTripsLoadedCrlfLineEndings();
+    void editorSurfaceRoundTripsCrlf();
+    void editorSurfaceRoundTripsLfAndDoesNotIntroduceCarriageReturns();
+    void editorSurfaceAppliesPersistedEndingToNewlyTypedLines();
+    void editorSurfaceUsesDominantEndingForMixedFile();
     void openRejectsInvalidUtf8ByPolicy();
     void saveUsesDocumentIoAndRejectsInvalidTarget();
     void savePreservesTrailingWhitespaceByDefault();
@@ -133,6 +137,103 @@ void TestEditorSurface::saveFileRoundTripsLoadedCrlfLineEndings()
     QCOMPARE(readFileBytes(path), original);
 }
 
+void TestEditorSurface::editorSurfaceRoundTripsCrlf()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    const QString path = temp.filePath(QStringLiteral("main.apy"));
+    const QByteArray original = QString::fromUtf8(
+        "اسم = \"سارة\"\r\n"
+        "اطبع(اسم)\r\n").toUtf8();
+
+    QFile file(path);
+    QVERIFY(file.open(QIODevice::WriteOnly));
+    QCOMPARE(file.write(original), original.size());
+    file.close();
+
+    EditorSurface editor;
+    QVERIFY(editor.openFile(path));
+    QVERIFY(editor.saveFile());
+
+    QCOMPARE(readFileBytes(path), original);
+}
+
+void TestEditorSurface::editorSurfaceRoundTripsLfAndDoesNotIntroduceCarriageReturns()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    const QString path = temp.filePath(QStringLiteral("main.apy"));
+    const QByteArray original = QString::fromUtf8(
+        "اسم = \"سارة\"\n"
+        "اطبع(اسم)\n").toUtf8();
+
+    QFile file(path);
+    QVERIFY(file.open(QIODevice::WriteOnly));
+    QCOMPARE(file.write(original), original.size());
+    file.close();
+
+    EditorSurface editor;
+    QVERIFY(editor.openFile(path));
+    QVERIFY(editor.saveFile());
+
+    const QByteArray saved = readFileBytes(path);
+    QCOMPARE(saved, original);
+    QVERIFY(!saved.contains('\r'));
+}
+
+void TestEditorSurface::editorSurfaceAppliesPersistedEndingToNewlyTypedLines()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    const QString path = temp.filePath(QStringLiteral("main.apy"));
+    const QByteArray original = QString::fromUtf8(
+        "اسم = \"سارة\"\r\n"
+        "اطبع(اسم)\r\n").toUtf8();
+
+    QFile file(path);
+    QVERIFY(file.open(QIODevice::WriteOnly));
+    QCOMPARE(file.write(original), original.size());
+    file.close();
+
+    EditorSurface editor;
+    QVERIFY(editor.openFile(path));
+    QTextCursor cursor = editor.textCursor();
+    cursor.movePosition(QTextCursor::End);
+    editor.setTextCursor(cursor);
+    editor.insertPlainText(QString::fromUtf8("اطبع(اسم2)\n"));
+
+    QVERIFY(editor.saveFile());
+
+    const QByteArray expected = original + QString::fromUtf8("اطبع(اسم2)\r\n").toUtf8();
+    QCOMPARE(readFileBytes(path), expected);
+}
+
+void TestEditorSurface::editorSurfaceUsesDominantEndingForMixedFile()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    const QString path = temp.filePath(QStringLiteral("main.apy"));
+    const QByteArray original = QString::fromUtf8(
+        "اسم = \"سارة\"\r\n"
+        "عدد = 1\r\n"
+        "اطبع(اسم)\n").toUtf8();
+
+    QFile file(path);
+    QVERIFY(file.open(QIODevice::WriteOnly));
+    QCOMPARE(file.write(original), original.size());
+    file.close();
+
+    EditorSurface editor;
+    QVERIFY(editor.openFile(path));
+    QVERIFY(editor.saveFile());
+
+    const QByteArray expected = QString::fromUtf8(
+        "اسم = \"سارة\"\r\n"
+        "عدد = 1\r\n"
+        "اطبع(اسم)\r\n").toUtf8();
+    QCOMPARE(readFileBytes(path), expected);
+}
+
 void TestEditorSurface::openRejectsInvalidUtf8ByPolicy()
 {
     QTemporaryDir temp;
@@ -165,7 +266,7 @@ void TestEditorSurface::saveUsesDocumentIoAndRejectsInvalidTarget()
 
     QFile saved(path);
     QVERIFY(saved.open(QIODevice::ReadOnly));
-    QCOMPARE(saved.readAll(), QString::fromUtf8("اطبع(\"مرحبا\")\n").toUtf8());
+    QCOMPARE(saved.readAll(), QString::fromUtf8("اطبع(\"مرحبا\")\r\n").toUtf8());
 
     QString error;
     QVERIFY(!editor.saveFileAs(QDir(temp.path()).filePath(QStringLiteral("missing-dir/main.apy")), &error));
@@ -186,7 +287,7 @@ void TestEditorSurface::savePreservesTrailingWhitespaceByDefault()
 
     QFile saved(path);
     QVERIFY(saved.open(QIODevice::ReadOnly));
-    QCOMPARE(QString::fromUtf8(saved.readAll()), text);
+    QCOMPARE(saved.readAll(), QString::fromUtf8("عدد = 1   \r\n    اطبع(عدد)\t \r\n").toUtf8());
     QCOMPARE(editor.toPlainText(), text);
 }
 
@@ -207,7 +308,7 @@ void TestEditorSurface::saveTrimsTrailingWhitespaceWhenEnabled()
     const QString expected = QString::fromUtf8("عدد = 1\n    اطبع(عدد)\n");
     QFile saved(path);
     QVERIFY(saved.open(QIODevice::ReadOnly));
-    QCOMPARE(QString::fromUtf8(saved.readAll()), expected);
+    QCOMPARE(saved.readAll(), QString::fromUtf8("عدد = 1\r\n    اطبع(عدد)\r\n").toUtf8());
     QCOMPARE(editor.toPlainText(), expected);
 }
 

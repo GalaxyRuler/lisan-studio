@@ -81,14 +81,51 @@ static QString removeTrailingWhitespace(const QString &text)
 
 static QString withSavedLineEnding(QString text, DocumentLineEnding lineEnding)
 {
+    text.replace(QStringLiteral("\r\n"), QStringLiteral("\n"));
+    text.replace(QLatin1Char('\r'), QLatin1Char('\n'));
+
     if (lineEnding != DocumentLineEnding::Crlf) {
         return text;
     }
 
-    text.replace(QStringLiteral("\r\n"), QStringLiteral("\n"));
-    text.replace(QLatin1Char('\r'), QLatin1Char('\n'));
     text.replace(QStringLiteral("\n"), QStringLiteral("\r\n"));
     return text;
+}
+
+static DocumentLineEnding dominantLineEndingForMixedText(const QString &text)
+{
+    int crlfCount = 0;
+    int lfCount = 0;
+    for (int i = 0; i < text.size(); ++i) {
+        if (text.at(i) != QLatin1Char('\n')) {
+            continue;
+        }
+
+        if (i > 0 && text.at(i - 1) == QLatin1Char('\r')) {
+            ++crlfCount;
+        } else {
+            ++lfCount;
+        }
+    }
+
+    return crlfCount >= lfCount ? DocumentLineEnding::Crlf : DocumentLineEnding::Lf;
+}
+
+static DocumentLineEnding saveLineEndingForLoadedText(const DocumentLoadResult &loaded)
+{
+    if (loaded.lineEnding == DocumentLineEnding::Mixed) {
+        return dominantLineEndingForMixedText(loaded.text);
+    }
+    return loaded.lineEnding;
+}
+
+static DocumentLineEnding resolveSaveLineEnding(DocumentLineEnding lineEnding)
+{
+    // New/empty documents default to Windows CRLF; mixed files are resolved to their dominant style on load.
+    if (lineEnding == DocumentLineEnding::None || lineEnding == DocumentLineEnding::Mixed) {
+        return DocumentLineEnding::Crlf;
+    }
+    return lineEnding;
 }
 
 static bool containsStrongRtlText(const QString &text)
@@ -177,9 +214,7 @@ bool EditorSurface::openFile(const QString &path, QString *error)
 
     setPlainText(loaded.text);
     document()->setModified(false);
-    saveLineEnding = loaded.lineEnding == DocumentLineEnding::Crlf
-        ? DocumentLineEnding::Crlf
-        : DocumentLineEnding::Lf;
+    saveLineEnding = saveLineEndingForLoadedText(loaded);
     setCurrentFilePath(loaded.identity.path);
     return true;
 }
@@ -188,7 +223,7 @@ void EditorSurface::resetForNewFile()
 {
     clear();
     document()->setModified(false);
-    saveLineEnding = DocumentLineEnding::Lf;
+    saveLineEnding = DocumentLineEnding::None;
     setCurrentFilePath(QString());
     updateDocumentDirectionPolicy();
 }
@@ -227,7 +262,7 @@ bool EditorSurface::saveFileAs(const QString &path, QString *error)
         }
     }
 
-    const QString savedText = withSavedLineEnding(textToSave, saveLineEnding);
+    const QString savedText = withSavedLineEnding(textToSave, resolveSaveLineEnding(saveLineEnding));
     if (!DocumentFileIO::saveUtf8Atomically(path, savedText, error)) {
         return false;
     }

@@ -68,7 +68,7 @@ private:
     int bracketMatchSelectionCount = 0;
     bool trimTrailingWhitespace = false;
     bool showIndentationGuides = true;
-    DocumentLineEnding saveLineEnding = DocumentLineEnding::Lf;
+    DocumentLineEnding saveLineEnding = DocumentLineEnding::None;
     ApyHighlighter *highlighter = nullptr;
     LineNumberArea *lineNumberArea = nullptr;
 
