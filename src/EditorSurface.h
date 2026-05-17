@@ -74,6 +74,7 @@ private:
 
     static QString unicodeName(QChar ch);
     void setCurrentFilePath(const QString &path);
+    void updateDocumentDirectionPolicy();
     void refreshFindMatches(bool selectFirst = true);
     void updateEditorExtraSelections();
     QVector<int> matchingDelimiterPositions() const;

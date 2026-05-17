@@ -91,6 +91,17 @@ static QString withSavedLineEnding(QString text, DocumentLineEnding lineEnding)
     return text;
 }
 
+static bool containsStrongRtlText(const QString &text)
+{
+    for (QChar ch : text) {
+        const QChar::Direction direction = ch.direction();
+        if (direction == QChar::DirR || direction == QChar::DirAL) {
+            return true;
+        }
+    }
+    return false;
+}
+
 class LineNumberArea final : public QWidget
 {
 public:
@@ -145,6 +156,7 @@ EditorSurface::EditorSurface(QWidget *parent)
 
     connect(document(), &QTextDocument::modificationChanged, this, &EditorSurface::dirtyStateChanged);
     connect(document(), &QTextDocument::contentsChanged, this, [this]() {
+        updateDocumentDirectionPolicy();
         if (!activeFindQuery.isEmpty()) {
             refreshFindMatches(false);
         } else {
@@ -178,6 +190,18 @@ void EditorSurface::resetForNewFile()
     document()->setModified(false);
     saveLineEnding = DocumentLineEnding::Lf;
     setCurrentFilePath(QString());
+    updateDocumentDirectionPolicy();
+}
+
+void EditorSurface::updateDocumentDirectionPolicy()
+{
+    QTextOption option = document()->defaultTextOption();
+    const QString text = toPlainText();
+    const bool useRtlDocument = text.isEmpty() || containsStrongRtlText(text);
+    option.setTextDirection(useRtlDocument ? Qt::RightToLeft : Qt::LeftToRight);
+    option.setAlignment(useRtlDocument ? Qt::AlignRight : Qt::AlignLeft);
+    document()->setDefaultTextOption(option);
+    viewport()->update();
 }
 
 bool EditorSurface::saveFile(QString *error)

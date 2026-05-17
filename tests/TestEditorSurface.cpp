@@ -13,6 +13,7 @@ class TestEditorSurface : public QObject
 
 private slots:
     void preservesMixedArabicCodeText();
+    void asciiOnlyCodeUsesLtrDocumentPolicy();
     void saveAndReopenPreservesUtf8TortureText();
     void saveFileRoundTripsLoadedCrlfLineEndings();
     void openRejectsInvalidUtf8ByPolicy();
@@ -76,6 +77,21 @@ void TestEditorSurface::preservesMixedArabicCodeText()
     QCOMPARE(editor.toPlainText(), text);
     QCOMPARE(editor.document()->defaultTextOption().textDirection(), Qt::RightToLeft);
     QCOMPARE(editor.lineWrapMode(), QPlainTextEdit::NoWrap);
+}
+
+void TestEditorSurface::asciiOnlyCodeUsesLtrDocumentPolicy()
+{
+    EditorSurface editor;
+    const QString text = QStringLiteral(
+        "name = 1\n"
+        "print(name)\n");
+
+    editor.setPlainText(text);
+
+    const QTextOption option = editor.document()->defaultTextOption();
+    QCOMPARE(option.textDirection(), Qt::LeftToRight);
+    QCOMPARE(option.alignment(), Qt::AlignLeft);
+    QCOMPARE(editor.layoutDirection(), Qt::RightToLeft);
 }
 
 void TestEditorSurface::saveAndReopenPreservesUtf8TortureText()
