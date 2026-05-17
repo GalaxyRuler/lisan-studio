@@ -1,6 +1,7 @@
 #include "MainWindow.h"
 
 #include "ApySnippetService.h"
+#include "CommandPaletteModel.h"
 #include "DocumentFileIO.h"
 #include "ProjectFileOperations.h"
 #include "RuntimeProblemParser.h"
@@ -1175,16 +1176,11 @@ void MainWindow::openCommandPalette()
     const QJsonObject shortcutJson = settings.shortcutSettingsJson();
     const bool hasShortcutSettings = !shortcutJson.isEmpty() && shortcutSettings.loadJson(shortcutJson, commandRegistry);
 
-    auto addCommandRow = [&](const CommandDefinition &command) {
-        const QKeySequence shortcutSequence = hasShortcutSettings
-            ? shortcutSettings.effectiveShortcut(commandRegistry, command.id)
-            : command.defaultShortcut;
-        const QString shortcutText = shortcutSequence.toString(QKeySequence::NativeText);
-
+    auto addCommandRow = [&](const CommandPaletteRow &command) {
         auto *item = new QListWidgetItem(commands);
         item->setData(Qt::UserRole, command.id);
         item->setData(Qt::UserRole + 1, command.title);
-        item->setData(Qt::UserRole + 2, shortcutText);
+        item->setData(Qt::UserRole + 2, command.shortcutText);
         item->setData(Qt::UserRole + 3, command.keywords);
         item->setSizeHint(QSize(0, 44));
 
@@ -1194,7 +1190,7 @@ void MainWindow::openCommandPalette()
         rowLayout->setContentsMargins(12, 6, 12, 6);
         rowLayout->setSpacing(12);
 
-        auto *shortcut = new QLabel(shortcutText, row);
+        auto *shortcut = new QLabel(command.shortcutText, row);
         shortcut->setObjectName(QStringLiteral("commandPaletteShortcutLabel"));
         shortcut->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
         shortcut->setMinimumWidth(120);
@@ -1212,7 +1208,10 @@ void MainWindow::openCommandPalette()
         commands->setItemWidget(item, row);
     };
 
-    for (const CommandDefinition &command : commandRegistry.commands()) {
+    const QVector<CommandPaletteRow> paletteRows = CommandPaletteModel::rows(
+        commandRegistry,
+        hasShortcutSettings ? &shortcutSettings : nullptr);
+    for (const CommandPaletteRow &command : paletteRows) {
         addCommandRow(command);
     }
 
@@ -1221,10 +1220,6 @@ void MainWindow::openCommandPalette()
 
     QPointer<QDialog> dialogPointer(&dialog);
     std::function<void()> selectedCommand;
-
-    auto normalized = [](QString text) {
-        return text.trimmed().toCaseFolded();
-    };
 
     auto firstVisibleRow = [&]() {
         for (int row = 0; row < commands->count(); ++row) {
@@ -1236,16 +1231,14 @@ void MainWindow::openCommandPalette()
     };
 
     auto updateFilter = [&]() {
-        const QString query = normalized(input->text());
         for (int row = 0; row < commands->count(); ++row) {
             auto *item = commands->item(row);
-            const QString haystack = normalized(
-                item->data(Qt::UserRole + 1).toString()
-                + QLatin1Char(' ')
-                + item->data(Qt::UserRole + 2).toString()
-                + QLatin1Char(' ')
-                + item->data(Qt::UserRole + 3).toString());
-            item->setHidden(!query.isEmpty() && !haystack.contains(query));
+            CommandPaletteRow paletteRow;
+            paletteRow.id = item->data(Qt::UserRole).toString();
+            paletteRow.title = item->data(Qt::UserRole + 1).toString();
+            paletteRow.shortcutText = item->data(Qt::UserRole + 2).toString();
+            paletteRow.keywords = item->data(Qt::UserRole + 3).toString();
+            item->setHidden(!CommandPaletteModel::matchesQuery(paletteRow, input->text()));
         }
         commands->setCurrentRow(firstVisibleRow());
     };

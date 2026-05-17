@@ -1,5 +1,6 @@
 #include <QtTest/QtTest>
 
+#include "CommandPaletteModel.h"
 #include "CommandRegistry.h"
 #include "ShortcutSettingsModel.h"
 
@@ -15,6 +16,8 @@ private slots:
     void disabledCommandDoesNotTrigger();
     void shortcutSettingsRoundTripsOverrides();
     void shortcutSettingsRejectsUnknownCommandsAndConflicts();
+    void commandPaletteModelBuildsRowsWithShortcutOverrides();
+    void commandPaletteModelFiltersByTitleShortcutAndKeywords();
 };
 
 static CommandDefinition makeCommand(const QString &id, bool *triggered, bool enabled = true)
@@ -115,6 +118,43 @@ void TestCommandRegistry::shortcutSettingsRejectsUnknownCommandsAndConflicts()
     QVERIFY2(settings.setOverride(registry, QStringLiteral("save-file"), QKeySequence(QStringLiteral("Ctrl+Alt+S")), &error), qPrintable(error));
     QVERIFY(!settings.setOverride(registry, QStringLiteral("open-file"), QKeySequence(QStringLiteral("Ctrl+Alt+S")), &error));
     QVERIFY2(error.contains(QStringLiteral("Ctrl+Alt+S")), qPrintable(error));
+}
+
+void TestCommandRegistry::commandPaletteModelBuildsRowsWithShortcutOverrides()
+{
+    bool saveTriggered = false;
+    bool runTriggered = false;
+    CommandRegistry registry;
+    QVERIFY(registry.registerCommand(makeCommand(QStringLiteral("save-file"), &saveTriggered)));
+    QVERIFY(registry.registerCommand(makeCommand(QStringLiteral("run-current-file"), &runTriggered)));
+
+    ShortcutSettingsModel settings;
+    QString error;
+    QVERIFY2(settings.setOverride(registry, QStringLiteral("save-file"), QKeySequence(QStringLiteral("Ctrl+Alt+S")), &error), qPrintable(error));
+
+    const QVector<CommandPaletteRow> rows = CommandPaletteModel::rows(registry, &settings);
+
+    QCOMPARE(rows.size(), 2);
+    QCOMPARE(rows.first().id, QStringLiteral("save-file"));
+    QCOMPARE(rows.first().title, QString::fromUtf8("ملف جديد"));
+    QCOMPARE(rows.first().shortcutText, QKeySequence(QStringLiteral("Ctrl+Alt+S")).toString(QKeySequence::NativeText));
+    QCOMPARE(rows.first().keywords, QString::fromUtf8("ملف جديد new file"));
+    QCOMPARE(rows.last().shortcutText, QKeySequence(QKeySequence::New).toString(QKeySequence::NativeText));
+}
+
+void TestCommandRegistry::commandPaletteModelFiltersByTitleShortcutAndKeywords()
+{
+    CommandPaletteRow row;
+    row.id = QStringLiteral("run-current-file");
+    row.title = QString::fromUtf8("تشغيل الملف الحالي");
+    row.shortcutText = QStringLiteral("F5");
+    row.keywords = QStringLiteral("run current file");
+
+    QVERIFY(CommandPaletteModel::matchesQuery(row, QString()));
+    QVERIFY(CommandPaletteModel::matchesQuery(row, QString::fromUtf8("تشغيل")));
+    QVERIFY(CommandPaletteModel::matchesQuery(row, QStringLiteral("f5")));
+    QVERIFY(CommandPaletteModel::matchesQuery(row, QStringLiteral("CURRENT")));
+    QVERIFY(!CommandPaletteModel::matchesQuery(row, QStringLiteral("missing")));
 }
 
 QTEST_MAIN(TestCommandRegistry)

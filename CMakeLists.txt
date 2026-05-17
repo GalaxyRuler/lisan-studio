@@ -20,6 +20,8 @@ qt_standard_project_setup()
 add_library(acs_core
     src/CommandRegistry.h
     src/CommandRegistry.cpp
+    src/CommandPaletteModel.h
+    src/CommandPaletteModel.cpp
     src/DocumentFileIO.h
     src/DocumentFileIO.cpp
     src/DocumentChangePoller.h
