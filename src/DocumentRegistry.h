@@ -34,6 +34,7 @@ struct DocumentRecord
     QString path;
     QString text;
     bool dirty = false;
+    int version = 0;
     DocumentEncoding encoding = DocumentEncoding::Utf8;
     DocumentLineEnding lineEnding = DocumentLineEnding::None;
     DocumentFileIdentity identity;

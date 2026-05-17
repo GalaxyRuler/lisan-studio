@@ -38,6 +38,7 @@ DocumentId DocumentRegistry::openPath(const QString &path, QString *error)
     record.id = DocumentId(nextId++);
     record.path = loaded.identity.path;
     record.text = loaded.text;
+    record.version = 1;
     record.encoding = loaded.encoding;
     record.lineEnding = loaded.lineEnding;
     record.identity = loaded.identity;
@@ -50,6 +51,7 @@ DocumentId DocumentRegistry::createUntitled(const QString &text)
     DocumentRecord record;
     record.id = DocumentId(nextId++);
     record.text = text;
+    record.version = 1;
     record.dirty = !text.isEmpty();
     record.lineEnding = DocumentFileIO::detectLineEnding(text);
     records.push_back(record);
@@ -101,6 +103,7 @@ void DocumentRegistry::setText(DocumentId id, const QString &text)
     }
 
     records[index].text = text;
+    ++records[index].version;
     records[index].dirty = true;
     records[index].lineEnding = DocumentFileIO::detectLineEnding(text);
 }
@@ -201,6 +204,7 @@ bool DocumentRegistry::reloadFromDisk(DocumentId id, QString *error)
     }
 
     record.text = loaded.text;
+    ++record.version;
     record.encoding = loaded.encoding;
     record.lineEnding = loaded.lineEnding;
     record.identity = loaded.identity;

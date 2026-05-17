@@ -21,6 +21,7 @@ private slots:
     void documentRegistryListsExternallyChangedDocuments();
     void documentRegistryReloadsExternalChangesFromDisk();
     void documentRegistryKeepsCurrentTextAfterExternalChanges();
+    void documentRegistryVersionsDocumentsForStaleEditDetection();
     void unsavedChangesGuardRequiresSaveDiscardOrCancelForDirtyDocuments();
 };
 
@@ -271,6 +272,39 @@ void TestWorkbenchState::documentRegistryKeepsCurrentTextAfterExternalChanges()
     QCOMPARE(deleted.externalState, DocumentExternalState::Unchanged);
     QCOMPARE(deleted.identity.sizeBytes, -1);
     QVERIFY(!deleted.identity.lastModifiedUtc.isValid());
+}
+
+void TestWorkbenchState::documentRegistryVersionsDocumentsForStaleEditDetection()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    const QString path = QDir(temp.path()).filePath(QStringLiteral("main.apy"));
+    QVERIFY(DocumentFileIO::saveUtf8Atomically(path, QString::fromUtf8("عدد = 1\n")));
+
+    DocumentRegistry registry;
+    QString error;
+    const DocumentId fileId = registry.openPath(path, &error);
+    QVERIFY2(fileId.isValid(), qPrintable(error));
+    const DocumentId untitledId = registry.createUntitled(QString::fromUtf8("مسودة\n"));
+    QVERIFY(untitledId.isValid());
+
+    QCOMPARE(registry.document(fileId).version, 1);
+    QCOMPARE(registry.document(untitledId).version, 1);
+
+    registry.setText(fileId, QString::fromUtf8("عدد = 2\n"));
+    QCOMPARE(registry.document(fileId).version, 2);
+
+    registry.markClean(fileId);
+    QCOMPARE(registry.document(fileId).version, 2);
+
+    registry.setPathAfterSave(fileId, path);
+    QCOMPARE(registry.document(fileId).version, 2);
+
+    QTest::qWait(1100);
+    QVERIFY(DocumentFileIO::saveUtf8Atomically(path, QString::fromUtf8("عدد = 3\n")));
+    QVERIFY2(registry.reloadFromDisk(fileId, &error), qPrintable(error));
+    QCOMPARE(registry.document(fileId).text, QString::fromUtf8("عدد = 3\n"));
+    QCOMPARE(registry.document(fileId).version, 3);
 }
 
 void TestWorkbenchState::unsavedChangesGuardRequiresSaveDiscardOrCancelForDirtyDocuments()
