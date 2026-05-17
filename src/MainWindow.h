@@ -164,7 +164,6 @@ private:
     QString activeRuntimeTitle;
     QString activeRuntimeStdout;
     QString activeRuntimeStderr;
-    QString darkThemeStyleSheet;
     QVector<ProjectReplacePreviewRow> currentProjectReplacePreviewRows;
     QModelIndex projectTreeContextIndex;
     bool activeRuntimeHandledError = false;

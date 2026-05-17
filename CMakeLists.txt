@@ -36,6 +36,8 @@ add_library(acs_core
     src/UnsavedChangesGuard.cpp
     src/WorkbenchState.h
     src/WorkbenchState.cpp
+    src/WorkbenchTheme.h
+    src/WorkbenchTheme.cpp
     src/ApyHighlighter.h
     src/ApyHighlighter.cpp
     src/EditorSurface.h

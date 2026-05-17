@@ -4,6 +4,7 @@
 #include "DocumentRegistry.h"
 #include "UnsavedChangesGuard.h"
 #include "WorkbenchState.h"
+#include "WorkbenchTheme.h"
 
 #include <algorithm>
 #include <QUrl>
@@ -30,6 +31,7 @@ private slots:
     void documentRegistryRejectsStaleOrInvalidTextEdits();
     void documentChangePollerReportsRegistryExternalChanges();
     void unsavedChangesGuardRequiresSaveDiscardOrCancelForDirtyDocuments();
+    void workbenchThemeProvidesDarkAndLightStyleSheets();
 };
 
 void TestWorkbenchState::searchGenerationsAdvanceAndRejectStaleResults()
@@ -465,6 +467,22 @@ void TestWorkbenchState::unsavedChangesGuardRequiresSaveDiscardOrCancelForDirtyD
     QCOMPARE(UnsavedChangesGuard::allowsOperation(UnsavedChangesChoice::Cancel), false);
     QCOMPARE(UnsavedChangesGuard::allowsOperation(UnsavedChangesChoice::Discard), true);
     QCOMPARE(UnsavedChangesGuard::allowsOperation(UnsavedChangesChoice::Save), true);
+}
+
+void TestWorkbenchState::workbenchThemeProvidesDarkAndLightStyleSheets()
+{
+    const QString dark = WorkbenchTheme::darkStyleSheet();
+    const QString light = WorkbenchTheme::lightStyleSheet();
+
+    QVERIFY(dark.contains(QStringLiteral("#0f141a")));
+    QVERIFY(dark.contains(QStringLiteral("QToolButton[role=\"topMenu\"]::menu-indicator")));
+    QVERIFY(dark.contains(QStringLiteral("QStatusBar")));
+
+    QVERIFY(light.contains(QStringLiteral("#F6F7FB")));
+    QVERIFY(light.contains(QStringLiteral("QToolButton[role=\"topMenu\"]::menu-indicator")));
+    QVERIFY(light.contains(QStringLiteral("QStatusBar")));
+    QVERIFY(!light.contains(QStringLiteral("#0f141a")));
+    QVERIFY(dark != light);
 }
 
 QTEST_MAIN(TestWorkbenchState)
