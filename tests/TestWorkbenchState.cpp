@@ -22,6 +22,8 @@ private slots:
     void documentRegistryReloadsExternalChangesFromDisk();
     void documentRegistryKeepsCurrentTextAfterExternalChanges();
     void documentRegistryVersionsDocumentsForStaleEditDetection();
+    void documentRegistryAppliesVersionedTextEdits();
+    void documentRegistryRejectsStaleOrInvalidTextEdits();
     void unsavedChangesGuardRequiresSaveDiscardOrCancelForDirtyDocuments();
 };
 
@@ -305,6 +307,59 @@ void TestWorkbenchState::documentRegistryVersionsDocumentsForStaleEditDetection(
     QVERIFY2(registry.reloadFromDisk(fileId, &error), qPrintable(error));
     QCOMPARE(registry.document(fileId).text, QString::fromUtf8("عدد = 3\n"));
     QCOMPARE(registry.document(fileId).version, 3);
+}
+
+void TestWorkbenchState::documentRegistryAppliesVersionedTextEdits()
+{
+    DocumentRegistry registry;
+    const DocumentId id = registry.createUntitled(QString::fromUtf8("عدد = 1\nاطبع(عدد)\n"));
+    QVERIFY(id.isValid());
+    const int start = registry.document(id).text.indexOf(QString::fromUtf8("عدد"));
+    QVERIFY(start >= 0);
+
+    DocumentTextEdit edit;
+    edit.expectedVersion = registry.document(id).version;
+    edit.start = start;
+    edit.length = QString::fromUtf8("عدد").size();
+    edit.replacement = QString::fromUtf8("قيمة");
+
+    QString error;
+    QVERIFY2(registry.applyTextEdit(id, edit, &error), qPrintable(error));
+
+    const DocumentRecord record = registry.document(id);
+    QCOMPARE(record.text, QString::fromUtf8("قيمة = 1\nاطبع(عدد)\n"));
+    QCOMPARE(record.version, 2);
+    QVERIFY(record.dirty);
+    QCOMPARE(record.lineEnding, DocumentLineEnding::Lf);
+}
+
+void TestWorkbenchState::documentRegistryRejectsStaleOrInvalidTextEdits()
+{
+    DocumentRegistry registry;
+    const DocumentId id = registry.createUntitled(QString::fromUtf8("عدد = 1\n"));
+    QVERIFY(id.isValid());
+
+    QString error;
+    DocumentTextEdit staleEdit;
+    staleEdit.expectedVersion = registry.document(id).version - 1;
+    staleEdit.start = 0;
+    staleEdit.length = 3;
+    staleEdit.replacement = QString::fromUtf8("قيمة");
+    QVERIFY(!registry.applyTextEdit(id, staleEdit, &error));
+    QVERIFY(error.contains(QStringLiteral("stale"), Qt::CaseInsensitive));
+    QCOMPARE(registry.document(id).text, QString::fromUtf8("عدد = 1\n"));
+    QCOMPARE(registry.document(id).version, 1);
+
+    error.clear();
+    DocumentTextEdit invalidRange;
+    invalidRange.expectedVersion = registry.document(id).version;
+    invalidRange.start = registry.document(id).text.size() + 1;
+    invalidRange.length = 1;
+    invalidRange.replacement = QString::fromUtf8("قيمة");
+    QVERIFY(!registry.applyTextEdit(id, invalidRange, &error));
+    QVERIFY(!error.isEmpty());
+    QCOMPARE(registry.document(id).text, QString::fromUtf8("عدد = 1\n"));
+    QCOMPARE(registry.document(id).version, 1);
 }
 
 void TestWorkbenchState::unsavedChangesGuardRequiresSaveDiscardOrCancelForDirtyDocuments()

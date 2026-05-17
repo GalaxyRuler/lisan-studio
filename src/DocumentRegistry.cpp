@@ -226,6 +226,43 @@ bool DocumentRegistry::keepCurrentVersion(DocumentId id)
     return true;
 }
 
+bool DocumentRegistry::applyTextEdit(DocumentId id, const DocumentTextEdit &edit, QString *error)
+{
+    if (error) {
+        error->clear();
+    }
+
+    const int index = indexOf(id);
+    if (index < 0) {
+        if (error) {
+            *error = QStringLiteral("Unknown document.");
+        }
+        return false;
+    }
+
+    DocumentRecord &record = records[index];
+    if (edit.expectedVersion != record.version) {
+        if (error) {
+            *error = QStringLiteral("Stale document edit.");
+        }
+        return false;
+    }
+
+    if (edit.start < 0 || edit.length < 0 || edit.start > record.text.size()
+        || edit.length > record.text.size() - edit.start) {
+        if (error) {
+            *error = QStringLiteral("Document edit range is invalid.");
+        }
+        return false;
+    }
+
+    record.text.replace(edit.start, edit.length, edit.replacement);
+    record.lineEnding = DocumentFileIO::detectLineEnding(record.text);
+    record.dirty = true;
+    ++record.version;
+    return true;
+}
+
 int DocumentRegistry::indexOf(DocumentId id) const
 {
     for (int i = 0; i < records.size(); ++i) {

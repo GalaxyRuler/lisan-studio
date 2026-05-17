@@ -41,6 +41,14 @@ struct DocumentRecord
     DocumentExternalState externalState = DocumentExternalState::Unchanged;
 };
 
+struct DocumentTextEdit
+{
+    int expectedVersion = 0;
+    int start = 0;
+    int length = 0;
+    QString replacement;
+};
+
 class DocumentRegistry final
 {
 public:
@@ -58,6 +66,7 @@ public:
     QVector<DocumentRecord> externallyChangedDocuments() const;
     bool reloadFromDisk(DocumentId id, QString *error = nullptr);
     bool keepCurrentVersion(DocumentId id);
+    bool applyTextEdit(DocumentId id, const DocumentTextEdit &edit, QString *error = nullptr);
 
 private:
     QVector<DocumentRecord> records;
