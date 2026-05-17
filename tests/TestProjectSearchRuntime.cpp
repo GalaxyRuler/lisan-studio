@@ -799,7 +799,12 @@ void TestProjectSearchRuntime::settingsDialogModelBuildsUiStateFromStoreAndDiagn
         diagnostics,
         {QStringLiteral("Segoe UI"), QStringLiteral("Tahoma")});
 
-    QCOMPARE(state.categories, QStringList({QString::fromUtf8("المحرر"), QString::fromUtf8("التشغيل"), QString::fromUtf8("المشاريع")}));
+    QCOMPARE(state.categories, QStringList({
+        QString::fromUtf8("المحرر"),
+        QString::fromUtf8("التشغيل"),
+        QString::fromUtf8("المشاريع"),
+        QString::fromUtf8("الاختصارات"),
+    }));
     QCOMPARE(state.editorFontFamilies, QStringList({QStringLiteral("Segoe UI"), QStringLiteral("Tahoma")}));
     QCOMPARE(state.selectedEditorFontFamily, QStringLiteral("Segoe UI"));
     QCOMPARE(state.editorFontSize, 18);

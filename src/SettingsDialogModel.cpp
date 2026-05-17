@@ -45,6 +45,7 @@ SettingsDialogState SettingsDialogModel::build(
         QString::fromUtf8("المحرر"),
         QString::fromUtf8("التشغيل"),
         QString::fromUtf8("المشاريع"),
+        QString::fromUtf8("الاختصارات"),
     };
     state.editorFontFamilies = editorFontFamilies;
     state.selectedEditorFontFamily = resolvedEditorFontFamily(settings.editorFontFamily(), editorFontFamilies);

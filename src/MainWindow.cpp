@@ -2695,9 +2695,53 @@ void MainWindow::openSettings()
     recentProjects->addItems(settingsState.recentProjects);
     projectsLayout->addWidget(recentProjects);
 
+    auto *shortcutsPage = new QWidget(pages);
+    shortcutsPage->setObjectName(QStringLiteral("shortcutSettingsPage"));
+    shortcutsPage->setLayoutDirection(Qt::RightToLeft);
+    auto *shortcutsLayout = new QVBoxLayout(shortcutsPage);
+    shortcutsLayout->setContentsMargins(8, 8, 8, 8);
+    shortcutsLayout->setSpacing(8);
+    auto *shortcutList = new QListWidget(shortcutsPage);
+    shortcutList->setObjectName(QStringLiteral("shortcutSettingsList"));
+    shortcutList->setLayoutDirection(Qt::RightToLeft);
+    shortcutList->setUniformItemSizes(false);
+
+    ShortcutSettingsModel shortcutSettings;
+    const QJsonObject shortcutJson = settings.shortcutSettingsJson();
+    const bool hasShortcutSettings = !shortcutJson.isEmpty() && shortcutSettings.loadJson(shortcutJson, commandRegistry);
+    for (const CommandDefinition &command : commandRegistry.commands()) {
+        const QKeySequence shortcutSequence = hasShortcutSettings
+            ? shortcutSettings.effectiveShortcut(commandRegistry, command.id)
+            : command.defaultShortcut;
+        const QString shortcutText = shortcutSequence.toString(QKeySequence::NativeText);
+        auto *item = new QListWidgetItem(
+            QStringLiteral("%1    %2").arg(command.title, shortcutText),
+            shortcutList);
+        item->setData(Qt::UserRole, command.id);
+        item->setData(Qt::UserRole + 1, shortcutText);
+        item->setToolTip(command.id);
+    }
+    shortcutsLayout->addWidget(shortcutList, 1);
+
+    auto *shortcutButtonRow = new QWidget(shortcutsPage);
+    shortcutButtonRow->setLayoutDirection(Qt::RightToLeft);
+    auto *shortcutButtonLayout = new QHBoxLayout(shortcutButtonRow);
+    shortcutButtonLayout->setContentsMargins(0, 0, 0, 0);
+    shortcutButtonLayout->addStretch(1);
+    auto *shortcutImportButton = new QPushButton(QString::fromUtf8("استيراد"), shortcutButtonRow);
+    shortcutImportButton->setObjectName(QStringLiteral("shortcutImportButton"));
+    shortcutImportButton->setEnabled(false);
+    auto *shortcutExportButton = new QPushButton(QString::fromUtf8("تصدير"), shortcutButtonRow);
+    shortcutExportButton->setObjectName(QStringLiteral("shortcutExportButton"));
+    shortcutExportButton->setEnabled(false);
+    shortcutButtonLayout->addWidget(shortcutImportButton);
+    shortcutButtonLayout->addWidget(shortcutExportButton);
+    shortcutsLayout->addWidget(shortcutButtonRow);
+
     pages->addTab(editorPage, QString::fromUtf8("المحرر"));
     pages->addTab(runtimePage, QString::fromUtf8("التشغيل"));
     pages->addTab(projectsPage, QString::fromUtf8("المشاريع"));
+    pages->addTab(shortcutsPage, QString::fromUtf8("الاختصارات"));
     categories->setCurrentRow(0);
     connect(categories, &QListWidget::currentRowChanged, pages, &QTabWidget::setCurrentIndex);
 
