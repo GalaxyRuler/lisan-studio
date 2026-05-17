@@ -3148,6 +3148,7 @@ EditorSurface *MainWindow::createEditorTab(const QString &title)
         updateEditorTabTitle(surface);
         updateBreadcrumbBar();
         updateStatusIndicators();
+        saveWorkbenchSession();
     });
     connect(surface->document(), &QTextDocument::contentsChanged, this, [this, surface]() {
         syncDocumentRegistryFromSurface(surface);
@@ -3155,6 +3156,7 @@ EditorSurface *MainWindow::createEditorTab(const QString &title)
             refreshEditorProblems();
             updateStatusIndicators();
         }
+        saveWorkbenchSession();
     });
 
     updateEditorTabTitle(surface);
@@ -3801,6 +3803,7 @@ bool MainWindow::confirmUnsavedDocuments(UnsavedChangesOperation operation)
         return false;
     }
     if (answer == QMessageBox::Discard) {
+        discardUntitledDrafts();
         return true;
     }
 
@@ -3817,6 +3820,23 @@ bool MainWindow::confirmUnsavedDocuments(UnsavedChangesOperation operation)
         }
     }
     return true;
+}
+
+void MainWindow::discardUntitledDrafts()
+{
+    for (int i = 0; editorTabs && i < editorTabs->count(); ++i) {
+        auto *surface = qobject_cast<EditorSurface *>(editorTabs->widget(i));
+        if (!surface || !surface->isDirty() || !surface->currentFilePath().isEmpty()) {
+            continue;
+        }
+
+        surface->clear();
+        surface->document()->setModified(false);
+        syncDocumentRegistryFromSurface(surface);
+        syncEditorSession(surface);
+        updateEditorTabTitle(surface);
+    }
+    saveWorkbenchSession();
 }
 
 QString MainWindow::runtimeWorkingDirectory() const
@@ -3978,7 +3998,36 @@ void MainWindow::restoreWorkbenchSession()
         }
     }
 
-    if (openedAnyFile && editorTabs) {
+    bool restoredAnyDraft = false;
+    for (const QString &draftText : session.untitledDrafts) {
+        if (draftText.isEmpty()) {
+            continue;
+        }
+
+        const bool canReuseInitialTab = !openedAnyFile
+            && !restoredAnyDraft
+            && editorTabs
+            && editorTabs->count() == 1
+            && editor
+            && editor->currentFilePath().isEmpty()
+            && !editor->isDirty()
+            && editor->toPlainText().isEmpty();
+        EditorSurface *target = canReuseInitialTab
+            ? editor
+            : createEditorTab(QString::fromUtf8("مسودة مستعادة"));
+        if (!target) {
+            continue;
+        }
+
+        target->setPlainText(draftText);
+        target->document()->setModified(true);
+        syncDocumentRegistryFromSurface(target);
+        syncEditorSession(target);
+        updateEditorTabTitle(target);
+        restoredAnyDraft = true;
+    }
+
+    if ((openedAnyFile || restoredAnyDraft) && editorTabs) {
         const int activeIndex = qBound(0, session.activeFileIndex, editorTabs->count() - 1);
         editorTabs->setCurrentIndex(activeIndex);
     }
@@ -3997,7 +4046,14 @@ void MainWindow::saveWorkbenchSession()
     if (editorTabs) {
         for (int i = 0; i < editorTabs->count(); ++i) {
             auto *surface = qobject_cast<EditorSurface *>(editorTabs->widget(i));
-            if (!surface || surface->currentFilePath().isEmpty()) {
+            if (!surface) {
+                continue;
+            }
+            if (surface->currentFilePath().isEmpty()) {
+                const QString text = surface->toPlainText();
+                if (surface->isDirty() || !text.isEmpty()) {
+                    session.untitledDrafts.append(text);
+                }
                 continue;
             }
             session.openFiles.append(surface->currentFilePath());

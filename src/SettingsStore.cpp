@@ -104,6 +104,8 @@ SavedWorkbenchSession SettingsStore::savedWorkbenchSession() const
     for (QString &openFile : session.openFiles) {
         openFile = QDir::fromNativeSeparators(openFile);
     }
+    session.untitledDrafts = settings.value(QStringLiteral("session/untitledDrafts")).toStringList();
+    session.untitledDrafts.removeAll(QString());
     session.activeFileIndex = settings.value(QStringLiteral("session/activeFileIndex"), -1).toInt();
     if (session.activeFileIndex < 0 || session.activeFileIndex >= session.openFiles.size()) {
         session.activeFileIndex = session.openFiles.isEmpty() ? -1 : 0;
@@ -127,6 +129,11 @@ void SettingsStore::saveWorkbenchSession(const SavedWorkbenchSession &session)
     QSettings settings(path, QSettings::IniFormat);
     settings.setValue(QStringLiteral("session/projectRoot"), QDir::fromNativeSeparators(session.projectRoot));
     settings.setValue(QStringLiteral("session/openFiles"), openFiles);
+    if (session.untitledDrafts.isEmpty()) {
+        settings.remove(QStringLiteral("session/untitledDrafts"));
+    } else {
+        settings.setValue(QStringLiteral("session/untitledDrafts"), session.untitledDrafts);
+    }
     settings.setValue(QStringLiteral("session/activeFileIndex"), activeFileIndex);
     settings.setValue(QStringLiteral("session/bottomPanelId"), session.bottomPanelId);
 }

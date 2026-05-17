@@ -720,6 +720,7 @@ void TestProjectSearchRuntime::settingsStorePersistsWorkbenchSession()
     const SavedWorkbenchSession emptySession = empty.savedWorkbenchSession();
     QVERIFY(emptySession.projectRoot.isEmpty());
     QVERIFY(emptySession.openFiles.isEmpty());
+    QVERIFY(emptySession.untitledDrafts.isEmpty());
     QCOMPARE(emptySession.activeFileIndex, -1);
     QVERIFY(emptySession.bottomPanelId.isEmpty());
 
@@ -729,6 +730,10 @@ void TestProjectSearchRuntime::settingsStorePersistsWorkbenchSession()
         QString::fromUtf8("C:/مشروع/main.apy"),
         QString::fromUtf8("C:/مشروع/src/ثانوي.apy"),
     };
+    session.untitledDrafts = {
+        QString::fromUtf8("اطبع(\"مسودة\")\n"),
+        QString::fromUtf8("عدد = 1\n"),
+    };
     session.activeFileIndex = 1;
     session.bottomPanelId = QStringLiteral("search");
     empty.saveWorkbenchSession(session);
@@ -737,6 +742,7 @@ void TestProjectSearchRuntime::settingsStorePersistsWorkbenchSession()
     const SavedWorkbenchSession loaded = reloaded.savedWorkbenchSession();
     QCOMPARE(loaded.projectRoot, QString::fromUtf8("C:/مشروع"));
     QCOMPARE(loaded.openFiles, session.openFiles);
+    QCOMPARE(loaded.untitledDrafts, session.untitledDrafts);
     QCOMPARE(loaded.activeFileIndex, 1);
     QCOMPARE(loaded.bottomPanelId, QStringLiteral("search"));
 }

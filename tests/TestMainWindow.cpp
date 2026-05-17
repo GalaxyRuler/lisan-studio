@@ -9,6 +9,7 @@
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QElapsedTimer>
+#include <QFile>
 #include <QFontComboBox>
 #include <QFontDatabase>
 #include <QJsonDocument>
@@ -24,6 +25,7 @@
 #include <QPushButton>
 #include <QSpinBox>
 #include <QStatusBar>
+#include <QStandardPaths>
 #include <QTabWidget>
 #include <QThread>
 #include <QTimer>
@@ -36,9 +38,14 @@ class TestMainWindow : public QObject
     Q_OBJECT
 
 private slots:
+    void initTestCase();
+    void init();
     void opensProjectAndFileFromPath();
     void restoresSavedWorkbenchSession();
+    void restoresUntitledDraftsFromWorkbenchSession();
     void savesWorkbenchSessionOnClose();
+    void savesUntitledDraftsOnEditorChange();
+    void discardingUntitledDraftOnCloseClearsSessionDraft();
     void openingFileRecordsRecentFile();
     void workspaceTrimSettingAppliesToOpenedEditors();
     void hiddenBidiSaveWarningCancelLeavesDiskUntouched();
@@ -141,6 +148,16 @@ static int horizontalGap(const QRect &a, const QRect &b)
     return 0;
 }
 
+void TestMainWindow::initTestCase()
+{
+    QStandardPaths::setTestModeEnabled(true);
+}
+
+void TestMainWindow::init()
+{
+    QFile::remove(SettingsStore().settingsPath());
+}
+
 void TestMainWindow::opensProjectAndFileFromPath()
 {
     QTemporaryDir temp;
@@ -196,6 +213,29 @@ void TestMainWindow::restoresSavedWorkbenchSession()
     QCOMPARE(bottomTabs->currentWidget(), problems);
 }
 
+void TestMainWindow::restoresUntitledDraftsFromWorkbenchSession()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    const QString settingsPath = temp.filePath(QStringLiteral("settings.ini"));
+
+    SettingsStore store(settingsPath);
+    SavedWorkbenchSession session;
+    session.untitledDrafts = {QString::fromUtf8("اطبع(\"مسودة غير محفوظة\")\n")};
+    store.saveWorkbenchSession(session);
+
+    MainWindow window(nullptr, settingsPath);
+
+    auto *tabs = window.findChild<QTabWidget *>(QStringLiteral("editorTabs"));
+    QVERIFY(tabs != nullptr);
+    QCOMPARE(tabs->count(), 1);
+    auto *editor = qobject_cast<EditorSurface *>(tabs->currentWidget());
+    QVERIFY(editor != nullptr);
+    QCOMPARE(editor->currentFilePath(), QString());
+    QCOMPARE(editor->toPlainText(), session.untitledDrafts.first());
+    QVERIFY(editor->isDirty());
+}
+
 void TestMainWindow::savesWorkbenchSessionOnClose()
 {
     QTemporaryDir temp;
@@ -228,6 +268,50 @@ void TestMainWindow::savesWorkbenchSessionOnClose()
     QCOMPARE(QDir::toNativeSeparators(saved.openFiles.at(1)), QDir::toNativeSeparators(secondPath));
     QCOMPARE(saved.activeFileIndex, 1);
     QCOMPARE(saved.bottomPanelId, QStringLiteral("search"));
+}
+
+void TestMainWindow::savesUntitledDraftsOnEditorChange()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    const QString settingsPath = temp.filePath(QStringLiteral("settings.ini"));
+
+    MainWindow window(nullptr, settingsPath);
+    auto *editor = window.findChild<EditorSurface *>(QStringLiteral("editorSurface"));
+    QVERIFY(editor != nullptr);
+
+    editor->setPlainText(QString::fromUtf8("اطبع(\"مسودة تلقائية\")\n"));
+    QCoreApplication::processEvents();
+
+    SettingsStore reloaded(settingsPath);
+    const SavedWorkbenchSession saved = reloaded.savedWorkbenchSession();
+    QCOMPARE(saved.untitledDrafts, QStringList({QString::fromUtf8("اطبع(\"مسودة تلقائية\")\n")}));
+}
+
+void TestMainWindow::discardingUntitledDraftOnCloseClearsSessionDraft()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    const QString settingsPath = temp.filePath(QStringLiteral("settings.ini"));
+
+    MainWindow window(nullptr, settingsPath);
+    auto *editor = window.findChild<EditorSurface *>(QStringLiteral("editorSurface"));
+    QVERIFY(editor != nullptr);
+    editor->insertPlainText(QString::fromUtf8("اطبع(\"سأحذف\")\n"));
+    QCoreApplication::processEvents();
+    QVERIFY(editor->isDirty());
+    QVERIFY(!SettingsStore(settingsPath).savedWorkbenchSession().untitledDrafts.isEmpty());
+
+    QTimer::singleShot(0, []() {
+        auto *box = qobject_cast<QMessageBox *>(QApplication::activeModalWidget());
+        QVERIFY(box != nullptr);
+        box->button(QMessageBox::Discard)->click();
+    });
+
+    QVERIFY(window.close());
+
+    SettingsStore reloaded(settingsPath);
+    QVERIFY(reloaded.savedWorkbenchSession().untitledDrafts.isEmpty());
 }
 
 void TestMainWindow::openingFileRecordsRecentFile()

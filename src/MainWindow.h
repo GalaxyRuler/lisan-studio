@@ -229,6 +229,7 @@ private:
     bool confirmHiddenBidiSave();
     QVector<DocumentRecord> openDocumentRecords() const;
     bool confirmUnsavedDocuments(UnsavedChangesOperation operation);
+    void discardUntitledDrafts();
     void runRuntimeAction(RuntimeAction action, const QString &title, bool reloadAfterSuccess = false);
     void startRuntimeLaunchPlan(const RuntimeLaunchPlan &plan, bool recordHistory);
     void appendRuntimeOutput(const QString &label, const QString &text);

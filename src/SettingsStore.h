@@ -8,6 +8,7 @@ struct SavedWorkbenchSession
 {
     QString projectRoot;
     QStringList openFiles;
+    QStringList untitledDrafts;
     int activeFileIndex = -1;
     QString bottomPanelId;
 };
