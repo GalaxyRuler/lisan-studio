@@ -63,6 +63,7 @@ private slots:
     bool exportShortcutSettingsToPath(const QString &path);
     bool importShortcutSettingsFromPath(const QString &path);
     bool resetShortcutSettingsToDefaults();
+    bool setShortcutOverrideForCommand(const QString &commandId, const QKeySequence &shortcut);
     bool openOutputLinkAtCursor();
     void showAllOutput();
     void showOnlyStdoutOutput();

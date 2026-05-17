@@ -100,6 +100,8 @@ private slots:
     void shortcutSettingsImportAppliesValidJson();
     void shortcutSettingsImportRejectsInvalidJsonWithoutChangingExistingShortcuts();
     void shortcutSettingsResetRestoresDefaultActions();
+    void shortcutOverrideHelperPersistsAndAppliesCommandShortcut();
+    void shortcutOverrideHelperRejectsConflictsWithoutChangingSettings();
 };
 
 static QString writeFile(const QDir &root, const QString &relative, const QString &text)
@@ -2602,6 +2604,59 @@ void TestMainWindow::shortcutSettingsResetRestoresDefaultActions()
         QCOMPARE(action->shortcut(), QKeySequence(QKeySequence::Save));
     }
     QVERIFY(saveActionCount >= 2);
+}
+
+void TestMainWindow::shortcutOverrideHelperPersistsAndAppliesCommandShortcut()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    const QString settingsPath = temp.filePath(QStringLiteral("settings.ini"));
+
+    MainWindow window(nullptr, settingsPath);
+    bool saved = false;
+    QVERIFY(QMetaObject::invokeMethod(
+        &window,
+        "setShortcutOverrideForCommand",
+        Qt::DirectConnection,
+        Q_RETURN_ARG(bool, saved),
+        Q_ARG(QString, QStringLiteral("save-file")),
+        Q_ARG(QKeySequence, QKeySequence(QStringLiteral("Ctrl+Alt+S")))));
+
+    QVERIFY(saved);
+    QCOMPARE(
+        SettingsStore(settingsPath).shortcutSettingsJson().value(QStringLiteral("shortcuts")).toObject().value(QStringLiteral("save-file")).toString(),
+        QStringLiteral("Ctrl+Alt+S"));
+
+    int saveActionCount = 0;
+    for (auto *action : window.findChildren<QAction *>()) {
+        if (action->property("commandId").toString() != QStringLiteral("save-file")) {
+            continue;
+        }
+        ++saveActionCount;
+        QCOMPARE(action->shortcut(), QKeySequence(QStringLiteral("Ctrl+Alt+S")));
+    }
+    QVERIFY(saveActionCount >= 2);
+}
+
+void TestMainWindow::shortcutOverrideHelperRejectsConflictsWithoutChangingSettings()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    const QString settingsPath = temp.filePath(QStringLiteral("settings.ini"));
+
+    MainWindow window(nullptr, settingsPath);
+    bool saved = true;
+    QVERIFY(QMetaObject::invokeMethod(
+        &window,
+        "setShortcutOverrideForCommand",
+        Qt::DirectConnection,
+        Q_RETURN_ARG(bool, saved),
+        Q_ARG(QString, QStringLiteral("save-file")),
+        Q_ARG(QKeySequence, QKeySequence(QKeySequence::Open))));
+
+    QVERIFY(!saved);
+    QVERIFY(SettingsStore(settingsPath).shortcutSettingsJson().isEmpty());
+    QVERIFY(window.property("shortcutSettingsError").toString().contains(QStringLiteral("open-file")));
 }
 
 QTEST_MAIN(TestMainWindow)

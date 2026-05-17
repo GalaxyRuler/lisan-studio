@@ -1759,6 +1759,30 @@ bool MainWindow::resetShortcutSettingsToDefaults()
     return true;
 }
 
+bool MainWindow::setShortcutOverrideForCommand(const QString &commandId, const QKeySequence &shortcut)
+{
+    ShortcutSettingsModel shortcutSettings;
+    QString error;
+    const QJsonObject shortcutJson = settings.shortcutSettingsJson();
+    if (!shortcutJson.isEmpty() && !shortcutSettings.loadJson(shortcutJson, commandRegistry, &error)) {
+        setProperty("shortcutSettingsError", error);
+        setStatus(error);
+        return false;
+    }
+
+    if (!shortcutSettings.setOverride(commandRegistry, commandId, shortcut, &error)) {
+        setProperty("shortcutSettingsError", error);
+        setStatus(error);
+        return false;
+    }
+
+    settings.saveShortcutSettingsJson(shortcutSettings.toJson());
+    applyShortcutSettings();
+    setProperty("shortcutSettingsError", QString());
+    setStatus(QString::fromUtf8("تم تحديث الاختصار"));
+    return true;
+}
+
 bool MainWindow::openOutputLinkAtCursor()
 {
     if (!outputPanel) {
