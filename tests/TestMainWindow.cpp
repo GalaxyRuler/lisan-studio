@@ -66,6 +66,7 @@ private slots:
     void dirtyBufferCancelPreventsProjectSwitch();
     void openingMultipleFilesKeepsEachDocumentInATab();
     void openDocumentRecordsExposeRegistryVersionsAcrossEditAndSave();
+    void documentChangePollingMarksExternallyModifiedOpenFile();
     void projectTreeShowsOnlyFileNames();
     void projectTreeExposesRtlContextActions();
     void projectTreeOpenActionOpensSelectedFile();
@@ -1396,6 +1397,31 @@ void TestMainWindow::openDocumentRecordsExposeRegistryVersionsAcrossEditAndSave(
     QCOMPARE(records.first().version, 2);
     QVERIFY(!records.first().dirty);
     QCOMPARE(QDir::toNativeSeparators(records.first().path), QDir::toNativeSeparators(filePath));
+}
+
+void TestMainWindow::documentChangePollingMarksExternallyModifiedOpenFile()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    QDir root(temp.path());
+    const QString filePath = writeFile(root, QStringLiteral("main.apy"), QString::fromUtf8("عدد = 1\n"));
+
+    MainWindow window;
+    QVERIFY(window.openPath(filePath));
+
+    QVector<DocumentRecord> records = window.openDocumentRecords();
+    QCOMPARE(records.size(), 1);
+    QCOMPARE(records.first().externalState, DocumentExternalState::Unchanged);
+
+    QTest::qWait(1100);
+    QString error;
+    QVERIFY2(DocumentFileIO::saveUtf8Atomically(filePath, QString::fromUtf8("عدد = 2\n"), &error), qPrintable(error));
+
+    QVERIFY(QMetaObject::invokeMethod(&window, "pollOpenDocumentChanges", Qt::DirectConnection));
+
+    records = window.openDocumentRecords();
+    QCOMPARE(records.size(), 1);
+    QCOMPARE(records.first().externalState, DocumentExternalState::Modified);
 }
 
 void TestMainWindow::projectTreeShowsOnlyFileNames()

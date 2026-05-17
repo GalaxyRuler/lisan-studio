@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CommandRegistry.h"
+#include "DocumentChangePoller.h"
 #include "DocumentRegistry.h"
 #include "EditorSurface.h"
 #include "OutputTranscript.h"
@@ -104,6 +105,7 @@ private slots:
     void openProjectTreeContainingFolder();
     void refreshProjectTree();
     void openSettings();
+    void pollOpenDocumentChanges();
 
 private:
     EditorSurface *editor = nullptr;
@@ -151,6 +153,7 @@ private:
     QAction *projectTreeRefreshAction = nullptr;
     QProcess *activeRuntimeProcess = nullptr;
     QTimer *runtimeTimeoutTimer = nullptr;
+    QTimer *documentChangePollTimer = nullptr;
     QFutureWatcher<QVector<SearchResultRow>> *activeSearchWatcher = nullptr;
     QElapsedTimer activeRuntimeTimer;
     QString activeRuntimeTitle;
@@ -165,6 +168,7 @@ private:
     RuntimeHistory runtimeHistory;
     CommandRegistry commandRegistry;
     DocumentRegistry documentRegistry;
+    DocumentChangePoller documentChangePoller;
     WorkbenchState workbenchState;
     WorkspaceSettings workspaceSettings;
     OutputTranscript outputTranscript;

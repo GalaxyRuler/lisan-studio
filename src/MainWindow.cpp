@@ -279,9 +279,14 @@ MainWindow::MainWindow(QWidget *parent)
 
 MainWindow::MainWindow(QWidget *parent, const QString &settingsPath)
     : QMainWindow(parent),
-      settings(settingsPath)
+      settings(settingsPath),
+      documentChangePoller(&documentRegistry)
 {
     buildUi();
+    documentChangePollTimer = new QTimer(this);
+    documentChangePollTimer->setInterval(2000);
+    connect(documentChangePollTimer, &QTimer::timeout, this, &MainWindow::pollOpenDocumentChanges);
+    documentChangePollTimer->start();
     restoreWorkbenchSession();
     resize(1280, 820);
     setWindowTitle(QString::fromUtf8("استوديو لسان"));
@@ -3084,6 +3089,17 @@ EditorSurface *MainWindow::createEditorTab(const QString &title)
 
     updateEditorTabTitle(surface);
     return surface;
+}
+
+void MainWindow::pollOpenDocumentChanges()
+{
+    const DocumentChangeSnapshot snapshot = documentChangePoller.poll();
+    if (!snapshot.hasChanges()) {
+        return;
+    }
+
+    setStatus(QString::fromUtf8("تغيرت ملفات مفتوحة خارج الاستوديو"));
+    refreshEditorProblems();
 }
 
 void MainWindow::applyEditorFont(EditorSurface *surface)
