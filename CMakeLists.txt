@@ -22,6 +22,8 @@ add_library(acs_core
     src/CommandRegistry.cpp
     src/DocumentFileIO.h
     src/DocumentFileIO.cpp
+    src/DocumentChangePoller.h
+    src/DocumentChangePoller.cpp
     src/DocumentRegistry.h
     src/DocumentRegistry.cpp
     src/EditorFindService.h

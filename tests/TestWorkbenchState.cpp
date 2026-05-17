@@ -1,5 +1,6 @@
 #include <QtTest/QtTest>
 
+#include "DocumentChangePoller.h"
 #include "DocumentRegistry.h"
 #include "UnsavedChangesGuard.h"
 #include "WorkbenchState.h"
@@ -24,6 +25,7 @@ private slots:
     void documentRegistryVersionsDocumentsForStaleEditDetection();
     void documentRegistryAppliesVersionedTextEdits();
     void documentRegistryRejectsStaleOrInvalidTextEdits();
+    void documentChangePollerReportsRegistryExternalChanges();
     void unsavedChangesGuardRequiresSaveDiscardOrCancelForDirtyDocuments();
 };
 
@@ -360,6 +362,36 @@ void TestWorkbenchState::documentRegistryRejectsStaleOrInvalidTextEdits()
     QVERIFY(!error.isEmpty());
     QCOMPARE(registry.document(id).text, QString::fromUtf8("عدد = 1\n"));
     QCOMPARE(registry.document(id).version, 1);
+}
+
+void TestWorkbenchState::documentChangePollerReportsRegistryExternalChanges()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    const QString cleanPath = QDir(temp.path()).filePath(QStringLiteral("clean.apy"));
+    const QString changedPath = QDir(temp.path()).filePath(QStringLiteral("changed.apy"));
+    QVERIFY(DocumentFileIO::saveUtf8Atomically(cleanPath, QString::fromUtf8("ثابت = 1\n")));
+    QVERIFY(DocumentFileIO::saveUtf8Atomically(changedPath, QString::fromUtf8("عدد = 1\n")));
+
+    DocumentRegistry registry;
+    QString error;
+    const DocumentId cleanId = registry.openPath(cleanPath, &error);
+    QVERIFY2(cleanId.isValid(), qPrintable(error));
+    const DocumentId changedId = registry.openPath(changedPath, &error);
+    QVERIFY2(changedId.isValid(), qPrintable(error));
+
+    DocumentChangePoller poller(&registry);
+    QVERIFY(!poller.poll().hasChanges());
+
+    QTest::qWait(1100);
+    QVERIFY(DocumentFileIO::saveUtf8Atomically(changedPath, QString::fromUtf8("عدد = 2\n")));
+
+    const DocumentChangeSnapshot snapshot = poller.poll();
+    QVERIFY(snapshot.hasChanges());
+    QCOMPARE(snapshot.changedDocuments.size(), 1);
+    QCOMPARE(snapshot.changedDocuments.first().id, changedId);
+    QCOMPARE(snapshot.changedDocuments.first().externalState, DocumentExternalState::Modified);
+    QCOMPARE(registry.document(cleanId).externalState, DocumentExternalState::Unchanged);
 }
 
 void TestWorkbenchState::unsavedChangesGuardRequiresSaveDiscardOrCancelForDirtyDocuments()
