@@ -40,6 +40,10 @@ if ($source -match 'Copy-Item\s+-ToSession\s+\$session\s+-LiteralPath\s+\$hostAp
     throw 'Apython staging should copy the source contents into the guest root, not the host root directory container into the parent.'
 }
 
+if ($source -match [regex]::Escape('LisanStudio-0.1.0-beta.msi')) {
+    throw 'VM smoke should derive the packaged MSI path from productVersion instead of hardcoding 0.1.0-beta.'
+}
+
 foreach ($requiredToken in @(
         'host-progress.jsonl',
         'function Write-SmokeProgress',
@@ -59,6 +63,12 @@ foreach ($requiredToken in @(
         '$guestWorkRoot = Join-Path ''C:\CodexRunner\work'' $guestWorkLeaf',
         '$guestRepoRoot = Join-Path $guestWorkRoot ''arabic-code-studio-qt''',
         '$guestApythonRoot = Join-Path $guestWorkRoot ''apython''',
+        '$productVersion = ''0.1.0''',
+        '$releaseLabel = "$productVersion-beta"',
+        '$packagedMsi = Join-Path $GuestRepoRoot "artifacts\LisanStudio-$productVersion-beta.msi"',
+        '$releaseDir = Join-Path $GuestRepoRoot "artifacts\release\$releaseLabel"',
+        '$productVersion,',
+        '$releaseLabel,',
         'guestWorkLeaf = $guestWorkLeaf',
         'guestWorkRoot = $guestWorkRoot',
         'New-Item -ItemType Directory -Force -Path $GuestApythonRoot',

@@ -334,9 +334,11 @@ function Invoke-PowerShellScriptStep {
 
 $smokeSummaryPath = Join-Path $GuestArtifactDirectory 'smoke-summary.json'
 $smokeSummaryMarkdownPath = Join-Path $GuestArtifactDirectory 'smoke-summary.md'
-$releaseDir = Join-Path $GuestRepoRoot 'artifacts\release\0.1.0-beta'
+$productVersion = '0.1.0'
+$releaseLabel = "$productVersion-beta"
+$releaseDir = Join-Path $GuestRepoRoot "artifacts\release\$releaseLabel"
 $msiSmokeDir = Join-Path $GuestRepoRoot 'artifacts\msi-smoke'
-$packagedMsi = Join-Path $GuestRepoRoot 'artifacts\LisanStudio-0.1.0-beta.msi'
+$packagedMsi = Join-Path $GuestRepoRoot "artifacts\LisanStudio-$productVersion-beta.msi"
 
 $tooling = [ordered]@{}
 $missingRequirements = New-Object System.Collections.ArrayList
@@ -411,9 +413,9 @@ try {
         if ($ok) {
             $releaseEvidenceStep = Invoke-PowerShellScriptStep -Name 'release-evidence' -ScriptPath (Join-Path $GuestRepoRoot 'scripts\release-evidence.ps1') -Arguments @(
                 '-ProductVersion',
-                '0.1.0',
+                $productVersion,
                 '-ReleaseLabel',
-                '0.1.0-beta',
+                $releaseLabel,
                 '-ApythonRoot',
                 $GuestApythonRoot,
                 '-PythonRoot',
