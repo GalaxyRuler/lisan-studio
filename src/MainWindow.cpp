@@ -26,6 +26,7 @@
 #include <QListWidgetItem>
 #include <QMenu>
 #include <QMessageBox>
+#include <QMouseEvent>
 #include <QPainter>
 #include <QPaintEvent>
 #include <QPixmap>
@@ -826,6 +827,8 @@ void MainWindow::buildUi()
     outputOption.setAlignment(Qt::AlignRight);
     outputPanel->document()->setDefaultTextOption(outputOption);
     outputPanel->setMinimumHeight(160);
+    outputPanel->viewport()->installEventFilter(this);
+    outputPanel->setToolTip(QString::fromUtf8("انقر نقرا مزدوجا على مسار ملف لفتحه."));
     arabicOutputPanel->setArabicPlaceholderText(QString::fromUtf8("المخرجات ستظهر هنا"));
 
     auto *arabicTerminalPanel = new ArabicPlaceholderPlainTextEdit(bottomPanelTabs);
@@ -1669,6 +1672,39 @@ bool MainWindow::saveOutputPanelToPath(const QString &path)
 
     setStatus(QString::fromUtf8("تم حفظ الإخراج"));
     return true;
+}
+
+bool MainWindow::openOutputLinkAtCursor()
+{
+    if (!outputPanel) {
+        return false;
+    }
+
+    const int cursorPosition = outputPanel->textCursor().position();
+    const QVector<TerminalLink> links = TerminalLinkParser::linksForText(outputPanel->toPlainText());
+    for (const TerminalLink &link : links) {
+        const int linkEnd = link.start + link.length;
+        if (cursorPosition < link.start || cursorPosition > linkEnd) {
+            continue;
+        }
+
+        const QString normalizedPath = QFileInfo(link.path).absoluteFilePath();
+        if (!QFileInfo(normalizedPath).isFile()) {
+            setStatus(QString::fromUtf8("تعذر فتح رابط الإخراج"));
+            return false;
+        }
+
+        if (!openEditorFile(normalizedPath)) {
+            setStatus(QString::fromUtf8("تعذر فتح رابط الإخراج"));
+            return false;
+        }
+
+        goToEditorLocation(link.line, link.column);
+        setStatus(QString::fromUtf8("تم فتح رابط الإخراج"));
+        return true;
+    }
+
+    return false;
 }
 
 void MainWindow::showAllOutput()
@@ -3107,6 +3143,11 @@ void MainWindow::addProblem(const QString &severity, const QString &message, con
 
 void MainWindow::goToEditorLine(int line)
 {
+    goToEditorLocation(line, 1);
+}
+
+void MainWindow::goToEditorLocation(int line, int column)
+{
     if (!editor || line < 1) {
         return;
     }
@@ -3116,7 +3157,9 @@ void MainWindow::goToEditorLine(int line)
         return;
     }
 
-    QTextCursor cursor(block);
+    const int columnOffset = qBound(0, column - 1, qMax(0, block.length() - 1));
+    QTextCursor cursor(editor->document());
+    cursor.setPosition(block.position() + columnOffset);
     editor->setTextCursor(cursor);
     editor->centerCursor();
     editor->setFocus();
@@ -3427,4 +3470,19 @@ void MainWindow::closeEvent(QCloseEvent *event)
 
     saveWorkbenchSession();
     QMainWindow::closeEvent(event);
+}
+
+bool MainWindow::eventFilter(QObject *watched, QEvent *event)
+{
+    if (outputPanel && watched == outputPanel->viewport() && event->type() == QEvent::MouseButtonDblClick) {
+        auto *mouseEvent = static_cast<QMouseEvent *>(event);
+        if (mouseEvent->button() == Qt::LeftButton) {
+            outputPanel->setTextCursor(outputPanel->cursorForPosition(mouseEvent->pos()));
+            if (openOutputLinkAtCursor()) {
+                return true;
+            }
+        }
+    }
+
+    return QMainWindow::eventFilter(watched, event);
 }

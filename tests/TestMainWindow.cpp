@@ -66,6 +66,7 @@ private slots:
     void projectTreeCopyPathActionCopiesSelectedPath();
     void outputPanelActionsCopyAndClearTranscript();
     void outputPanelActionSavesTranscriptToUtf8File();
+    void outputPanelLinkAtCursorOpensEditorLocation();
     void outputFilterCommandsHideAndRestoreSystemTranscript();
     void terminalCommandRequiresTrustedWorkspace();
     void trustWorkspaceCommandPersistsAndUnblocksTerminalReadiness();
@@ -971,6 +972,40 @@ void TestMainWindow::outputPanelActionSavesTranscriptToUtf8File()
     QFile savedFile(savedPath);
     QVERIFY(savedFile.open(QIODevice::ReadOnly));
     QCOMPARE(QString::fromUtf8(savedFile.readAll()), outputPanel->toPlainText());
+}
+
+void TestMainWindow::outputPanelLinkAtCursorOpensEditorLocation()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    QDir root(temp.path());
+    const QString filePath = writeFile(root, QStringLiteral("src/main.apy"), QString::fromUtf8("أول\nثاني\nثالث\n"));
+    const QString linkText = QDir::toNativeSeparators(filePath) + QStringLiteral(":2:3");
+
+    MainWindow window;
+    auto *outputPanel = window.findChild<QPlainTextEdit *>(QStringLiteral("outputPanel"));
+    QVERIFY(outputPanel != nullptr);
+    outputPanel->setPlainText(QStringLiteral("Traceback\n%1: syntax error\n").arg(linkText));
+
+    QTextCursor outputCursor = outputPanel->textCursor();
+    outputCursor.setPosition(outputPanel->toPlainText().indexOf(linkText) + 4);
+    outputPanel->setTextCursor(outputCursor);
+
+    bool opened = false;
+    QVERIFY(QMetaObject::invokeMethod(
+        &window,
+        "openOutputLinkAtCursor",
+        Qt::DirectConnection,
+        Q_RETURN_ARG(bool, opened)));
+
+    QVERIFY(opened);
+    QCOMPARE(QDir::toNativeSeparators(window.currentEditorPath()), QDir::toNativeSeparators(filePath));
+
+    auto *editor = window.findChild<EditorSurface *>(QStringLiteral("editorSurface"));
+    QVERIFY(editor != nullptr);
+    const QTextBlock block = editor->document()->findBlockByNumber(1);
+    QVERIFY(block.isValid());
+    QCOMPARE(editor->textCursor().position(), block.position() + 2);
 }
 
 void TestMainWindow::outputFilterCommandsHideAndRestoreSystemTranscript()

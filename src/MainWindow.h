@@ -60,6 +60,7 @@ private slots:
     void clearOutputPanel();
     void saveOutputPanel();
     bool saveOutputPanelToPath(const QString &path);
+    bool openOutputLinkAtCursor();
     void showAllOutput();
     void showOnlyStdoutOutput();
     void showOnlyStderrOutput();
@@ -200,6 +201,7 @@ private:
     void refreshEditorProblems();
     void addProblem(const QString &severity, const QString &message, const QString &path = QString(), int line = 0);
     void goToEditorLine(int line);
+    void goToEditorLocation(int line, int column);
     QString runtimeWorkingDirectory() const;
     bool confirmSaveIfDirty();
     QVector<DocumentRecord> openDocumentRecords() const;
@@ -216,4 +218,5 @@ private:
     QString bottomPanelId(QWidget *panel) const;
     QWidget *bottomPanelForId(const QString &id) const;
     void closeEvent(QCloseEvent *event) override;
+    bool eventFilter(QObject *watched, QEvent *event) override;
 };
