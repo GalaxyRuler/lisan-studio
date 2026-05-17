@@ -76,6 +76,8 @@ private slots:
     void projectReplaceSelectionAcceptsRowsByDefault();
     void projectReplaceSelectionRejectsSingleRowsAndWholeFiles();
     void projectReplaceServiceAppliesAcceptedRowsAtomically();
+    void projectReplaceServicePreservesIndentedMatchedLines();
+    void projectReplaceServicePreservesCrlfLineEndings();
     void projectReplaceServiceRejectsStaleRowsWithoutWriting();
 };
 
@@ -89,6 +91,27 @@ static QString writeFile(const QDir &root, const QString &relative, const QStrin
     }
     file.write(text.toUtf8());
     return info.absoluteFilePath();
+}
+
+static QString writeRawFile(const QDir &root, const QString &relative, const QByteArray &bytes)
+{
+    const QFileInfo info(root.filePath(relative));
+    QDir().mkpath(info.absolutePath());
+    QFile file(info.absoluteFilePath());
+    if (!file.open(QIODevice::WriteOnly)) {
+        qFatal("could not write raw test file");
+    }
+    file.write(bytes);
+    return info.absoluteFilePath();
+}
+
+static QByteArray readRawFile(const QString &path)
+{
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly)) {
+        qFatal("could not read raw test file");
+    }
+    return file.readAll();
 }
 
 void TestProjectSearchRuntime::projectModelIgnoresBuildAndCacheDirectories()
@@ -1064,6 +1087,52 @@ void TestProjectSearchRuntime::projectReplaceServiceAppliesAcceptedRowsAtomicall
     QString diskText = QString::fromUtf8(file.readAll());
     diskText.replace(QStringLiteral("\r\n"), QStringLiteral("\n"));
     QCOMPARE(diskText, QString::fromUtf8("قيمة = 1\nاطبع(عدد)\n"));
+}
+
+void TestProjectSearchRuntime::projectReplaceServicePreservesIndentedMatchedLines()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    QDir root(temp.path());
+    const QString path = writeFile(root, QStringLiteral("main.apy"), QString::fromUtf8(
+        "اذا شرط:\n"
+        "    اطبع(عدد)\n"
+        "    اطبع(\"باقي\")\n"));
+
+    ProjectReplaceService service;
+    const ProjectReplacePreview preview = service.previewProject(root.absolutePath(), QString::fromUtf8("عدد"), QString::fromUtf8("قيمة"));
+
+    QString error;
+    const ProjectReplaceApplyResult result = ProjectReplaceService::applyAcceptedRows(preview.rows, &error);
+
+    QVERIFY2(result.succeeded, qPrintable(error));
+    QCOMPARE(readRawFile(path), QString::fromUtf8(
+        "اذا شرط:\n"
+        "    اطبع(قيمة)\n"
+        "    اطبع(\"باقي\")\n").toUtf8());
+}
+
+void TestProjectSearchRuntime::projectReplaceServicePreservesCrlfLineEndings()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    QDir root(temp.path());
+    const QString path = writeRawFile(root, QStringLiteral("main.apy"), QString::fromUtf8(
+        "عدد = 1\r\n"
+        "    اطبع(عدد)\r\n"
+        "اطبع(\"انتهى\")\r\n").toUtf8());
+
+    ProjectReplaceService service;
+    const ProjectReplacePreview preview = service.previewProject(root.absolutePath(), QString::fromUtf8("عدد"), QString::fromUtf8("قيمة"));
+
+    QString error;
+    const ProjectReplaceApplyResult result = ProjectReplaceService::applyAcceptedRows(preview.rows, &error);
+
+    QVERIFY2(result.succeeded, qPrintable(error));
+    QCOMPARE(readRawFile(path), QString::fromUtf8(
+        "قيمة = 1\r\n"
+        "    اطبع(قيمة)\r\n"
+        "اطبع(\"انتهى\")\r\n").toUtf8());
 }
 
 void TestProjectSearchRuntime::projectReplaceServiceRejectsStaleRowsWithoutWriting()

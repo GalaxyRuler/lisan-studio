@@ -9,7 +9,6 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QMap>
-#include <QStringList>
 
 #include <utility>
 
@@ -43,6 +42,48 @@ void setError(QString *error, const QString &message)
     if (error) {
         *error = message;
     }
+}
+
+struct TextLine
+{
+    QString text;
+    QString ending;
+};
+
+QVector<TextLine> splitTextLines(const QString &text)
+{
+    QVector<TextLine> lines;
+    qsizetype lineStart = 0;
+    for (qsizetype i = 0; i < text.size(); ++i) {
+        if (text.at(i) != QLatin1Char('\n')) {
+            continue;
+        }
+
+        qsizetype lineEnd = i;
+        QString ending = QStringLiteral("\n");
+        if (lineEnd > lineStart && text.at(lineEnd - 1) == QLatin1Char('\r')) {
+            --lineEnd;
+            ending = QStringLiteral("\r\n");
+        }
+
+        lines.push_back({text.mid(lineStart, lineEnd - lineStart), ending});
+        lineStart = i + 1;
+    }
+
+    if (lineStart < text.size() || lines.isEmpty()) {
+        lines.push_back({text.mid(lineStart), QString()});
+    }
+    return lines;
+}
+
+QString joinTextLines(const QVector<TextLine> &lines)
+{
+    QString text;
+    for (const TextLine &line : lines) {
+        text += line.text;
+        text += line.ending;
+    }
+    return text;
 }
 }
 
@@ -111,17 +152,17 @@ ProjectReplacePreview ProjectReplaceService::previewText(
     int lineNumber = 0;
     int rowCount = 0;
     int matchCount = 0;
-    const QStringList lines = text.split(QLatin1Char('\n'));
-    for (const QString &line : lines) {
+    const QVector<TextLine> lines = splitTextLines(text);
+    for (const TextLine &line : lines) {
         ++lineNumber;
-        const auto matches = EditorFindService::findAll(line, query);
+        const auto matches = EditorFindService::findAll(line.text, query);
         if (matches.isEmpty()) {
             continue;
         }
 
         int replacedOnLine = 0;
-        const QString after = EditorFindService::replaceAll(line, query, replacement, &replacedOnLine);
-        preview.rows.push_back({path, lineNumber, line.trimmed(), after.trimmed(), replacedOnLine});
+        const QString after = EditorFindService::replaceAll(line.text, query, replacement, &replacedOnLine);
+        preview.rows.push_back({path, lineNumber, line.text, after, replacedOnLine});
         ++rowCount;
         matchCount += replacedOnLine;
         if (preview.rows.size() >= limit) {
@@ -239,7 +280,7 @@ ProjectReplaceApplyResult ProjectReplaceService::applyAcceptedRows(const QVector
             return {};
         }
 
-        QStringList lines = loaded.text.split(QLatin1Char('\n'));
+        QVector<TextLine> lines = splitTextLines(loaded.text);
         for (const ProjectReplacePreviewRow &row : it.value()) {
             const int lineIndex = row.line - 1;
             if (lineIndex < 0 || lineIndex >= lines.size()) {
@@ -247,15 +288,15 @@ ProjectReplaceApplyResult ProjectReplaceService::applyAcceptedRows(const QVector
                 return {};
             }
 
-            const QString currentLine = lines.at(lineIndex).trimmed();
+            const QString currentLine = lines.at(lineIndex).text;
             if (currentLine != row.before) {
                 setError(error, QString::fromUtf8("تغير الملف منذ إنشاء المعاينة."));
                 return {};
             }
 
-            lines[lineIndex] = row.after;
+            lines[lineIndex].text = row.after;
         }
-        pendingWrites[it.key()] = lines.join(QLatin1Char('\n'));
+        pendingWrites[it.key()] = joinTextLines(lines);
     }
 
     for (auto it = pendingWrites.cbegin(); it != pendingWrites.cend(); ++it) {
