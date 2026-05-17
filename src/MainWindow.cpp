@@ -1121,11 +1121,20 @@ void MainWindow::openCommandPalette()
     commands->setLayoutDirection(Qt::RightToLeft);
     commands->setUniformItemSizes(false);
 
+    ShortcutSettingsModel shortcutSettings;
+    const QJsonObject shortcutJson = settings.shortcutSettingsJson();
+    const bool hasShortcutSettings = !shortcutJson.isEmpty() && shortcutSettings.loadJson(shortcutJson, commandRegistry);
+
     auto addCommandRow = [&](const CommandDefinition &command) {
+        const QKeySequence shortcutSequence = hasShortcutSettings
+            ? shortcutSettings.effectiveShortcut(commandRegistry, command.id)
+            : command.defaultShortcut;
+        const QString shortcutText = shortcutSequence.toString(QKeySequence::NativeText);
+
         auto *item = new QListWidgetItem(commands);
         item->setData(Qt::UserRole, command.id);
         item->setData(Qt::UserRole + 1, command.title);
-        item->setData(Qt::UserRole + 2, command.defaultShortcut.toString(QKeySequence::NativeText));
+        item->setData(Qt::UserRole + 2, shortcutText);
         item->setData(Qt::UserRole + 3, command.keywords);
         item->setSizeHint(QSize(0, 44));
 
@@ -1135,7 +1144,7 @@ void MainWindow::openCommandPalette()
         rowLayout->setContentsMargins(12, 6, 12, 6);
         rowLayout->setSpacing(12);
 
-        auto *shortcut = new QLabel(command.defaultShortcut.toString(QKeySequence::NativeText), row);
+        auto *shortcut = new QLabel(shortcutText, row);
         shortcut->setObjectName(QStringLiteral("commandPaletteShortcutLabel"));
         shortcut->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
         shortcut->setMinimumWidth(120);

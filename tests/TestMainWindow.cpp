@@ -46,6 +46,7 @@ private slots:
     void breadcrumbBarTracksActiveEditorPathWithSymbolPlaceholder();
     void exposesCommandPaletteAction();
     void commandPaletteExposesRegisteredWorkbenchCommands();
+    void commandPaletteShowsPersistedShortcutOverrides();
     void coreCommandSurfacesDeclareRegisteredCommandIds();
     void commandPaletteIncludesInFileFindCommand();
     void commandPaletteIncludesSnippetCommand();
@@ -604,6 +605,58 @@ void TestMainWindow::commandPaletteExposesRegisteredWorkbenchCommands()
         QStringLiteral("workspace.trust"),
     };
     QCOMPARE(commandIds, expectedIds);
+}
+
+void TestMainWindow::commandPaletteShowsPersistedShortcutOverrides()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    const QString settingsPath = temp.filePath(QStringLiteral("settings.ini"));
+
+    QJsonObject shortcuts;
+    shortcuts.insert(QStringLiteral("save-file"), QStringLiteral("Ctrl+Alt+S"));
+    QJsonObject shortcutSettings;
+    shortcutSettings.insert(QStringLiteral("version"), 1);
+    shortcutSettings.insert(QStringLiteral("shortcuts"), shortcuts);
+    SettingsStore(settingsPath).saveShortcutSettingsJson(shortcutSettings);
+
+    MainWindow window(nullptr, settingsPath);
+    QString metadataShortcut;
+    QString labelShortcut;
+
+    QTimer::singleShot(0, this, [&]() {
+        auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+        if (!dialog) {
+            return;
+        }
+
+        auto *commands = dialog->findChild<QListWidget *>(QStringLiteral("commandPaletteResults"));
+        if (!commands) {
+            dialog->reject();
+            return;
+        }
+
+        for (int row = 0; row < commands->count(); ++row) {
+            auto *item = commands->item(row);
+            if (item->data(Qt::UserRole).toString() != QStringLiteral("save-file")) {
+                continue;
+            }
+            metadataShortcut = item->data(Qt::UserRole + 2).toString();
+            auto *rowWidget = commands->itemWidget(item);
+            auto *shortcutLabel = rowWidget ? rowWidget->findChild<QLabel *>(QStringLiteral("commandPaletteShortcutLabel")) : nullptr;
+            if (shortcutLabel) {
+                labelShortcut = shortcutLabel->text();
+            }
+            break;
+        }
+        dialog->reject();
+    });
+
+    QVERIFY(QMetaObject::invokeMethod(&window, "openCommandPalette", Qt::DirectConnection));
+
+    const QString expectedShortcut = QKeySequence(QStringLiteral("Ctrl+Alt+S")).toString(QKeySequence::NativeText);
+    QCOMPARE(metadataShortcut, expectedShortcut);
+    QCOMPARE(labelShortcut, expectedShortcut);
 }
 
 void TestMainWindow::coreCommandSurfacesDeclareRegisteredCommandIds()
