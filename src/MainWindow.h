@@ -73,6 +73,7 @@ private slots:
     void showOnlySystemOutput();
     void openPowerShellTerminal();
     void trustCurrentWorkspace();
+    void untrustCurrentWorkspace();
     void appendRuntimeStdout();
     void appendRuntimeStderr();
     void finishRuntimeProcess(int exitCode, QProcess::ExitStatus exitStatus);

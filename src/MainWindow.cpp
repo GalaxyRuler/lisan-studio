@@ -628,6 +628,7 @@ void MainWindow::buildUi()
     connect(addTextOnlyMenuAction(toolsMenu, QString::fromUtf8("فحص"), QKeySequence(), QStringLiteral("lint-current-file")), &QAction::triggered, this, &MainWindow::lintCurrentFile);
     connect(addTextOnlyMenuAction(toolsMenu, QString::fromUtf8("تنسيق"), QKeySequence(), QStringLiteral("format-current-file")), &QAction::triggered, this, &MainWindow::formatCurrentFile);
     connect(addTextOnlyMenuAction(toolsMenu, QString::fromUtf8("الثقة بمساحة العمل"), QKeySequence(), QStringLiteral("workspace.trust")), &QAction::triggered, this, &MainWindow::trustCurrentWorkspace);
+    connect(addTextOnlyMenuAction(toolsMenu, QString::fromUtf8("إلغاء الثقة بمساحة العمل"), QKeySequence(), QStringLiteral("workspace.untrust")), &QAction::triggered, this, &MainWindow::untrustCurrentWorkspace);
     settingsAction->setIconVisibleInMenu(false);
     connect(addTextOnlyMenuAction(toolsMenu, QString::fromUtf8("الإعدادات"), QKeySequence(), QStringLiteral("settings")), &QAction::triggered, this, &MainWindow::openSettings);
     connect(addTextOnlyMenuAction(helpMenu, QString::fromUtf8("عن استوديو لسان")), &QAction::triggered, this, [this]() {
@@ -1524,7 +1525,15 @@ void MainWindow::registerWorkbenchCommands()
         QKeySequence(),
         QString::fromUtf8("الثقة بمساحة العمل workspace trust"),
         [this]() { trustCurrentWorkspace(); },
-        [this]() { return !projectRoot.isEmpty(); });
+        [this]() { return !projectRoot.isEmpty() && !workspaceSettings.trusted; });
+    registerCommand(
+        QStringLiteral("workspace.untrust"),
+        QString::fromUtf8("إلغاء الثقة بمساحة العمل"),
+        QString::fromUtf8("مساحة العمل"),
+        QKeySequence(),
+        QString::fromUtf8("إلغاء الثقة بمساحة العمل workspace untrust revoke trust"),
+        [this]() { untrustCurrentWorkspace(); },
+        [this]() { return !projectRoot.isEmpty() && workspaceSettings.trusted; });
     registerCommand(
         QStringLiteral("search-project"),
         QString::fromUtf8("بحث في المشروع"),
@@ -1908,6 +1917,21 @@ void MainWindow::trustCurrentWorkspace()
         setStatus(QString::fromUtf8("لا توجد مساحة عمل مفتوحة"));
         return;
     }
+    if (workspaceSettings.trusted) {
+        setStatus(QString::fromUtf8("مساحة العمل موثوقة بالفعل"));
+        return;
+    }
+
+    const auto answer = QMessageBox::question(
+        this,
+        QString::fromUtf8("الثقة بمساحة العمل"),
+        QString::fromUtf8("الثقة تتيح تشغيل أدوات مرتبطة بالمشروع مثل الطرفية. لا تثق إلا بالمشاريع التي تعرف مصدرها."),
+        QMessageBox::Yes | QMessageBox::Cancel,
+        QMessageBox::Cancel);
+    if (answer != QMessageBox::Yes) {
+        setStatus(QString::fromUtf8("لم تتغير الثقة بمساحة العمل"));
+        return;
+    }
 
     workspaceSettings.trusted = true;
     QString error;
@@ -1917,6 +1941,23 @@ void MainWindow::trustCurrentWorkspace()
     }
 
     setStatus(QString::fromUtf8("تمت الثقة بمساحة العمل"));
+}
+
+void MainWindow::untrustCurrentWorkspace()
+{
+    if (projectRoot.isEmpty()) {
+        setStatus(QString::fromUtf8("لا توجد مساحة عمل مفتوحة"));
+        return;
+    }
+
+    workspaceSettings.trusted = false;
+    QString error;
+    if (!WorkspaceSettingsStore(projectRoot).save(workspaceSettings, &error)) {
+        setStatus(error);
+        return;
+    }
+
+    setStatus(QString::fromUtf8("ألغيت الثقة بمساحة العمل"));
 }
 
 bool MainWindow::insertSnippetById(const QString &id)
