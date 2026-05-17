@@ -6,6 +6,7 @@
 #include "WorkbenchState.h"
 
 #include <algorithm>
+#include <QUrl>
 
 class TestWorkbenchState : public QObject
 {
@@ -22,8 +23,10 @@ private slots:
     void documentRegistryListsExternallyChangedDocuments();
     void documentRegistryReloadsExternalChangesFromDisk();
     void documentRegistryKeepsCurrentTextAfterExternalChanges();
+    void documentRegistryAssignsStableUris();
     void documentRegistryVersionsDocumentsForStaleEditDetection();
     void documentRegistryAppliesVersionedTextEdits();
+    void documentRegistryAppliesVersionedTextEditBatches();
     void documentRegistryRejectsStaleOrInvalidTextEdits();
     void documentChangePollerReportsRegistryExternalChanges();
     void unsavedChangesGuardRequiresSaveDiscardOrCancelForDirtyDocuments();
@@ -278,6 +281,25 @@ void TestWorkbenchState::documentRegistryKeepsCurrentTextAfterExternalChanges()
     QVERIFY(!deleted.identity.lastModifiedUtc.isValid());
 }
 
+void TestWorkbenchState::documentRegistryAssignsStableUris()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    const QString path = QDir(temp.path()).filePath(QStringLiteral("main.apy"));
+    QVERIFY(DocumentFileIO::saveUtf8Atomically(path, QString::fromUtf8("عدد = 1\n")));
+
+    DocumentRegistry registry;
+    QString error;
+    const DocumentId fileId = registry.openPath(path, &error);
+    QVERIFY2(fileId.isValid(), qPrintable(error));
+    QCOMPARE(registry.document(fileId).uri, QUrl::fromLocalFile(QFileInfo(path).absoluteFilePath()));
+
+    const DocumentId untitledId = registry.createUntitled(QString::fromUtf8("مسودة\n"));
+    const QUrl untitledUri = registry.document(untitledId).uri;
+    QCOMPARE(untitledUri.scheme(), QStringLiteral("untitled"));
+    QVERIFY(untitledUri.toString().contains(QString::number(untitledId.value())));
+}
+
 void TestWorkbenchState::documentRegistryVersionsDocumentsForStaleEditDetection()
 {
     QTemporaryDir temp;
@@ -333,6 +355,30 @@ void TestWorkbenchState::documentRegistryAppliesVersionedTextEdits()
     QCOMPARE(record.version, 2);
     QVERIFY(record.dirty);
     QCOMPARE(record.lineEnding, DocumentLineEnding::Lf);
+}
+
+void TestWorkbenchState::documentRegistryAppliesVersionedTextEditBatches()
+{
+    DocumentRegistry registry;
+    const DocumentId id = registry.createUntitled(QString::fromUtf8("عدد = 1\nاطبع(عدد)\n"));
+    QVERIFY(id.isValid());
+
+    const DocumentRecord before = registry.document(id);
+    const int secondMatch = before.text.indexOf(QString::fromUtf8("عدد"), 1);
+    QVERIFY(secondMatch > 0);
+    const int tokenLength = static_cast<int>(QString::fromUtf8("عدد").size());
+
+    QVector<DocumentTextEdit> edits;
+    edits.push_back({before.version, 0, tokenLength, QString::fromUtf8("قيمة")});
+    edits.push_back({before.version, secondMatch, tokenLength, QString::fromUtf8("قيمة")});
+
+    QString error;
+    QVERIFY2(registry.applyTextEdits(id, edits, &error), qPrintable(error));
+
+    const DocumentRecord record = registry.document(id);
+    QCOMPARE(record.text, QString::fromUtf8("قيمة = 1\nاطبع(قيمة)\n"));
+    QCOMPARE(record.version, before.version + 1);
+    QVERIFY(record.dirty);
 }
 
 void TestWorkbenchState::documentRegistryRejectsStaleOrInvalidTextEdits()

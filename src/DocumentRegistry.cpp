@@ -1,7 +1,9 @@
 #include "DocumentRegistry.h"
 
+#include <algorithm>
 #include <QDir>
 #include <QFileInfo>
+#include <QUrl>
 
 DocumentId::DocumentId(int value)
     : raw(value)
@@ -36,6 +38,7 @@ DocumentId DocumentRegistry::openPath(const QString &path, QString *error)
 
     DocumentRecord record;
     record.id = DocumentId(nextId++);
+    record.uri = QUrl::fromLocalFile(loaded.identity.path);
     record.path = loaded.identity.path;
     record.text = loaded.text;
     record.version = 1;
@@ -50,6 +53,7 @@ DocumentId DocumentRegistry::createUntitled(const QString &text)
 {
     DocumentRecord record;
     record.id = DocumentId(nextId++);
+    record.uri = QUrl(QStringLiteral("untitled:%1").arg(record.id.value()));
     record.text = text;
     record.version = 1;
     record.dirty = !text.isEmpty();
@@ -127,6 +131,7 @@ void DocumentRegistry::setPathAfterSave(DocumentId id, const QString &path)
     }
 
     records[index].path = DocumentFileIO::identityForPath(path).path;
+    records[index].uri = QUrl::fromLocalFile(records[index].path);
     records[index].identity = DocumentFileIO::identityForPath(path);
     records[index].dirty = false;
     records[index].externalState = DocumentExternalState::Unchanged;
@@ -205,6 +210,7 @@ bool DocumentRegistry::reloadFromDisk(DocumentId id, QString *error)
 
     record.text = loaded.text;
     ++record.version;
+    record.uri = QUrl::fromLocalFile(loaded.identity.path);
     record.encoding = loaded.encoding;
     record.lineEnding = loaded.lineEnding;
     record.identity = loaded.identity;
@@ -260,6 +266,73 @@ bool DocumentRegistry::applyTextEdit(DocumentId id, const DocumentTextEdit &edit
     record.lineEnding = DocumentFileIO::detectLineEnding(record.text);
     record.dirty = true;
     ++record.version;
+    return true;
+}
+
+bool DocumentRegistry::applyTextEdits(DocumentId id, const QVector<DocumentTextEdit> &edits, QString *error)
+{
+    if (error) {
+        error->clear();
+    }
+
+    const int index = indexOf(id);
+    if (index < 0) {
+        if (error) {
+            *error = QStringLiteral("Unknown document.");
+        }
+        return false;
+    }
+
+    if (edits.isEmpty()) {
+        return true;
+    }
+
+    const DocumentRecord &record = records.at(index);
+    for (const DocumentTextEdit &edit : edits) {
+        if (edit.expectedVersion != record.version) {
+            if (error) {
+                *error = QStringLiteral("Stale document edit.");
+            }
+            return false;
+        }
+
+        if (edit.start < 0 || edit.length < 0 || edit.start > record.text.size()
+            || edit.length > record.text.size() - edit.start) {
+            if (error) {
+                *error = QStringLiteral("Document edit range is invalid.");
+            }
+            return false;
+        }
+    }
+
+    QVector<DocumentTextEdit> sorted = edits;
+    std::sort(sorted.begin(), sorted.end(), [](const DocumentTextEdit &left, const DocumentTextEdit &right) {
+        return left.start < right.start;
+    });
+
+    int previousEnd = -1;
+    for (const DocumentTextEdit &edit : sorted) {
+        if (edit.start < previousEnd) {
+            if (error) {
+                *error = QStringLiteral("Document edit ranges overlap.");
+            }
+            return false;
+        }
+        previousEnd = edit.start + edit.length;
+    }
+
+    DocumentRecord &mutableRecord = records[index];
+    std::sort(sorted.begin(), sorted.end(), [](const DocumentTextEdit &left, const DocumentTextEdit &right) {
+        return left.start > right.start;
+    });
+
+    for (const DocumentTextEdit &edit : sorted) {
+        mutableRecord.text.replace(edit.start, edit.length, edit.replacement);
+    }
+
+    mutableRecord.lineEnding = DocumentFileIO::detectLineEnding(mutableRecord.text);
+    mutableRecord.dirty = true;
+    ++mutableRecord.version;
     return true;
 }
 

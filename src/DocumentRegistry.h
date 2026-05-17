@@ -3,6 +3,7 @@
 #include "DocumentFileIO.h"
 
 #include <QString>
+#include <QUrl>
 #include <QVector>
 
 class DocumentId final
@@ -31,6 +32,7 @@ enum class DocumentExternalState
 struct DocumentRecord
 {
     DocumentId id;
+    QUrl uri;
     QString path;
     QString text;
     bool dirty = false;
@@ -67,6 +69,7 @@ public:
     bool reloadFromDisk(DocumentId id, QString *error = nullptr);
     bool keepCurrentVersion(DocumentId id);
     bool applyTextEdit(DocumentId id, const DocumentTextEdit &edit, QString *error = nullptr);
+    bool applyTextEdits(DocumentId id, const QVector<DocumentTextEdit> &edits, QString *error = nullptr);
 
 private:
     QVector<DocumentRecord> records;
