@@ -37,6 +37,11 @@
                        Value="$(var.ProductVersion)" />
         <RegistryValue Root="HKCU"
                        Key="Software\Microsoft\Windows\CurrentVersion\Uninstall\LisanStudio"
+                       Name="BuildId"
+                       Type="string"
+                       Value="$(var.BuildId)" />
+        <RegistryValue Root="HKCU"
+                       Key="Software\Microsoft\Windows\CurrentVersion\Uninstall\LisanStudio"
                        Name="Publisher"
                        Type="string"
                        Value="Lisan Studio" />

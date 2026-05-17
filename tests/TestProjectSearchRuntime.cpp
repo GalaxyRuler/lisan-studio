@@ -61,6 +61,7 @@ private slots:
     void settingsStorePersistsWorkbenchSession();
     void settingsStorePersistsShortcutSettingsJson();
     void packageScriptDerivesMsiArtifactNameFromProductVersion();
+    void packageScriptStampsInstallerBuildId();
     void workspaceSettingsStoreDefaultsWhenMissingOrInvalid();
     void workspaceSettingsStorePersistsTrustAndEditorPreferences();
     void settingsDialogModelBuildsUiStateFromStoreAndDiagnostics();
@@ -763,6 +764,32 @@ void TestProjectSearchRuntime::packageScriptDerivesMsiArtifactNameFromProductVer
     QVERIFY(!source.contains(QStringLiteral("LisanStudio-0.1.0-beta.msi")));
     QVERIFY(source.contains(QStringLiteral("ProductVersion")));
     QVERIFY(source.contains(QStringLiteral("LisanStudio-$ProductVersion-beta.msi")));
+}
+
+void TestProjectSearchRuntime::packageScriptStampsInstallerBuildId()
+{
+    QString scriptPath = QDir::current().absoluteFilePath(QStringLiteral("scripts/package.ps1"));
+    if (!QFileInfo::exists(scriptPath)) {
+        scriptPath = QDir::current().absoluteFilePath(QStringLiteral("../scripts/package.ps1"));
+    }
+    QFile script(scriptPath);
+    QVERIFY2(script.open(QIODevice::ReadOnly | QIODevice::Text), qPrintable(scriptPath));
+    const QString packageSource = QString::fromUtf8(script.readAll());
+
+    QVERIFY(packageSource.contains(QStringLiteral("[string]$BuildId")));
+    QVERIFY(packageSource.contains(QStringLiteral("rev-parse --short")));
+    QVERIFY(packageSource.contains(QStringLiteral("-define \"BuildId=$BuildId\"")));
+
+    QString wxsPath = QDir::current().absoluteFilePath(QStringLiteral("packaging/wix/LisanStudio.wxs"));
+    if (!QFileInfo::exists(wxsPath)) {
+        wxsPath = QDir::current().absoluteFilePath(QStringLiteral("../packaging/wix/LisanStudio.wxs"));
+    }
+    QFile wxs(wxsPath);
+    QVERIFY2(wxs.open(QIODevice::ReadOnly | QIODevice::Text), qPrintable(wxsPath));
+    const QString wxsSource = QString::fromUtf8(wxs.readAll());
+
+    QVERIFY(wxsSource.contains(QStringLiteral("Name=\"BuildId\"")));
+    QVERIFY(wxsSource.contains(QStringLiteral("$(var.BuildId)")));
 }
 
 void TestProjectSearchRuntime::workspaceSettingsStoreDefaultsWhenMissingOrInvalid()

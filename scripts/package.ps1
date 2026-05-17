@@ -3,6 +3,7 @@ param(
     [string]$PythonRoot = "C:\Users\Admin\AppData\Local\Programs\Python\Python313",
     [string]$Configuration = "Release",
     [string]$ProductVersion = "0.1.0",
+    [string]$BuildId = "",
     [string]$BashPath = "C:\msys64\usr\bin\bash.exe",
     [string]$WindeployQtPath = "C:\msys64\ucrt64\bin\windeployqt6.exe",
     [string]$WixPath = "C:\Program Files\WiX Toolset v7.0\bin\wix.exe",
@@ -224,6 +225,24 @@ $wxs = Join-Path $repo "packaging\wix\LisanStudio.wxs"
 $msiFileName = "LisanStudio-$ProductVersion-beta.msi"
 $repoUnix = Convert-ToMsysPath -WindowsPath $repo
 
+if ([string]::IsNullOrWhiteSpace($BuildId)) {
+    $gitBuildId = ""
+    try {
+        $gitOutput = @(git -C $repo rev-parse --short=12 HEAD 2>$null)
+        if ($LASTEXITCODE -eq 0 -and $gitOutput.Count -gt 0) {
+            $gitBuildId = [string]$gitOutput[0]
+        }
+    } catch {
+        $gitBuildId = ""
+    }
+
+    $BuildId = if ([string]::IsNullOrWhiteSpace($gitBuildId)) {
+        (Get-Date).ToUniversalTime().ToString("yyyyMMddTHHmmssZ")
+    } else {
+        $gitBuildId.Trim()
+    }
+}
+
 if (-not (Test-Path $bash)) { throw "MSYS2 bash not found: $bash" }
 if (-not (Test-Path $windeployqt)) { throw "windeployqt6 not found: $windeployqt" }
 if (-not (Test-Path $ApythonRoot)) { throw "ApythonRoot not found: $ApythonRoot" }
@@ -307,6 +326,7 @@ if (-not $SkipMsi) {
         -acceptEula wix7 `
         $wxs `
         -define "ProductVersion=$ProductVersion" `
+        -define "BuildId=$BuildId" `
         -define "SourceDir=$stage" `
         -out (Join-Path $artifacts $msiFileName)
 }
