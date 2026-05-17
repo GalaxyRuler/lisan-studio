@@ -55,6 +55,8 @@ public:
     void refreshFileState(DocumentId id);
     void refreshAllFileStates();
     QVector<DocumentRecord> externallyChangedDocuments() const;
+    bool reloadFromDisk(DocumentId id, QString *error = nullptr);
+    bool keepCurrentVersion(DocumentId id);
 
 private:
     QVector<DocumentRecord> records;

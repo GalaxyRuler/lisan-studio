@@ -19,6 +19,8 @@ private slots:
     void documentRegistryDetectsExternalModifyAndDelete();
     void documentRegistryRefreshesAllExternalStates();
     void documentRegistryListsExternallyChangedDocuments();
+    void documentRegistryReloadsExternalChangesFromDisk();
+    void documentRegistryKeepsCurrentTextAfterExternalChanges();
     void unsavedChangesGuardRequiresSaveDiscardOrCancelForDirtyDocuments();
 };
 
@@ -199,6 +201,76 @@ void TestWorkbenchState::documentRegistryListsExternallyChangedDocuments()
     QVERIFY(std::none_of(changed.cbegin(), changed.cend(), [unchangedId, untitledId](const DocumentRecord &record) {
         return record.id == unchangedId || record.id == untitledId;
     }));
+}
+
+void TestWorkbenchState::documentRegistryReloadsExternalChangesFromDisk()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    const QString path = QDir(temp.path()).filePath(QStringLiteral("main.apy"));
+    QVERIFY(DocumentFileIO::saveUtf8Atomically(path, QString::fromUtf8("عدد = 1\n")));
+
+    DocumentRegistry registry;
+    QString error;
+    const DocumentId id = registry.openPath(path, &error);
+    QVERIFY2(id.isValid(), qPrintable(error));
+
+    QTest::qWait(1100);
+    QVERIFY(DocumentFileIO::saveUtf8Atomically(path, QString::fromUtf8("عدد = 2\n")));
+    registry.refreshFileState(id);
+    QCOMPARE(registry.document(id).externalState, DocumentExternalState::Modified);
+
+    QVERIFY2(registry.reloadFromDisk(id, &error), qPrintable(error));
+
+    const DocumentRecord record = registry.document(id);
+    QCOMPARE(record.text, QString::fromUtf8("عدد = 2\n"));
+    QVERIFY(!record.dirty);
+    QCOMPARE(record.externalState, DocumentExternalState::Unchanged);
+    QCOMPARE(record.identity.sizeBytes, DocumentFileIO::identityForPath(path).sizeBytes);
+    QCOMPARE(record.identity.lastModifiedUtc, DocumentFileIO::identityForPath(path).lastModifiedUtc);
+}
+
+void TestWorkbenchState::documentRegistryKeepsCurrentTextAfterExternalChanges()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    const QString modifiedPath = QDir(temp.path()).filePath(QStringLiteral("modified.apy"));
+    const QString deletedPath = QDir(temp.path()).filePath(QStringLiteral("deleted.apy"));
+    QVERIFY(DocumentFileIO::saveUtf8Atomically(modifiedPath, QString::fromUtf8("عدد = 1\n")));
+    QVERIFY(DocumentFileIO::saveUtf8Atomically(deletedPath, QString::fromUtf8("اسم = \"سارة\"\n")));
+
+    DocumentRegistry registry;
+    QString error;
+    const DocumentId modifiedId = registry.openPath(modifiedPath, &error);
+    QVERIFY2(modifiedId.isValid(), qPrintable(error));
+    const DocumentId deletedId = registry.openPath(deletedPath, &error);
+    QVERIFY2(deletedId.isValid(), qPrintable(error));
+
+    registry.setText(modifiedId, QString::fromUtf8("عدد = 99\n"));
+    registry.setText(deletedId, QString::fromUtf8("اسم = \"ليلى\"\n"));
+
+    QTest::qWait(1100);
+    QVERIFY(DocumentFileIO::saveUtf8Atomically(modifiedPath, QString::fromUtf8("عدد = 2\n")));
+    QVERIFY(QFile::remove(deletedPath));
+    registry.refreshAllFileStates();
+    QCOMPARE(registry.document(modifiedId).externalState, DocumentExternalState::Modified);
+    QCOMPARE(registry.document(deletedId).externalState, DocumentExternalState::Deleted);
+
+    QVERIFY(registry.keepCurrentVersion(modifiedId));
+    QVERIFY(registry.keepCurrentVersion(deletedId));
+
+    const DocumentRecord modified = registry.document(modifiedId);
+    QCOMPARE(modified.text, QString::fromUtf8("عدد = 99\n"));
+    QVERIFY(modified.dirty);
+    QCOMPARE(modified.externalState, DocumentExternalState::Unchanged);
+    QCOMPARE(modified.identity.sizeBytes, DocumentFileIO::identityForPath(modifiedPath).sizeBytes);
+
+    const DocumentRecord deleted = registry.document(deletedId);
+    QCOMPARE(deleted.text, QString::fromUtf8("اسم = \"ليلى\"\n"));
+    QVERIFY(deleted.dirty);
+    QCOMPARE(deleted.externalState, DocumentExternalState::Unchanged);
+    QCOMPARE(deleted.identity.sizeBytes, -1);
+    QVERIFY(!deleted.identity.lastModifiedUtc.isValid());
 }
 
 void TestWorkbenchState::unsavedChangesGuardRequiresSaveDiscardOrCancelForDirtyDocuments()

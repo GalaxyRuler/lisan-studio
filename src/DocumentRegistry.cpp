@@ -173,6 +173,55 @@ QVector<DocumentRecord> DocumentRegistry::externallyChangedDocuments() const
     return changed;
 }
 
+bool DocumentRegistry::reloadFromDisk(DocumentId id, QString *error)
+{
+    if (error) {
+        error->clear();
+    }
+
+    const int index = indexOf(id);
+    if (index < 0) {
+        if (error) {
+            *error = QStringLiteral("Unknown document.");
+        }
+        return false;
+    }
+
+    DocumentRecord &record = records[index];
+    if (record.path.isEmpty()) {
+        if (error) {
+            *error = QStringLiteral("Untitled documents cannot be reloaded from disk.");
+        }
+        return false;
+    }
+
+    const DocumentLoadResult loaded = DocumentFileIO::loadUtf8(record.path, error);
+    if (error && !error->isEmpty()) {
+        return false;
+    }
+
+    record.text = loaded.text;
+    record.encoding = loaded.encoding;
+    record.lineEnding = loaded.lineEnding;
+    record.identity = loaded.identity;
+    record.dirty = false;
+    record.externalState = DocumentExternalState::Unchanged;
+    return true;
+}
+
+bool DocumentRegistry::keepCurrentVersion(DocumentId id)
+{
+    const int index = indexOf(id);
+    if (index < 0 || records[index].path.isEmpty()) {
+        return false;
+    }
+
+    records[index].identity = DocumentFileIO::identityForPath(records[index].path);
+    records[index].dirty = true;
+    records[index].externalState = DocumentExternalState::Unchanged;
+    return true;
+}
+
 int DocumentRegistry::indexOf(DocumentId id) const
 {
     for (int i = 0; i < records.size(); ++i) {
