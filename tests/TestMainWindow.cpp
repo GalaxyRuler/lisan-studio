@@ -41,6 +41,8 @@ private slots:
     void savesWorkbenchSessionOnClose();
     void openingFileRecordsRecentFile();
     void workspaceTrimSettingAppliesToOpenedEditors();
+    void hiddenBidiSaveWarningCancelLeavesDiskUntouched();
+    void hiddenBidiSaveWarningSaveAnywayWritesFile();
     void lightThemePreferenceAppliesApplicationStylesheet();
     void usesSingleRtlTopCommandBarWithMenuButtons();
     void exposesLisanLogoAssetInShell();
@@ -275,6 +277,99 @@ void TestMainWindow::workspaceTrimSettingAppliesToOpenedEditors()
     QFile saved(filePath);
     QVERIFY(saved.open(QIODevice::ReadOnly | QIODevice::Text));
     QCOMPARE(QString::fromUtf8(saved.readAll()), QString::fromUtf8("عدد = 2\n"));
+}
+
+void TestMainWindow::hiddenBidiSaveWarningCancelLeavesDiskUntouched()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    QDir root(temp.path());
+    const QString filePath = writeFile(root, QStringLiteral("main.apy"), QString::fromUtf8("عدد = 1\n"));
+
+    MainWindow window;
+    QVERIFY(window.openPath(filePath));
+    auto *editor = window.findChild<EditorSurface *>(QStringLiteral("editorSurface"));
+    QVERIFY(editor != nullptr);
+    QTextCursor cursor(editor->document());
+    cursor.select(QTextCursor::Document);
+    cursor.insertText(QString::fromUtf8("عدد = 2") + QChar(0x202E) + QStringLiteral("\n"));
+
+    bool clickedPrompt = false;
+    bool saveFinished = false;
+    QString failure;
+    QTimer::singleShot(0, &window, [&window, &saveFinished]() {
+        QMetaObject::invokeMethod(&window, "saveFile", Qt::DirectConnection);
+        saveFinished = true;
+    });
+    QTimer::singleShot(150, &window, [&clickedPrompt, &failure]() {
+        auto *box = qobject_cast<QMessageBox *>(QApplication::activeModalWidget());
+        if (!box) {
+            failure = QStringLiteral("hidden BiDi save warning did not open");
+            return;
+        }
+        auto *cancel = box->findChild<QPushButton *>(QStringLiteral("hiddenBidiSaveCancelButton"));
+        if (!cancel) {
+            failure = QStringLiteral("hidden BiDi cancel button missing");
+            return;
+        }
+        clickedPrompt = true;
+        cancel->click();
+    });
+
+    QTRY_VERIFY2(clickedPrompt, qPrintable(failure));
+    QTRY_VERIFY(saveFinished);
+
+    QFile saved(filePath);
+    QVERIFY(saved.open(QIODevice::ReadOnly | QIODevice::Text));
+    QCOMPARE(QString::fromUtf8(saved.readAll()), QString::fromUtf8("عدد = 1\n"));
+    QVERIFY(editor->isDirty());
+}
+
+void TestMainWindow::hiddenBidiSaveWarningSaveAnywayWritesFile()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    QDir root(temp.path());
+    const QString filePath = writeFile(root, QStringLiteral("main.apy"), QString::fromUtf8("عدد = 1\n"));
+
+    MainWindow window;
+    QVERIFY(window.openPath(filePath));
+    auto *editor = window.findChild<EditorSurface *>(QStringLiteral("editorSurface"));
+    QVERIFY(editor != nullptr);
+    const QString unsafeText = QString::fromUtf8("عدد = 2") + QChar(0x202E) + QStringLiteral("\n");
+    QTextCursor cursor(editor->document());
+    cursor.select(QTextCursor::Document);
+    cursor.insertText(unsafeText);
+
+    bool clickedPrompt = false;
+    bool saveFinished = false;
+    QString failure;
+    QTimer::singleShot(0, &window, [&window, &saveFinished]() {
+        QMetaObject::invokeMethod(&window, "saveFile", Qt::DirectConnection);
+        saveFinished = true;
+    });
+    QTimer::singleShot(150, &window, [&clickedPrompt, &failure]() {
+        auto *box = qobject_cast<QMessageBox *>(QApplication::activeModalWidget());
+        if (!box) {
+            failure = QStringLiteral("hidden BiDi save warning did not open");
+            return;
+        }
+        auto *saveAnyway = box->findChild<QPushButton *>(QStringLiteral("hiddenBidiSaveAnywayButton"));
+        if (!saveAnyway) {
+            failure = QStringLiteral("hidden BiDi save-anyway button missing");
+            return;
+        }
+        clickedPrompt = true;
+        saveAnyway->click();
+    });
+
+    QTRY_VERIFY2(clickedPrompt, qPrintable(failure));
+    QTRY_VERIFY(saveFinished);
+
+    QFile saved(filePath);
+    QVERIFY(saved.open(QIODevice::ReadOnly | QIODevice::Text));
+    QCOMPARE(QString::fromUtf8(saved.readAll()), unsafeText);
+    QVERIFY(!editor->isDirty());
 }
 
 void TestMainWindow::lightThemePreferenceAppliesApplicationStylesheet()

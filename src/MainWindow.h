@@ -227,6 +227,7 @@ private:
     void goToEditorLocation(int line, int column);
     QString runtimeWorkingDirectory() const;
     bool confirmSaveIfDirty();
+    bool confirmHiddenBidiSave();
     QVector<DocumentRecord> openDocumentRecords() const;
     bool confirmUnsavedDocuments(UnsavedChangesOperation operation);
     void runRuntimeAction(RuntimeAction action, const QString &title, bool reloadAfterSuccess = false);

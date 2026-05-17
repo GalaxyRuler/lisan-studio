@@ -340,6 +340,13 @@ QString MainWindow::materializeRunnableBuffer(QString *error)
                 return QString();
             }
 
+            if (!confirmHiddenBidiSave()) {
+                if (error) {
+                    *error = QString::fromUtf8("أُلغي التشغيل لأن الملف يحتوي على محارف اتجاه مخفية.");
+                }
+                return QString();
+            }
+
             QString saveError;
             if (!editor->saveFile(&saveError)) {
                 if (error) {
@@ -992,9 +999,19 @@ void MainWindow::openFile()
 
 void MainWindow::saveFile()
 {
+    if (editor->currentFilePath().isEmpty()) {
+        saveFileAs();
+        return;
+    }
+
+    if (!confirmHiddenBidiSave()) {
+        setStatus(QString::fromUtf8("أُلغي الحفظ"));
+        return;
+    }
+
     QString error;
     if (!editor->saveFile(&error)) {
-        saveFileAs();
+        QMessageBox::warning(this, QString::fromUtf8("تعذر الحفظ"), error);
         return;
     }
     markDocumentSaved(editor);
@@ -1009,6 +1026,11 @@ void MainWindow::saveFileAs()
         projectRoot.isEmpty() ? QDir::homePath() : projectRoot,
         QString::fromUtf8("ملفات لغة الثعبان (*.apy);;كل الملفات (*)"));
     if (path.isEmpty()) {
+        return;
+    }
+
+    if (!confirmHiddenBidiSave()) {
+        setStatus(QString::fromUtf8("أُلغي الحفظ"));
         return;
     }
 
@@ -3777,6 +3799,36 @@ void MainWindow::goToEditorLocation(int line, int column)
 bool MainWindow::confirmSaveIfDirty()
 {
     return confirmUnsavedDocuments(UnsavedChangesOperation::CloseDocument);
+}
+
+bool MainWindow::confirmHiddenBidiSave()
+{
+    if (!editor) {
+        return true;
+    }
+
+    const QVector<HiddenBidiFinding> findings = editor->findHiddenBidiControls(editor->toPlainText());
+    if (findings.isEmpty()) {
+        return true;
+    }
+
+    QMessageBox box(this);
+    box.setObjectName(QStringLiteral("hiddenBidiSaveWarningDialog"));
+    box.setIcon(QMessageBox::Warning);
+    box.setWindowTitle(QString::fromUtf8("محارف اتجاه مخفية"));
+    box.setText(QString::fromUtf8("يحتوي الملف على محارف اتجاه مخفية قد تغير معنى الكود عند القراءة."));
+    box.setInformativeText(QString::fromUtf8("عدد المحارف المخفية: %1\nاحذفها من لوحة المشاكل أو احفظ الملف على مسؤوليتك.")
+            .arg(findings.size()));
+    box.setLayoutDirection(Qt::RightToLeft);
+
+    auto *saveAnyway = box.addButton(QString::fromUtf8("حفظ على أي حال"), QMessageBox::AcceptRole);
+    saveAnyway->setObjectName(QStringLiteral("hiddenBidiSaveAnywayButton"));
+    auto *cancel = box.addButton(QString::fromUtf8("إلغاء"), QMessageBox::RejectRole);
+    cancel->setObjectName(QStringLiteral("hiddenBidiSaveCancelButton"));
+    box.setDefaultButton(cancel);
+    box.exec();
+
+    return box.clickedButton() == saveAnyway;
 }
 
 QVector<DocumentRecord> MainWindow::openDocumentRecords() const
