@@ -154,6 +154,25 @@ void DocumentRegistry::refreshFileState(DocumentId id)
         : DocumentExternalState::Unchanged;
 }
 
+void DocumentRegistry::refreshAllFileStates()
+{
+    const QVector<DocumentRecord> snapshot = records;
+    for (const DocumentRecord &record : snapshot) {
+        refreshFileState(record.id);
+    }
+}
+
+QVector<DocumentRecord> DocumentRegistry::externallyChangedDocuments() const
+{
+    QVector<DocumentRecord> changed;
+    for (const DocumentRecord &record : records) {
+        if (record.externalState != DocumentExternalState::Unchanged) {
+            changed.push_back(record);
+        }
+    }
+    return changed;
+}
+
 int DocumentRegistry::indexOf(DocumentId id) const
 {
     for (int i = 0; i < records.size(); ++i) {

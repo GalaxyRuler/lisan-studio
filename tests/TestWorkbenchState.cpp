@@ -4,6 +4,8 @@
 #include "UnsavedChangesGuard.h"
 #include "WorkbenchState.h"
 
+#include <algorithm>
+
 class TestWorkbenchState : public QObject
 {
     Q_OBJECT
@@ -15,6 +17,8 @@ private slots:
     void editorSessionsFindExistingFilesWithNormalizedPaths();
     void documentRegistryOpensTracksAndFindsDocuments();
     void documentRegistryDetectsExternalModifyAndDelete();
+    void documentRegistryRefreshesAllExternalStates();
+    void documentRegistryListsExternallyChangedDocuments();
     void unsavedChangesGuardRequiresSaveDiscardOrCancelForDirtyDocuments();
 };
 
@@ -125,6 +129,76 @@ void TestWorkbenchState::documentRegistryDetectsExternalModifyAndDelete()
     QVERIFY(QFile::remove(path));
     registry.refreshFileState(id);
     QCOMPARE(registry.document(id).externalState, DocumentExternalState::Deleted);
+}
+
+void TestWorkbenchState::documentRegistryRefreshesAllExternalStates()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    const QString modifiedPath = QDir(temp.path()).filePath(QStringLiteral("modified.apy"));
+    const QString deletedPath = QDir(temp.path()).filePath(QStringLiteral("deleted.apy"));
+    QVERIFY(DocumentFileIO::saveUtf8Atomically(modifiedPath, QString::fromUtf8("عدد = 1\n")));
+    QVERIFY(DocumentFileIO::saveUtf8Atomically(deletedPath, QString::fromUtf8("اسم = \"سارة\"\n")));
+
+    DocumentRegistry registry;
+    QString error;
+    const DocumentId modifiedId = registry.openPath(modifiedPath, &error);
+    QVERIFY2(modifiedId.isValid(), qPrintable(error));
+    const DocumentId deletedId = registry.openPath(deletedPath, &error);
+    QVERIFY2(deletedId.isValid(), qPrintable(error));
+    const DocumentId untitledId = registry.createUntitled(QString::fromUtf8("مسودة\n"));
+    QVERIFY(untitledId.isValid());
+
+    QTest::qWait(1100);
+    QVERIFY(DocumentFileIO::saveUtf8Atomically(modifiedPath, QString::fromUtf8("عدد = 2\n")));
+    QVERIFY(QFile::remove(deletedPath));
+
+    registry.refreshAllFileStates();
+
+    QCOMPARE(registry.document(modifiedId).externalState, DocumentExternalState::Modified);
+    QCOMPARE(registry.document(deletedId).externalState, DocumentExternalState::Deleted);
+    QCOMPARE(registry.document(untitledId).externalState, DocumentExternalState::Unchanged);
+}
+
+void TestWorkbenchState::documentRegistryListsExternallyChangedDocuments()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    const QString unchangedPath = QDir(temp.path()).filePath(QStringLiteral("clean.apy"));
+    const QString modifiedPath = QDir(temp.path()).filePath(QStringLiteral("modified.apy"));
+    const QString deletedPath = QDir(temp.path()).filePath(QStringLiteral("deleted.apy"));
+    QVERIFY(DocumentFileIO::saveUtf8Atomically(unchangedPath, QString::fromUtf8("ثابت = 1\n")));
+    QVERIFY(DocumentFileIO::saveUtf8Atomically(modifiedPath, QString::fromUtf8("عدد = 1\n")));
+    QVERIFY(DocumentFileIO::saveUtf8Atomically(deletedPath, QString::fromUtf8("اسم = \"سارة\"\n")));
+
+    DocumentRegistry registry;
+    QString error;
+    const DocumentId unchangedId = registry.openPath(unchangedPath, &error);
+    QVERIFY2(unchangedId.isValid(), qPrintable(error));
+    const DocumentId modifiedId = registry.openPath(modifiedPath, &error);
+    QVERIFY2(modifiedId.isValid(), qPrintable(error));
+    const DocumentId deletedId = registry.openPath(deletedPath, &error);
+    QVERIFY2(deletedId.isValid(), qPrintable(error));
+    const DocumentId untitledId = registry.createUntitled(QString::fromUtf8("مسودة\n"));
+    QVERIFY(untitledId.isValid());
+
+    QTest::qWait(1100);
+    QVERIFY(DocumentFileIO::saveUtf8Atomically(modifiedPath, QString::fromUtf8("عدد = 2\n")));
+    QVERIFY(QFile::remove(deletedPath));
+
+    registry.refreshAllFileStates();
+    const QVector<DocumentRecord> changed = registry.externallyChangedDocuments();
+
+    QCOMPARE(changed.size(), 2);
+    QVERIFY(std::any_of(changed.cbegin(), changed.cend(), [modifiedId](const DocumentRecord &record) {
+        return record.id == modifiedId && record.externalState == DocumentExternalState::Modified;
+    }));
+    QVERIFY(std::any_of(changed.cbegin(), changed.cend(), [deletedId](const DocumentRecord &record) {
+        return record.id == deletedId && record.externalState == DocumentExternalState::Deleted;
+    }));
+    QVERIFY(std::none_of(changed.cbegin(), changed.cend(), [unchangedId, untitledId](const DocumentRecord &record) {
+        return record.id == unchangedId || record.id == untitledId;
+    }));
 }
 
 void TestWorkbenchState::unsavedChangesGuardRequiresSaveDiscardOrCancelForDirtyDocuments()

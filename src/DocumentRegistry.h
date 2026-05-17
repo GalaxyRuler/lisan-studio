@@ -53,6 +53,8 @@ public:
     void markClean(DocumentId id);
     void setPathAfterSave(DocumentId id, const QString &path);
     void refreshFileState(DocumentId id);
+    void refreshAllFileStates();
+    QVector<DocumentRecord> externallyChangedDocuments() const;
 
 private:
     QVector<DocumentRecord> records;
