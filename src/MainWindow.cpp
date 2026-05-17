@@ -23,6 +23,7 @@
 #include <QHideEvent>
 #include <QInputDialog>
 #include <QIcon>
+#include <QJsonDocument>
 #include <QJsonObject>
 #include <QListWidget>
 #include <QListWidgetItem>
@@ -1686,6 +1687,29 @@ bool MainWindow::saveOutputPanelToPath(const QString &path)
     return true;
 }
 
+bool MainWindow::exportShortcutSettingsToPath(const QString &path)
+{
+    if (path.trimmed().isEmpty()) {
+        return false;
+    }
+
+    QJsonObject shortcutJson = settings.shortcutSettingsJson();
+    if (shortcutJson.isEmpty()) {
+        shortcutJson.insert(QStringLiteral("version"), 1);
+        shortcutJson.insert(QStringLiteral("shortcuts"), QJsonObject());
+    }
+
+    QString error;
+    const QString jsonText = QString::fromUtf8(QJsonDocument(shortcutJson).toJson(QJsonDocument::Indented));
+    if (!DocumentFileIO::saveUtf8Atomically(path, jsonText, &error)) {
+        setStatus(error);
+        return false;
+    }
+
+    setStatus(QString::fromUtf8("تم تصدير الاختصارات"));
+    return true;
+}
+
 bool MainWindow::openOutputLinkAtCursor()
 {
     if (!outputPanel) {
@@ -2733,7 +2757,19 @@ void MainWindow::openSettings()
     shortcutImportButton->setEnabled(false);
     auto *shortcutExportButton = new QPushButton(QString::fromUtf8("تصدير"), shortcutButtonRow);
     shortcutExportButton->setObjectName(QStringLiteral("shortcutExportButton"));
-    shortcutExportButton->setEnabled(false);
+    connect(shortcutExportButton, &QPushButton::clicked, this, [this]() {
+        const QString path = QFileDialog::getSaveFileName(
+            this,
+            QString::fromUtf8("تصدير الاختصارات"),
+            projectRoot.isEmpty() ? QDir::homePath() : projectRoot,
+            QString::fromUtf8("ملفات اختصارات لسان (*.json);;كل الملفات (*)"));
+        if (path.isEmpty()) {
+            return;
+        }
+        if (!exportShortcutSettingsToPath(path)) {
+            QMessageBox::warning(this, QString::fromUtf8("تعذر تصدير الاختصارات"), statusLabel->text());
+        }
+    });
     shortcutButtonLayout->addWidget(shortcutImportButton);
     shortcutButtonLayout->addWidget(shortcutExportButton);
     shortcutsLayout->addWidget(shortcutButtonRow);

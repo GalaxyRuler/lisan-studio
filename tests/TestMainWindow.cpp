@@ -10,6 +10,7 @@
 #include <QDialogButtonBox>
 #include <QFontComboBox>
 #include <QFontDatabase>
+#include <QJsonDocument>
 #include <QJsonObject>
 #include <QMenuBar>
 #include <QMessageBox>
@@ -95,6 +96,7 @@ private slots:
     void settingsDialogAppliesEditorFontVisibly();
     void settingsDialogPersistsThemePreference();
     void persistedShortcutOverrideAppliesToWorkbenchActions();
+    void shortcutSettingsExportWritesPersistedJson();
 };
 
 static QString writeFile(const QDir &root, const QString &relative, const QString &text)
@@ -2442,6 +2444,40 @@ void TestMainWindow::persistedShortcutOverrideAppliesToWorkbenchActions()
     }
 
     QVERIFY(saveActionCount >= 2);
+}
+
+void TestMainWindow::shortcutSettingsExportWritesPersistedJson()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    const QString settingsPath = temp.filePath(QStringLiteral("settings.ini"));
+
+    QJsonObject shortcuts;
+    shortcuts.insert(QStringLiteral("save-file"), QStringLiteral("Ctrl+Alt+S"));
+    QJsonObject shortcutSettings;
+    shortcutSettings.insert(QStringLiteral("version"), 1);
+    shortcutSettings.insert(QStringLiteral("shortcuts"), shortcuts);
+    SettingsStore(settingsPath).saveShortcutSettingsJson(shortcutSettings);
+
+    MainWindow window(nullptr, settingsPath);
+    const QString exportPath = temp.filePath(QStringLiteral("shortcuts.lisan-keymap.json"));
+
+    bool exported = false;
+    QVERIFY(QMetaObject::invokeMethod(
+        &window,
+        "exportShortcutSettingsToPath",
+        Qt::DirectConnection,
+        Q_RETURN_ARG(bool, exported),
+        Q_ARG(QString, exportPath)));
+
+    QVERIFY(exported);
+    QFile exportedFile(exportPath);
+    QVERIFY(exportedFile.open(QIODevice::ReadOnly));
+    const QJsonObject exportedJson = QJsonDocument::fromJson(exportedFile.readAll()).object();
+    QCOMPARE(exportedJson.value(QStringLiteral("version")).toInt(), 1);
+    QCOMPARE(
+        exportedJson.value(QStringLiteral("shortcuts")).toObject().value(QStringLiteral("save-file")).toString(),
+        QStringLiteral("Ctrl+Alt+S"));
 }
 
 QTEST_MAIN(TestMainWindow)
