@@ -60,6 +60,7 @@ private slots:
     void settingsStorePersistsThemePreference();
     void settingsStorePersistsWorkbenchSession();
     void settingsStorePersistsShortcutSettingsJson();
+    void packageScriptDerivesMsiArtifactNameFromProductVersion();
     void workspaceSettingsStoreDefaultsWhenMissingOrInvalid();
     void workspaceSettingsStorePersistsTrustAndEditorPreferences();
     void settingsDialogModelBuildsUiStateFromStoreAndDiagnostics();
@@ -746,6 +747,22 @@ void TestProjectSearchRuntime::settingsStorePersistsShortcutSettingsJson()
     QCOMPARE(loaded.value(QStringLiteral("version")).toInt(), 1);
     QCOMPARE(loaded.value(QStringLiteral("shortcuts")).toObject().value(QStringLiteral("save-file")).toString(), QStringLiteral("Ctrl+Alt+S"));
     QCOMPARE(loaded.value(QStringLiteral("futureMetadata")).toArray().first().toString(), QStringLiteral("kept"));
+}
+
+void TestProjectSearchRuntime::packageScriptDerivesMsiArtifactNameFromProductVersion()
+{
+    QString scriptPath = QDir::current().absoluteFilePath(QStringLiteral("scripts/package.ps1"));
+    if (!QFileInfo::exists(scriptPath)) {
+        scriptPath = QDir::current().absoluteFilePath(QStringLiteral("../scripts/package.ps1"));
+    }
+    QFile script(scriptPath);
+    QVERIFY2(script.open(QIODevice::ReadOnly | QIODevice::Text), qPrintable(scriptPath));
+
+    const QString source = QString::fromUtf8(script.readAll());
+
+    QVERIFY(!source.contains(QStringLiteral("LisanStudio-0.1.0-beta.msi")));
+    QVERIFY(source.contains(QStringLiteral("ProductVersion")));
+    QVERIFY(source.contains(QStringLiteral("LisanStudio-$ProductVersion-beta.msi")));
 }
 
 void TestProjectSearchRuntime::workspaceSettingsStoreDefaultsWhenMissingOrInvalid()

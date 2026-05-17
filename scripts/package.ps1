@@ -221,6 +221,7 @@ $windeployqt = $WindeployQtPath
 $nativeRuntimeBin = Split-Path -Parent $windeployqt
 $wix = $WixPath
 $wxs = Join-Path $repo "packaging\wix\LisanStudio.wxs"
+$msiFileName = "LisanStudio-$ProductVersion-beta.msi"
 $repoUnix = Convert-ToMsysPath -WindowsPath $repo
 
 if (-not (Test-Path $bash)) { throw "MSYS2 bash not found: $bash" }
@@ -307,7 +308,7 @@ if (-not $SkipMsi) {
         $wxs `
         -define "ProductVersion=$ProductVersion" `
         -define "SourceDir=$stage" `
-        -out (Join-Path $artifacts "LisanStudio-0.1.0-beta.msi")
+        -out (Join-Path $artifacts $msiFileName)
 }
 
 Get-ChildItem $artifacts -File -ErrorAction SilentlyContinue | Get-FileHash -Algorithm SHA256 |
