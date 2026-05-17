@@ -1,0 +1,36 @@
+#pragma once
+
+#include <QString>
+
+class QTabWidget;
+class QWidget;
+
+class BottomPanelController final
+{
+public:
+    BottomPanelController(
+        QTabWidget *tabs,
+        QWidget *outputPanel,
+        QWidget *terminalPanel,
+        QWidget *problemsPanel,
+        QWidget *searchResultsPanel,
+        QWidget *debugPanel);
+
+    void showOutputPanel();
+    void showTerminalPanel();
+    void showProblemsPanel();
+    void showSearchResultsPanel();
+
+    QString panelId(QWidget *panel) const;
+    QWidget *panelForId(const QString &id) const;
+
+private:
+    QTabWidget *tabs = nullptr;
+    QWidget *output = nullptr;
+    QWidget *terminal = nullptr;
+    QWidget *problems = nullptr;
+    QWidget *search = nullptr;
+    QWidget *debug = nullptr;
+
+    void setCurrent(QWidget *panel);
+};

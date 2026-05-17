@@ -1,5 +1,6 @@
 #pragma once
 
+#include "BottomPanelController.h"
 #include "CommandRegistry.h"
 #include "DocumentChangePoller.h"
 #include "DocumentRegistry.h"
@@ -35,6 +36,7 @@
 #include <QTreeView>
 
 #include <functional>
+#include <memory>
 
 class MainWindow final : public QMainWindow
 {
@@ -178,6 +180,7 @@ private:
     WorkspaceSettings workspaceSettings;
     OutputTranscript outputTranscript;
     OutputTranscriptFilter outputFilter;
+    std::unique_ptr<BottomPanelController> bottomPanels;
     QString projectRoot;
 
     void buildUi();
@@ -239,8 +242,6 @@ private:
     void setRuntimeActionsRunning(bool running);
     void restoreWorkbenchSession();
     void saveWorkbenchSession();
-    QString bottomPanelId(QWidget *panel) const;
-    QWidget *bottomPanelForId(const QString &id) const;
     void closeEvent(QCloseEvent *event) override;
     bool eventFilter(QObject *watched, QEvent *event) override;
 };

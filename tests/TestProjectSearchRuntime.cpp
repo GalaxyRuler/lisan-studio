@@ -2,7 +2,11 @@
 
 #include <QJsonArray>
 #include <QJsonObject>
+#include <QListWidget>
+#include <QPlainTextEdit>
+#include <QTabWidget>
 
+#include "BottomPanelController.h"
 #include "DocumentFileIO.h"
 #include "EditorFindService.h"
 #include "ApySnippetService.h"
@@ -55,6 +59,7 @@ private slots:
     void outputTranscriptRendersAndFiltersByChannel();
     void outputTranscriptFiltersByCaseInsensitiveText();
     void outputTranscriptExposesLinksFromRenderedText();
+    void bottomPanelControllerMapsStableIdsAndSelections();
     void runtimeProblemParserExtractsArabicSyntaxLine();
     void settingsStorePersistsArabicFontAndRecentProject();
     void settingsStorePersistsRecentFilesMostRecentFirst();
@@ -644,6 +649,47 @@ void TestProjectSearchRuntime::outputTranscriptExposesLinksFromRenderedText()
     OutputTranscriptFilter filter;
     filter.includeStderr = false;
     QVERIFY(transcript.links(filter).isEmpty());
+}
+
+void TestProjectSearchRuntime::bottomPanelControllerMapsStableIdsAndSelections()
+{
+    QTabWidget tabs;
+    QPlainTextEdit terminal;
+    QPlainTextEdit output;
+    QListWidget problems;
+    QListWidget search;
+    QPlainTextEdit debug;
+
+    tabs.addTab(&terminal, QString::fromUtf8("الطرفية"));
+    tabs.addTab(&output, QString::fromUtf8("الإخراج"));
+    tabs.addTab(&problems, QString::fromUtf8("المشاكل"));
+    tabs.addTab(&search, QString::fromUtf8("نتائج البحث"));
+    tabs.addTab(&debug, QString::fromUtf8("التصحيح"));
+
+    BottomPanelController controller(&tabs, &output, &terminal, &problems, &search, &debug);
+
+    QCOMPARE(controller.panelId(&terminal), QStringLiteral("terminal"));
+    QCOMPARE(controller.panelId(&output), QStringLiteral("output"));
+    QCOMPARE(controller.panelId(&problems), QStringLiteral("problems"));
+    QCOMPARE(controller.panelId(&search), QStringLiteral("search"));
+    QCOMPARE(controller.panelId(&debug), QStringLiteral("debug"));
+    QCOMPARE(controller.panelId(nullptr), QStringLiteral("terminal"));
+
+    QCOMPARE(controller.panelForId(QStringLiteral("terminal")), &terminal);
+    QCOMPARE(controller.panelForId(QStringLiteral("output")), &output);
+    QCOMPARE(controller.panelForId(QStringLiteral("problems")), &problems);
+    QCOMPARE(controller.panelForId(QStringLiteral("search")), &search);
+    QCOMPARE(controller.panelForId(QStringLiteral("debug")), &debug);
+    QCOMPARE(controller.panelForId(QStringLiteral("missing")), &terminal);
+
+    controller.showOutputPanel();
+    QCOMPARE(tabs.currentWidget(), &output);
+    controller.showTerminalPanel();
+    QCOMPARE(tabs.currentWidget(), &terminal);
+    controller.showProblemsPanel();
+    QCOMPARE(tabs.currentWidget(), &problems);
+    controller.showSearchResultsPanel();
+    QCOMPARE(tabs.currentWidget(), &search);
 }
 
 void TestProjectSearchRuntime::runtimeProblemParserExtractsArabicSyntaxLine()

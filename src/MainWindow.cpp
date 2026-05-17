@@ -856,6 +856,13 @@ void MainWindow::buildUi()
     bottomPanelTabs->addTab(problemsPanel, QString::fromUtf8("المشاكل"));
     bottomPanelTabs->addTab(searchResultsPanel, QString::fromUtf8("نتائج البحث"));
     bottomPanelTabs->addTab(debugPanel, QString::fromUtf8("التصحيح"));
+    bottomPanels = std::make_unique<BottomPanelController>(
+        bottomPanelTabs,
+        outputPanel,
+        terminalPanel,
+        problemsPanel,
+        searchResultsPanel,
+        debugPanel);
 
     outputDock = new QDockWidget(QString::fromUtf8("اللوحة السفلية"), this);
     outputDock->setObjectName(QStringLiteral("outputDock"));
@@ -3570,8 +3577,8 @@ void MainWindow::showOutputPanel()
     if (!outputDock->isVisible()) {
         outputDock->show();
     }
-    if (bottomPanelTabs) {
-        bottomPanelTabs->setCurrentWidget(outputPanel);
+    if (bottomPanels) {
+        bottomPanels->showOutputPanel();
     }
     outputDock->raise();
     resizeDocks({outputDock}, {190}, Qt::Vertical);
@@ -3582,8 +3589,8 @@ void MainWindow::showTerminalPanel()
     if (!outputDock->isVisible()) {
         outputDock->show();
     }
-    if (bottomPanelTabs) {
-        bottomPanelTabs->setCurrentWidget(terminalPanel);
+    if (bottomPanels) {
+        bottomPanels->showTerminalPanel();
     }
     outputDock->raise();
     resizeDocks({outputDock}, {190}, Qt::Vertical);
@@ -3594,8 +3601,8 @@ void MainWindow::showProblemsPanel()
     if (!outputDock->isVisible()) {
         outputDock->show();
     }
-    if (bottomPanelTabs) {
-        bottomPanelTabs->setCurrentWidget(problemsPanel);
+    if (bottomPanels) {
+        bottomPanels->showProblemsPanel();
     }
     outputDock->raise();
     resizeDocks({outputDock}, {190}, Qt::Vertical);
@@ -3606,8 +3613,8 @@ void MainWindow::showSearchResultsPanel()
     if (!outputDock->isVisible()) {
         outputDock->show();
     }
-    if (bottomPanelTabs) {
-        bottomPanelTabs->setCurrentWidget(searchResultsPanel);
+    if (bottomPanels) {
+        bottomPanels->showSearchResultsPanel();
     }
     outputDock->raise();
     resizeDocks({outputDock}, {190}, Qt::Vertical);
@@ -4032,10 +4039,8 @@ void MainWindow::restoreWorkbenchSession()
         editorTabs->setCurrentIndex(activeIndex);
     }
 
-    if (bottomPanelTabs) {
-        if (auto *panel = bottomPanelForId(session.bottomPanelId)) {
-            bottomPanelTabs->setCurrentWidget(panel);
-        }
+    if (bottomPanelTabs && bottomPanels) {
+        bottomPanelTabs->setCurrentWidget(bottomPanels->panelForId(session.bottomPanelId));
     }
 }
 
@@ -4065,48 +4070,10 @@ void MainWindow::saveWorkbenchSession()
     if (session.activeFileIndex < 0 && !session.openFiles.isEmpty()) {
         session.activeFileIndex = 0;
     }
-    session.bottomPanelId = bottomPanelTabs ? bottomPanelId(bottomPanelTabs->currentWidget()) : QString();
+    session.bottomPanelId = bottomPanels && bottomPanelTabs
+        ? bottomPanels->panelId(bottomPanelTabs->currentWidget())
+        : QString();
     settings.saveWorkbenchSession(session);
-}
-
-QString MainWindow::bottomPanelId(QWidget *panel) const
-{
-    if (panel == terminalPanel) {
-        return QStringLiteral("terminal");
-    }
-    if (panel == outputPanel) {
-        return QStringLiteral("output");
-    }
-    if (panel == problemsPanel) {
-        return QStringLiteral("problems");
-    }
-    if (panel == searchResultsPanel) {
-        return QStringLiteral("search");
-    }
-    if (panel == debugPanel) {
-        return QStringLiteral("debug");
-    }
-    return QString();
-}
-
-QWidget *MainWindow::bottomPanelForId(const QString &id) const
-{
-    if (id == QStringLiteral("terminal")) {
-        return terminalPanel;
-    }
-    if (id == QStringLiteral("output")) {
-        return outputPanel;
-    }
-    if (id == QStringLiteral("problems")) {
-        return problemsPanel;
-    }
-    if (id == QStringLiteral("search")) {
-        return searchResultsPanel;
-    }
-    if (id == QStringLiteral("debug")) {
-        return debugPanel;
-    }
-    return nullptr;
 }
 
 void MainWindow::closeEvent(QCloseEvent *event)

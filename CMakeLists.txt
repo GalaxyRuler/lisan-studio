@@ -26,6 +26,8 @@ add_library(acs_core
     src/DocumentChangePoller.cpp
     src/DocumentRegistry.h
     src/DocumentRegistry.cpp
+    src/BottomPanelController.h
+    src/BottomPanelController.cpp
     src/EditorFindService.h
     src/EditorFindService.cpp
     src/OutputTranscript.h
