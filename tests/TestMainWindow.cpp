@@ -44,6 +44,7 @@ private slots:
     void exposesLisanLogoAssetInShell();
     void exposesPremiumFutureBottomPanelTabs();
     void enforcesRtlDirectionAcrossShellContainers();
+    void workbenchDeclaresKeyboardFocusOrder();
     void statusBarExposesEditorRuntimeAndGitIndicators();
     void breadcrumbBarTracksActiveEditorPathWithSymbolPlaceholder();
     void exposesCommandPaletteAction();
@@ -475,6 +476,35 @@ void TestMainWindow::enforcesRtlDirectionAcrossShellContainers()
     auto *statusBar = window.statusBar();
     QVERIFY(statusBar != nullptr);
     QCOMPARE(statusBar->layoutDirection(), Qt::RightToLeft);
+}
+
+void TestMainWindow::workbenchDeclaresKeyboardFocusOrder()
+{
+    MainWindow window;
+
+    auto *commandBox = window.findChild<QLineEdit *>(QStringLiteral("commandBox"));
+    auto *projectTree = window.findChild<QTreeView *>(QStringLiteral("projectTree"));
+    auto *editorTabs = window.findChild<QTabWidget *>(QStringLiteral("editorTabs"));
+    auto *editor = window.findChild<EditorSurface *>(QStringLiteral("editorSurface"));
+    auto *bottomTabs = window.findChild<QTabWidget *>(QStringLiteral("bottomPanelTabs"));
+
+    QVERIFY(commandBox != nullptr);
+    QVERIFY(projectTree != nullptr);
+    QVERIFY(editorTabs != nullptr);
+    QVERIFY(editor != nullptr);
+    QVERIFY(bottomTabs != nullptr);
+
+    QCOMPARE(commandBox->property("focusOrderIndex").toInt(), 10);
+    QCOMPARE(projectTree->property("focusOrderIndex").toInt(), 20);
+    QCOMPARE(editorTabs->property("focusOrderIndex").toInt(), 30);
+    QCOMPARE(editor->property("focusOrderIndex").toInt(), 40);
+    QCOMPARE(bottomTabs->property("focusOrderIndex").toInt(), 50);
+
+    QVERIFY(static_cast<int>(commandBox->focusPolicy()) & static_cast<int>(Qt::TabFocus));
+    QVERIFY(static_cast<int>(projectTree->focusPolicy()) & static_cast<int>(Qt::TabFocus));
+    QVERIFY(static_cast<int>(editorTabs->focusPolicy()) & static_cast<int>(Qt::TabFocus));
+    QVERIFY(static_cast<int>(editor->focusPolicy()) & static_cast<int>(Qt::TabFocus));
+    QVERIFY(static_cast<int>(bottomTabs->focusPolicy()) & static_cast<int>(Qt::TabFocus));
 }
 
 void TestMainWindow::statusBarExposesEditorRuntimeAndGitIndicators()

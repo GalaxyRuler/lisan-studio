@@ -899,6 +899,31 @@ void MainWindow::buildUi()
     statusBar()->addPermanentWidget(statusGitLabel);
     applyShortcutSettings();
     updateStatusIndicators();
+
+    commandBox->setProperty("focusOrderIndex", 10);
+    projectTree->setProperty("focusOrderIndex", 20);
+    editorTabs->setProperty("focusOrderIndex", 30);
+    if (editor) {
+        editor->setProperty("focusOrderIndex", 40);
+    }
+    bottomPanelTabs->setProperty("focusOrderIndex", 50);
+
+    commandBox->setFocusPolicy(Qt::StrongFocus);
+    projectTree->setFocusPolicy(Qt::StrongFocus);
+    editorTabs->setFocusPolicy(Qt::StrongFocus);
+    if (editor) {
+        editor->setFocusPolicy(Qt::StrongFocus);
+    }
+    bottomPanelTabs->setFocusPolicy(Qt::StrongFocus);
+
+    setTabOrder(commandBox, projectTree);
+    setTabOrder(projectTree, editorTabs);
+    if (editor) {
+        setTabOrder(editorTabs, editor);
+        setTabOrder(editor, bottomPanelTabs);
+    } else {
+        setTabOrder(editorTabs, bottomPanelTabs);
+    }
 }
 
 void MainWindow::newFile()
