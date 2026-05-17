@@ -62,6 +62,7 @@ private slots:
     bool saveOutputPanelToPath(const QString &path);
     bool exportShortcutSettingsToPath(const QString &path);
     bool importShortcutSettingsFromPath(const QString &path);
+    bool resetShortcutSettingsToDefaults();
     bool openOutputLinkAtCursor();
     void showAllOutput();
     void showOnlyStdoutOutput();

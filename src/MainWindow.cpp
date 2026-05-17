@@ -1750,6 +1750,15 @@ bool MainWindow::importShortcutSettingsFromPath(const QString &path)
     return true;
 }
 
+bool MainWindow::resetShortcutSettingsToDefaults()
+{
+    settings.saveShortcutSettingsJson(QJsonObject());
+    applyShortcutSettings();
+    setProperty("shortcutSettingsError", QString());
+    setStatus(QString::fromUtf8("تمت إعادة الاختصارات الافتراضية"));
+    return true;
+}
+
 bool MainWindow::openOutputLinkAtCursor()
 {
     if (!outputPanel) {
@@ -2822,8 +2831,14 @@ void MainWindow::openSettings()
             QMessageBox::warning(this, QString::fromUtf8("تعذر تصدير الاختصارات"), statusLabel->text());
         }
     });
+    auto *shortcutResetButton = new QPushButton(QString::fromUtf8("استعادة الافتراضي"), shortcutButtonRow);
+    shortcutResetButton->setObjectName(QStringLiteral("shortcutResetButton"));
+    connect(shortcutResetButton, &QPushButton::clicked, this, [this]() {
+        resetShortcutSettingsToDefaults();
+    });
     shortcutButtonLayout->addWidget(shortcutImportButton);
     shortcutButtonLayout->addWidget(shortcutExportButton);
+    shortcutButtonLayout->addWidget(shortcutResetButton);
     shortcutsLayout->addWidget(shortcutButtonRow);
 
     pages->addTab(editorPage, QString::fromUtf8("المحرر"));
@@ -3017,13 +3032,10 @@ void MainWindow::applyThemePreference()
 void MainWindow::applyShortcutSettings()
 {
     const QJsonObject shortcutJson = settings.shortcutSettingsJson();
-    if (shortcutJson.isEmpty()) {
-        return;
-    }
-
     ShortcutSettingsModel shortcutSettings;
     QString error;
-    if (!shortcutSettings.loadJson(shortcutJson, commandRegistry, &error)) {
+    const bool hasShortcutSettings = !shortcutJson.isEmpty();
+    if (hasShortcutSettings && !shortcutSettings.loadJson(shortcutJson, commandRegistry, &error)) {
         setProperty("shortcutSettingsError", error);
         return;
     }
@@ -3035,14 +3047,23 @@ void MainWindow::applyShortcutSettings()
             continue;
         }
 
-        const QKeySequence shortcut = shortcutSettings.effectiveShortcut(commandRegistry, commandId);
-        if (shortcut.isEmpty()) {
-            continue;
+        QKeySequence shortcut;
+        if (hasShortcutSettings) {
+            shortcut = shortcutSettings.effectiveShortcut(commandRegistry, commandId);
+        } else {
+            for (const CommandDefinition &command : commandRegistry.commands()) {
+                if (command.id == commandId) {
+                    shortcut = command.defaultShortcut;
+                    break;
+                }
+            }
         }
 
         action->setShortcut(shortcut);
-        action->setShortcutContext(Qt::ApplicationShortcut);
-        if (!actions().contains(action)) {
+        if (!shortcut.isEmpty()) {
+            action->setShortcutContext(Qt::ApplicationShortcut);
+        }
+        if (!shortcut.isEmpty() && !actions().contains(action)) {
             addAction(action);
         }
     }

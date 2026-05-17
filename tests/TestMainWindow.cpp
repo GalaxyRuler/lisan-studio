@@ -99,6 +99,7 @@ private slots:
     void shortcutSettingsExportWritesPersistedJson();
     void shortcutSettingsImportAppliesValidJson();
     void shortcutSettingsImportRejectsInvalidJsonWithoutChangingExistingShortcuts();
+    void shortcutSettingsResetRestoresDefaultActions();
 };
 
 static QString writeFile(const QDir &root, const QString &relative, const QString &text)
@@ -2291,6 +2292,7 @@ void TestMainWindow::settingsDialogExposesCategoriesAndRuntimeDiagnostics()
         require(shortcutList && shortcutList->count() >= 10, QStringLiteral("shortcut list is too small"));
         require(dialog->findChild<QPushButton *>(QStringLiteral("shortcutImportButton")), QStringLiteral("shortcut import button missing"));
         require(dialog->findChild<QPushButton *>(QStringLiteral("shortcutExportButton")), QStringLiteral("shortcut export button missing"));
+        require(dialog->findChild<QPushButton *>(QStringLiteral("shortcutResetButton")), QStringLiteral("shortcut reset button missing"));
         require(fontFamily, QStringLiteral("font family combo missing"));
         require(fontFamily && fontFamily->layoutDirection() == Qt::RightToLeft, QStringLiteral("font family combo is not RTL"));
         require(fontFamily && fontFamily->count() > 0, QStringLiteral("font family combo is empty"));
@@ -2564,6 +2566,42 @@ void TestMainWindow::shortcutSettingsImportRejectsInvalidJsonWithoutChangingExis
         SettingsStore(settingsPath).shortcutSettingsJson().value(QStringLiteral("shortcuts")).toObject().value(QStringLiteral("save-file")).toString(),
         QStringLiteral("Ctrl+Alt+S"));
     QVERIFY(window.property("shortcutSettingsError").toString().contains(QStringLiteral("missing-command")));
+}
+
+void TestMainWindow::shortcutSettingsResetRestoresDefaultActions()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    const QString settingsPath = temp.filePath(QStringLiteral("settings.ini"));
+
+    QJsonObject shortcuts;
+    shortcuts.insert(QStringLiteral("save-file"), QStringLiteral("Ctrl+Alt+S"));
+    QJsonObject shortcutSettings;
+    shortcutSettings.insert(QStringLiteral("version"), 1);
+    shortcutSettings.insert(QStringLiteral("shortcuts"), shortcuts);
+    SettingsStore(settingsPath).saveShortcutSettingsJson(shortcutSettings);
+
+    MainWindow window(nullptr, settingsPath);
+
+    bool reset = false;
+    QVERIFY(QMetaObject::invokeMethod(
+        &window,
+        "resetShortcutSettingsToDefaults",
+        Qt::DirectConnection,
+        Q_RETURN_ARG(bool, reset)));
+
+    QVERIFY(reset);
+    QVERIFY(SettingsStore(settingsPath).shortcutSettingsJson().isEmpty());
+
+    int saveActionCount = 0;
+    for (auto *action : window.findChildren<QAction *>()) {
+        if (action->property("commandId").toString() != QStringLiteral("save-file")) {
+            continue;
+        }
+        ++saveActionCount;
+        QCOMPARE(action->shortcut(), QKeySequence(QKeySequence::Save));
+    }
+    QVERIFY(saveActionCount >= 2);
 }
 
 QTEST_MAIN(TestMainWindow)
