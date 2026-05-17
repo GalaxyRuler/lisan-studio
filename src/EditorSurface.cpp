@@ -79,6 +79,18 @@ static QString removeTrailingWhitespace(const QString &text)
     return result;
 }
 
+static QString withSavedLineEnding(QString text, DocumentLineEnding lineEnding)
+{
+    if (lineEnding != DocumentLineEnding::Crlf) {
+        return text;
+    }
+
+    text.replace(QStringLiteral("\r\n"), QStringLiteral("\n"));
+    text.replace(QLatin1Char('\r'), QLatin1Char('\n'));
+    text.replace(QStringLiteral("\n"), QStringLiteral("\r\n"));
+    return text;
+}
+
 class LineNumberArea final : public QWidget
 {
 public:
@@ -153,6 +165,9 @@ bool EditorSurface::openFile(const QString &path, QString *error)
 
     setPlainText(loaded.text);
     document()->setModified(false);
+    saveLineEnding = loaded.lineEnding == DocumentLineEnding::Crlf
+        ? DocumentLineEnding::Crlf
+        : DocumentLineEnding::Lf;
     setCurrentFilePath(loaded.identity.path);
     return true;
 }
@@ -161,6 +176,7 @@ void EditorSurface::resetForNewFile()
 {
     clear();
     document()->setModified(false);
+    saveLineEnding = DocumentLineEnding::Lf;
     setCurrentFilePath(QString());
 }
 
@@ -187,11 +203,13 @@ bool EditorSurface::saveFileAs(const QString &path, QString *error)
         }
     }
 
-    if (!DocumentFileIO::saveUtf8Atomically(path, textToSave, error)) {
+    const QString savedText = withSavedLineEnding(textToSave, saveLineEnding);
+    if (!DocumentFileIO::saveUtf8Atomically(path, savedText, error)) {
         return false;
     }
 
     document()->setModified(false);
+    saveLineEnding = DocumentFileIO::detectLineEnding(savedText);
     setCurrentFilePath(DocumentFileIO::identityForPath(path).path);
     return true;
 }

@@ -2168,6 +2168,11 @@ void TestMainWindow::runCurrentDirtySavedFileSavesBeforeRuntime()
     QVERIFY(temp.isValid());
     QDir root(temp.path());
     const QString filePath = writeFile(root, QStringLiteral("main.apy"), QString::fromUtf8("عدد = 1\n"));
+    QFile before(filePath);
+    QVERIFY(before.open(QIODevice::ReadOnly));
+    QByteArray expectedSavedBytes = before.readAll();
+    expectedSavedBytes.replace(QString::fromUtf8("عدد = 1").toUtf8(), QString::fromUtf8("عدد = 2").toUtf8());
+    before.close();
 
     MainWindow window;
     QVERIFY(window.openPath(filePath));
@@ -2182,7 +2187,7 @@ void TestMainWindow::runCurrentDirtySavedFileSavesBeforeRuntime()
 
     QFile saved(filePath);
     QVERIFY(saved.open(QIODevice::ReadOnly));
-    QCOMPARE(saved.readAll(), QString::fromUtf8("عدد = 2\n").toUtf8());
+    QCOMPARE(saved.readAll(), expectedSavedBytes);
 }
 
 void TestMainWindow::runUsesUntitledBufferWithoutOpeningSaveDialog()

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ApyHighlighter.h"
+#include "DocumentFileIO.h"
 #include "EditorFindService.h"
 
 #include <QContextMenuEvent>
@@ -67,6 +68,7 @@ private:
     int bracketMatchSelectionCount = 0;
     bool trimTrailingWhitespace = false;
     bool showIndentationGuides = true;
+    DocumentLineEnding saveLineEnding = DocumentLineEnding::Lf;
     ApyHighlighter *highlighter = nullptr;
     LineNumberArea *lineNumberArea = nullptr;
 

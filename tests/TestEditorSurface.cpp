@@ -14,6 +14,7 @@ class TestEditorSurface : public QObject
 private slots:
     void preservesMixedArabicCodeText();
     void saveAndReopenPreservesUtf8TortureText();
+    void saveFileRoundTripsLoadedCrlfLineEndings();
     void openRejectsInvalidUtf8ByPolicy();
     void saveUsesDocumentIoAndRejectsInvalidTarget();
     void savePreservesTrailingWhitespaceByDefault();
@@ -51,6 +52,15 @@ static QString tortureText()
         "نتيجة = english_name + \" :: \" + path\n");
 }
 
+static QByteArray readFileBytes(const QString &path)
+{
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly)) {
+        qFatal("could not read test file");
+    }
+    return file.readAll();
+}
+
 void TestEditorSurface::preservesMixedArabicCodeText()
 {
     EditorSurface editor;
@@ -84,6 +94,27 @@ void TestEditorSurface::saveAndReopenPreservesUtf8TortureText()
     QVERIFY(reopened.openFile(path));
     QCOMPARE(reopened.toPlainText(), text);
     QVERIFY(!reopened.isDirty());
+}
+
+void TestEditorSurface::saveFileRoundTripsLoadedCrlfLineEndings()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    const QString path = temp.filePath(QStringLiteral("main.apy"));
+    const QByteArray original = QString::fromUtf8(
+        "عدد = 1\r\n"
+        "    اطبع(عدد)\r\n").toUtf8();
+
+    QFile file(path);
+    QVERIFY(file.open(QIODevice::WriteOnly));
+    QCOMPARE(file.write(original), original.size());
+    file.close();
+
+    EditorSurface editor;
+    QVERIFY(editor.openFile(path));
+    QVERIFY(editor.saveFile());
+
+    QCOMPARE(readFileBytes(path), original);
 }
 
 void TestEditorSurface::openRejectsInvalidUtf8ByPolicy()
