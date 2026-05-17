@@ -44,6 +44,10 @@ if ($source -match [regex]::Escape('LisanStudio-0.1.0-beta.msi')) {
     throw 'VM smoke should derive the packaged MSI path from productVersion instead of hardcoding 0.1.0-beta.'
 }
 
+if ($source -match [regex]::Escape('artifacts\release\0.1.0-beta')) {
+    throw 'VM smoke should derive planned release artifact paths from releaseLabel instead of hardcoding 0.1.0-beta.'
+}
+
 foreach ($requiredToken in @(
         'host-progress.jsonl',
         'function Write-SmokeProgress',
@@ -67,6 +71,10 @@ foreach ($requiredToken in @(
         '$releaseLabel = "$productVersion-beta"',
         '$packagedMsi = Join-Path $GuestRepoRoot "artifacts\LisanStudio-$productVersion-beta.msi"',
         '$releaseDir = Join-Path $GuestRepoRoot "artifacts\release\$releaseLabel"',
+        '"artifacts\release\$releaseLabel\VALIDATION_LOG.md"',
+        '"artifacts\release\$releaseLabel\CHECKSUMS-SHA256.txt"',
+        '"artifacts\release\$releaseLabel\KNOWN_ISSUES.md"',
+        '"artifacts\release\$releaseLabel\screenshots\main-window.png"',
         '$productVersion,',
         '$releaseLabel,',
         'guestWorkLeaf = $guestWorkLeaf',
