@@ -8,6 +8,7 @@
 #include <QComboBox>
 #include <QDialog>
 #include <QDialogButtonBox>
+#include <QElapsedTimer>
 #include <QFontComboBox>
 #include <QFontDatabase>
 #include <QJsonDocument>
@@ -24,6 +25,7 @@
 #include <QSpinBox>
 #include <QStatusBar>
 #include <QTabWidget>
+#include <QThread>
 #include <QTimer>
 #include <QToolBar>
 #include <QToolButton>
@@ -97,8 +99,10 @@ private slots:
     void runCurrentDirtySavedFileCancelLeavesDiskUntouched();
     void runUsesUntitledBufferWithoutOpeningSaveDialog();
     void runToolProvidesCancelableStructuredFeedback();
+    void cancelRuntimeProcessArmsKillEscalationTimer();
     void rerunLastRuntimeActionReusesLastLaunchPlan();
     void settingsDialogExposesCategoriesAndRuntimeDiagnostics();
+    void settingsDialogOpensBeforeRuntimeDiagnosticsCompletes();
     void settingsDialogAppliesEditorFontVisibly();
     void settingsDialogPersistsThemePreference();
     void settingsDialogEditsSelectedShortcutBinding();
@@ -2401,6 +2405,39 @@ void TestMainWindow::runToolProvidesCancelableStructuredFeedback()
     QVERIFY2(output.contains(QString::fromUtf8("رمز الخروج:")) || output.contains(QString::fromUtf8("تعذر بدء العملية")), qPrintable(output));
 }
 
+void TestMainWindow::cancelRuntimeProcessArmsKillEscalationTimer()
+{
+    MainWindow window;
+
+    QProcess process;
+    process.setProgram(QStringLiteral("cmd.exe"));
+    process.setArguments({QStringLiteral("/C"), QStringLiteral("ping -n 5 127.0.0.1 > nul")});
+    process.start();
+    QVERIFY2(process.waitForStarted(3000), qPrintable(process.errorString()));
+    window.activeRuntimeProcess = &process;
+
+    auto *killTimer = window.findChild<QTimer *>(QStringLiteral("runtimeKillEscalationTimer"));
+    const bool foundKillTimer = killTimer != nullptr;
+    const bool killTimerWasSingleShot = killTimer && killTimer->isSingleShot();
+    const bool killTimerWasInitiallyStopped = killTimer && !killTimer->isActive();
+
+    QVERIFY(QMetaObject::invokeMethod(&window, "cancelRuntimeProcess", Qt::DirectConnection));
+    const bool killTimerWasArmed = killTimer && killTimer->isActive();
+    const bool processStillRunningAfterCancel = process.state() != QProcess::NotRunning;
+
+    if (process.state() != QProcess::NotRunning) {
+        process.kill();
+        process.waitForFinished(3000);
+    }
+    window.activeRuntimeProcess = nullptr;
+
+    QVERIFY(foundKillTimer);
+    QVERIFY(killTimerWasSingleShot);
+    QVERIFY(killTimerWasInitiallyStopped);
+    QVERIFY(killTimerWasArmed);
+    QVERIFY(processStillRunningAfterCancel);
+}
+
 void TestMainWindow::rerunLastRuntimeActionReusesLastLaunchPlan()
 {
     QTemporaryDir temp;
@@ -2496,6 +2533,7 @@ void TestMainWindow::settingsDialogExposesCategoriesAndRuntimeDiagnostics()
         require(pythonPath && !pythonPath->text().isEmpty(), QStringLiteral("runtime python path missing"));
         require(packageStatus
             && (packageStatus->text().contains(QString::fromUtf8("جاهز"))
+                || packageStatus->text().contains(QString::fromUtf8("جار"))
                 || packageStatus->text().contains(QString::fromUtf8("غير متوفر"))),
             QStringLiteral("runtime package status missing"));
         if (fontFamily) {
@@ -2511,6 +2549,70 @@ void TestMainWindow::settingsDialogExposesCategoriesAndRuntimeDiagnostics()
     });
 
     QTRY_VERIFY2(inspected, qPrintable(failure));
+}
+
+void TestMainWindow::settingsDialogOpensBeforeRuntimeDiagnosticsCompletes()
+{
+    MainWindow window;
+    window.runtimeDiagnosticsProvider = [](int) {
+        QThread::msleep(700);
+        RuntimeDiagnostics diagnostics;
+        diagnostics.pythonExecutable = QStringLiteral("C:/runtime/python/python.exe");
+        diagnostics.pythonExists = true;
+        diagnostics.packageAvailable = true;
+        diagnostics.packageVersion = QStringLiteral("1.2.3");
+        diagnostics.runModuleAvailable = true;
+        diagnostics.lintModuleAvailable = true;
+        diagnostics.formatModuleAvailable = true;
+        diagnostics.statusText = QString::fromUtf8("جاهز: lughat-althuban 1.2.3");
+        return diagnostics;
+    };
+
+    QElapsedTimer elapsed;
+    elapsed.start();
+    bool openedBeforeDiagnostics = false;
+    bool observedFinishedDiagnostics = false;
+    QString failure;
+    QTimer::singleShot(0, &window, [&window]() {
+        QMetaObject::invokeMethod(&window, "openSettings", Qt::DirectConnection);
+    });
+    QTimer::singleShot(150, &window, [&openedBeforeDiagnostics, &elapsed, &failure]() {
+        auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+        if (!dialog) {
+            failure = QStringLiteral("settings dialog did not open while diagnostics were running");
+            return;
+        }
+        auto *packageStatus = dialog->findChild<QLabel *>(QStringLiteral("runtimePackageStatusValue"));
+        if (!packageStatus || !packageStatus->text().contains(QString::fromUtf8("جار"))) {
+            failure = QStringLiteral("settings dialog did not show a loading diagnostics state");
+            return;
+        }
+        if (elapsed.elapsed() >= 650) {
+            failure = QStringLiteral("settings dialog waited for runtime diagnostics before opening");
+            return;
+        }
+        openedBeforeDiagnostics = true;
+    });
+    QTimer::singleShot(1000, &window, [&observedFinishedDiagnostics, &failure]() {
+        auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+        if (!dialog) {
+            failure = QStringLiteral("settings dialog closed before diagnostics finished");
+            return;
+        }
+        auto *packageStatus = dialog->findChild<QLabel *>(QStringLiteral("runtimePackageStatusValue"));
+        auto *runStatus = dialog->findChild<QLabel *>(QStringLiteral("runtimeRunStatusValue"));
+        if (!packageStatus || !packageStatus->text().contains(QStringLiteral("1.2.3"))) {
+            failure = QStringLiteral("settings dialog did not refresh runtime package status");
+        } else if (!runStatus || runStatus->text() != QString::fromUtf8("جاهز")) {
+            failure = QStringLiteral("settings dialog did not refresh runtime run status");
+        } else {
+            observedFinishedDiagnostics = true;
+        }
+        dialog->reject();
+    });
+
+    QTRY_VERIFY2(openedBeforeDiagnostics, qPrintable(failure));
+    QTRY_VERIFY2(observedFinishedDiagnostics, qPrintable(failure));
 }
 
 void TestMainWindow::settingsDialogAppliesEditorFontVisibly()

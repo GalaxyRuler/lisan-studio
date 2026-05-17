@@ -34,6 +34,8 @@
 #include <QTimer>
 #include <QTreeView>
 
+#include <functional>
+
 class MainWindow final : public QMainWindow
 {
     Q_OBJECT
@@ -79,6 +81,7 @@ private slots:
     void finishRuntimeProcess(int exitCode, QProcess::ExitStatus exitStatus);
     void handleRuntimeProcessError(QProcess::ProcessError error);
     void handleRuntimeTimeout();
+    void escalateRuntimeKill();
     void openCommandPalette();
     void findInProject();
     void previewProjectReplace();
@@ -154,6 +157,7 @@ private:
     QAction *projectTreeRefreshAction = nullptr;
     QProcess *activeRuntimeProcess = nullptr;
     QTimer *runtimeTimeoutTimer = nullptr;
+    QTimer *runtimeKillEscalationTimer = nullptr;
     QTimer *documentChangePollTimer = nullptr;
     QFutureWatcher<QVector<SearchResultRow>> *activeSearchWatcher = nullptr;
     QElapsedTimer activeRuntimeTimer;
@@ -166,6 +170,7 @@ private:
     bool activeRuntimeHandledError = false;
     SettingsStore settings;
     RuntimeRunner runtime;
+    std::function<RuntimeDiagnostics(int)> runtimeDiagnosticsProvider;
     RuntimeHistory runtimeHistory;
     CommandRegistry commandRegistry;
     DocumentRegistry documentRegistry;

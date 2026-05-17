@@ -661,6 +661,12 @@ void MainWindow::buildUi()
     runtimeTimeoutTimer->setInterval(30000);
     connect(runtimeTimeoutTimer, &QTimer::timeout, this, &MainWindow::handleRuntimeTimeout);
 
+    runtimeKillEscalationTimer = new QTimer(this);
+    runtimeKillEscalationTimer->setObjectName(QStringLiteral("runtimeKillEscalationTimer"));
+    runtimeKillEscalationTimer->setSingleShot(true);
+    runtimeKillEscalationTimer->setInterval(1500);
+    connect(runtimeKillEscalationTimer, &QTimer::timeout, this, &MainWindow::escalateRuntimeKill);
+
     commandBox = new QLineEdit(this);
     commandBox->setObjectName(QStringLiteral("commandBox"));
     commandBox->setProperty("commandId", QStringLiteral("search-project"));
@@ -1070,8 +1076,11 @@ void MainWindow::cancelRuntimeProcess()
     }
 
     appendRuntimeOutput(QString::fromUtf8("النظام"), QString::fromUtf8("تم طلب إيقاف العملية."));
-    activeRuntimeProcess->kill();
-    setStatus(QString::fromUtf8("تم إيقاف التشغيل"));
+    activeRuntimeProcess->terminate();
+    if (runtimeKillEscalationTimer) {
+        runtimeKillEscalationTimer->start();
+    }
+    setStatus(QString::fromUtf8("جار إيقاف التشغيل"));
 }
 
 void MainWindow::appendRuntimeStdout()
@@ -1156,8 +1165,22 @@ void MainWindow::handleRuntimeTimeout()
         QString::fromUtf8("انتهت مهلة %1 بعد 30 ثانية.").arg(activeRuntimeTitle),
         activeRuntimeProcess->property("runFilePath").toString(),
         0);
-    activeRuntimeProcess->kill();
+    activeRuntimeProcess->terminate();
+    if (runtimeKillEscalationTimer) {
+        runtimeKillEscalationTimer->start();
+    }
     setStatus(QString::fromUtf8("انتهت مهلة التشغيل"));
+}
+
+void MainWindow::escalateRuntimeKill()
+{
+    if (!activeRuntimeProcess || activeRuntimeProcess->state() == QProcess::NotRunning) {
+        return;
+    }
+
+    appendRuntimeOutput(QString::fromUtf8("النظام"), QString::fromUtf8("لم تتوقف العملية، سيتم إجبار الإيقاف."));
+    activeRuntimeProcess->kill();
+    setStatus(QString::fromUtf8("تم إجبار إيقاف التشغيل"));
 }
 
 void MainWindow::openCommandPalette()
@@ -2794,7 +2817,9 @@ void MainWindow::clearEditorsForDeletedPath(const QString &path)
 void MainWindow::openSettings()
 {
     const QStringList orderedFamilies = arabicEditorFontFamilies();
-    const RuntimeDiagnostics diagnostics = runtime.diagnostics(1500);
+    RuntimeDiagnostics diagnostics;
+    diagnostics.pythonExecutable = runtime.pythonExecutablePath();
+    diagnostics.statusText = QString::fromUtf8("جار فحص التشغيل...");
     const SettingsDialogState settingsState = SettingsDialogModel::build(settings, diagnostics, orderedFamilies);
 
     QDialog dialog(this);
@@ -2881,6 +2906,38 @@ void MainWindow::openSettings()
     runtimeForm->addRow(QString::fromUtf8("تشغيل .apy"), runtimeRunStatus);
     runtimeForm->addRow(QString::fromUtf8("الفحص"), runtimeLintStatus);
     runtimeForm->addRow(QString::fromUtf8("التنسيق"), runtimeFormatStatus);
+
+    auto applyRuntimeDiagnostics = [this,
+                                    orderedFamilies,
+                                    runtimePythonPath,
+                                    runtimePackageStatus,
+                                    runtimeRunStatus,
+                                    runtimeLintStatus,
+                                    runtimeFormatStatus](const RuntimeDiagnostics &latestDiagnostics) {
+        const SettingsDialogState latestState = SettingsDialogModel::build(settings, latestDiagnostics, orderedFamilies);
+        runtimePythonPath->setText(latestState.runtimePythonPath);
+        runtimePackageStatus->setText(latestState.runtimePackageStatus);
+        runtimeRunStatus->setText(latestState.runtimeRunStatus);
+        runtimeLintStatus->setText(latestState.runtimeLintStatus);
+        runtimeFormatStatus->setText(latestState.runtimeFormatStatus);
+    };
+
+    auto *diagnosticsWatcher = new QFutureWatcher<RuntimeDiagnostics>(&dialog);
+    connect(diagnosticsWatcher, &QFutureWatcher<RuntimeDiagnostics>::finished, &dialog, [diagnosticsWatcher, applyRuntimeDiagnostics]() {
+        applyRuntimeDiagnostics(diagnosticsWatcher->result());
+        diagnosticsWatcher->deleteLater();
+    });
+    const QString runtimeRoot = runtime.runtimeRoot();
+    const auto diagnosticsProvider = runtimeDiagnosticsProvider;
+    diagnosticsWatcher->setFuture(QtConcurrent::run([diagnosticsProvider, runtimeRoot]() {
+        if (diagnosticsProvider) {
+            return diagnosticsProvider(1500);
+        }
+
+        RuntimeRunner probe;
+        probe.setRuntimeRoot(runtimeRoot);
+        return probe.diagnostics(1500);
+    }));
 
     auto *projectsPage = new QWidget(pages);
     projectsPage->setObjectName(QStringLiteral("recentProjectsPage"));
@@ -3800,6 +3857,9 @@ void MainWindow::completeRuntimeProcess(const QString &statusText)
     activeRuntimeProcess = nullptr;
     if (runtimeTimeoutTimer) {
         runtimeTimeoutTimer->stop();
+    }
+    if (runtimeKillEscalationTimer) {
+        runtimeKillEscalationTimer->stop();
     }
     setRuntimeActionsRunning(false);
     setStatus(statusText);

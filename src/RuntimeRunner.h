@@ -61,6 +61,7 @@ public:
 
     RuntimeCommand buildCommand(RuntimeAction action, const QString &filePath) const;
     RuntimeCommand buildCommand(RuntimeAction action, const QString &filePath, const QString &workingDirectory) const;
+    QString pythonExecutablePath() const;
     RuntimeLaunchPlan buildLaunchPlan(
         RuntimeAction action,
         const QString &title,

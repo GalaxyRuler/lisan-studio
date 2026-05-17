@@ -29,7 +29,7 @@ RuntimeCommand RuntimeRunner::buildCommand(RuntimeAction action, const QString &
 RuntimeCommand RuntimeRunner::buildCommand(RuntimeAction action, const QString &filePath, const QString &workingDirectory) const
 {
     RuntimeCommand command;
-    command.program = pythonExecutable();
+    command.program = pythonExecutablePath();
     command.workingDirectory = workingDirectory.isEmpty() ? QFileInfo(filePath).absolutePath() : workingDirectory;
 
     switch (action) {
@@ -45,6 +45,11 @@ RuntimeCommand RuntimeRunner::buildCommand(RuntimeAction action, const QString &
     }
 
     return command;
+}
+
+QString RuntimeRunner::pythonExecutablePath() const
+{
+    return pythonExecutable();
 }
 
 RuntimeLaunchPlan RuntimeRunner::buildLaunchPlan(
@@ -84,7 +89,7 @@ QProcessEnvironment RuntimeRunner::processEnvironment() const
 RuntimeDiagnostics RuntimeRunner::diagnostics(int timeoutMs) const
 {
     RuntimeDiagnostics diagnostics;
-    diagnostics.pythonExecutable = pythonExecutable();
+    diagnostics.pythonExecutable = pythonExecutablePath();
     diagnostics.pythonExists = QFileInfo::exists(diagnostics.pythonExecutable);
 
     if (!diagnostics.pythonExists) {
