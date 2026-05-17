@@ -12,6 +12,7 @@
 #include <QFontDatabase>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QKeySequenceEdit>
 #include <QMenuBar>
 #include <QMessageBox>
 #include <QFrame>
@@ -95,6 +96,7 @@ private slots:
     void settingsDialogExposesCategoriesAndRuntimeDiagnostics();
     void settingsDialogAppliesEditorFontVisibly();
     void settingsDialogPersistsThemePreference();
+    void settingsDialogEditsSelectedShortcutBinding();
     void persistedShortcutOverrideAppliesToWorkbenchActions();
     void shortcutSettingsExportWritesPersistedJson();
     void shortcutSettingsImportAppliesValidJson();
@@ -2422,6 +2424,60 @@ void TestMainWindow::settingsDialogPersistsThemePreference()
     QTRY_COMPARE(SettingsStore(settingsPath).themePreference(), QStringLiteral("light"));
     QCOMPARE(window.property("themePreference").toString(), QStringLiteral("light"));
     QVERIFY2(window.styleSheet().contains(QStringLiteral("#F6F7FB")), qPrintable(window.styleSheet()));
+}
+
+void TestMainWindow::settingsDialogEditsSelectedShortcutBinding()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    const QString settingsPath = temp.path() + QStringLiteral("/settings.ini");
+
+    MainWindow window(nullptr, settingsPath);
+    bool inspected = false;
+    QString failure;
+
+    QTimer::singleShot(0, &window, [&window]() {
+        QMetaObject::invokeMethod(&window, "openSettings", Qt::DirectConnection);
+    });
+    QTimer::singleShot(150, &window, [&inspected, &failure]() {
+        auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+        if (!dialog) {
+            failure = QStringLiteral("settings dialog did not open");
+            return;
+        }
+
+        auto *shortcutList = dialog->findChild<QListWidget *>(QStringLiteral("shortcutSettingsList"));
+        auto *shortcutEdit = dialog->findChild<QKeySequenceEdit *>(QStringLiteral("shortcutEditInput"));
+        auto *shortcutApply = dialog->findChild<QPushButton *>(QStringLiteral("shortcutApplyButton"));
+        inspected = true;
+        if (!shortcutList || !shortcutEdit || !shortcutApply) {
+            failure = QStringLiteral("shortcut edit controls missing");
+            dialog->reject();
+            return;
+        }
+
+        for (int row = 0; row < shortcutList->count(); ++row) {
+            if (shortcutList->item(row)->data(Qt::UserRole).toString() == QStringLiteral("save-file")) {
+                shortcutList->setCurrentRow(row);
+                break;
+            }
+        }
+        if (!shortcutList->currentItem()) {
+            failure = QStringLiteral("save-file shortcut row missing");
+            dialog->reject();
+            return;
+        }
+
+        shortcutEdit->setKeySequence(QKeySequence(QStringLiteral("Ctrl+Alt+S")));
+        shortcutApply->click();
+        dialog->reject();
+    });
+
+    QTRY_VERIFY2(inspected, qPrintable(failure));
+    QVERIFY2(failure.isEmpty(), qPrintable(failure));
+    QCOMPARE(
+        SettingsStore(settingsPath).shortcutSettingsJson().value(QStringLiteral("shortcuts")).toObject().value(QStringLiteral("save-file")).toString(),
+        QStringLiteral("Ctrl+Alt+S"));
 }
 
 void TestMainWindow::persistedShortcutOverrideAppliesToWorkbenchActions()

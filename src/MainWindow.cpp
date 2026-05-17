@@ -25,6 +25,7 @@
 #include <QIcon>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QKeySequenceEdit>
 #include <QListWidget>
 #include <QListWidgetItem>
 #include <QMenu>
@@ -2816,9 +2817,43 @@ void MainWindow::openSettings()
             shortcutList);
         item->setData(Qt::UserRole, command.id);
         item->setData(Qt::UserRole + 1, shortcutText);
+        item->setData(Qt::UserRole + 2, command.title);
         item->setToolTip(command.id);
     }
     shortcutsLayout->addWidget(shortcutList, 1);
+
+    auto *shortcutEditRow = new QWidget(shortcutsPage);
+    shortcutEditRow->setLayoutDirection(Qt::RightToLeft);
+    auto *shortcutEditLayout = new QHBoxLayout(shortcutEditRow);
+    shortcutEditLayout->setContentsMargins(0, 0, 0, 0);
+    auto *shortcutEditInput = new QKeySequenceEdit(shortcutEditRow);
+    shortcutEditInput->setObjectName(QStringLiteral("shortcutEditInput"));
+    shortcutEditInput->setLayoutDirection(Qt::LeftToRight);
+    auto *shortcutApplyButton = new QPushButton(QString::fromUtf8("تعيين"), shortcutEditRow);
+    shortcutApplyButton->setObjectName(QStringLiteral("shortcutApplyButton"));
+    shortcutApplyButton->setEnabled(false);
+    shortcutEditLayout->addWidget(shortcutEditInput, 1);
+    shortcutEditLayout->addWidget(shortcutApplyButton);
+    shortcutsLayout->addWidget(shortcutEditRow);
+
+    connect(shortcutList, &QListWidget::currentItemChanged, this, [shortcutEditInput, shortcutApplyButton](QListWidgetItem *current) {
+        shortcutApplyButton->setEnabled(current != nullptr);
+        shortcutEditInput->setKeySequence(current ? QKeySequence(current->data(Qt::UserRole + 1).toString()) : QKeySequence());
+    });
+    connect(shortcutApplyButton, &QPushButton::clicked, this, [this, shortcutList, shortcutEditInput]() {
+        auto *item = shortcutList->currentItem();
+        if (!item) {
+            return;
+        }
+        const QString commandId = item->data(Qt::UserRole).toString();
+        const QKeySequence shortcut = shortcutEditInput->keySequence();
+        if (!setShortcutOverrideForCommand(commandId, shortcut)) {
+            return;
+        }
+        const QString shortcutText = shortcut.toString(QKeySequence::NativeText);
+        item->setData(Qt::UserRole + 1, shortcutText);
+        item->setText(QStringLiteral("%1    %2").arg(item->data(Qt::UserRole + 2).toString(), shortcutText));
+    });
 
     auto *shortcutButtonRow = new QWidget(shortcutsPage);
     shortcutButtonRow->setLayoutDirection(Qt::RightToLeft);
