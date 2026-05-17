@@ -37,6 +37,7 @@
 #include <QPointer>
 #include <QPushButton>
 #include <QSplitter>
+#include <QSaveFile>
 #include <QStatusBar>
 #include <QStyle>
 #include <QSpinBox>
@@ -338,25 +339,25 @@ QString MainWindow::materializeRunnableBuffer(QString *error)
         return editor->currentFilePath();
     }
 
-    const QString baseDirectory = runtimeWorkingDirectory();
-    if (baseDirectory.isEmpty()) {
+    const QString cacheRoot = QStandardPaths::writableLocation(QStandardPaths::CacheLocation);
+    if (cacheRoot.isEmpty()) {
         if (error) {
-            *error = QString::fromUtf8("تعذر تحديد مجلد التشغيل.");
+            *error = QString::fromUtf8("تعذر تحديد مجلد التخزين المؤقت.");
         }
         return QString();
     }
 
-    QDir runDirectory(baseDirectory);
-    if (!runDirectory.mkpath(QStringLiteral(".arabic-code-studio"))) {
+    QDir runDirectory(QDir(cacheRoot).filePath(QStringLiteral("lisan-studio/run-buffers")));
+    if (!runDirectory.mkpath(QStringLiteral("."))) {
         if (error) {
             *error = QString::fromUtf8("تعذر إنشاء مجلد التشغيل المؤقت.");
         }
         return QString();
     }
 
-    const QString runFilePath = runDirectory.filePath(QStringLiteral(".arabic-code-studio/current-buffer.apy"));
-    QFile file(runFilePath);
-    if (!file.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate)) {
+    const QString runFilePath = runDirectory.filePath(QStringLiteral("current-buffer.apy"));
+    QSaveFile file(runFilePath);
+    if (!file.open(QIODevice::WriteOnly)) {
         if (error) {
             *error = file.errorString();
         }
@@ -364,6 +365,12 @@ QString MainWindow::materializeRunnableBuffer(QString *error)
     }
 
     file.write(editor->toPlainText().toUtf8());
+    if (!file.commit()) {
+        if (error) {
+            *error = file.errorString();
+        }
+        return QString();
+    }
     return runFilePath;
 }
 

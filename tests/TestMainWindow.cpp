@@ -2256,7 +2256,9 @@ void TestMainWindow::untitledEditorBufferMaterializesForRunWithoutSaveDialog()
     QVERIFY2(error.isEmpty(), qPrintable(error));
     QVERIFY(!materializedPath.isEmpty());
     QVERIFY(QFileInfo(materializedPath).exists());
-    QVERIFY(materializedPath.startsWith(temp.path()));
+    QVERIFY(!QFileInfo(materializedPath).absoluteFilePath().startsWith(QFileInfo(temp.path()).absoluteFilePath()));
+    QVERIFY(!QFileInfo(temp.filePath(QStringLiteral(".arabic-code-studio"))).exists());
+    QVERIFY(QDir::fromNativeSeparators(materializedPath).contains(QStringLiteral("/lisan-studio/run-buffers/")));
     QCOMPARE(window.currentEditorPath(), QString());
 
     QFile materialized(materializedPath);
@@ -2309,7 +2311,7 @@ void TestMainWindow::runUsesUntitledBufferWithoutOpeningSaveDialog()
 
     QVERIFY(QApplication::activeModalWidget() == nullptr);
     QCOMPARE(window.currentEditorPath(), QString());
-    QVERIFY(QFileInfo(temp.filePath(QStringLiteral(".arabic-code-studio/current-buffer.apy"))).exists());
+    QVERIFY(!QFileInfo(temp.filePath(QStringLiteral(".arabic-code-studio/current-buffer.apy"))).exists());
 
     auto *outputPanel = window.findChild<QPlainTextEdit *>(QStringLiteral("outputPanel"));
     QVERIFY(outputPanel != nullptr);
