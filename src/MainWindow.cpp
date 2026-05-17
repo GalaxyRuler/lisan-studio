@@ -1710,6 +1710,46 @@ bool MainWindow::exportShortcutSettingsToPath(const QString &path)
     return true;
 }
 
+bool MainWindow::importShortcutSettingsFromPath(const QString &path)
+{
+    if (path.trimmed().isEmpty()) {
+        return false;
+    }
+
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly)) {
+        setProperty("shortcutSettingsError", file.errorString());
+        setStatus(file.errorString());
+        return false;
+    }
+
+    QJsonParseError parseError;
+    const QJsonDocument document = QJsonDocument::fromJson(file.readAll(), &parseError);
+    if (parseError.error != QJsonParseError::NoError || !document.isObject()) {
+        const QString error = parseError.error == QJsonParseError::NoError
+            ? QString::fromUtf8("ملف الاختصارات ليس JSON صالحا")
+            : parseError.errorString();
+        setProperty("shortcutSettingsError", error);
+        setStatus(error);
+        return false;
+    }
+
+    ShortcutSettingsModel importedSettings;
+    QString error;
+    const QJsonObject object = document.object();
+    if (!importedSettings.loadJson(object, commandRegistry, &error)) {
+        setProperty("shortcutSettingsError", error);
+        setStatus(error);
+        return false;
+    }
+
+    settings.saveShortcutSettingsJson(object);
+    applyShortcutSettings();
+    setProperty("shortcutSettingsError", QString());
+    setStatus(QString::fromUtf8("تم استيراد الاختصارات"));
+    return true;
+}
+
 bool MainWindow::openOutputLinkAtCursor()
 {
     if (!outputPanel) {
@@ -2754,7 +2794,19 @@ void MainWindow::openSettings()
     shortcutButtonLayout->addStretch(1);
     auto *shortcutImportButton = new QPushButton(QString::fromUtf8("استيراد"), shortcutButtonRow);
     shortcutImportButton->setObjectName(QStringLiteral("shortcutImportButton"));
-    shortcutImportButton->setEnabled(false);
+    connect(shortcutImportButton, &QPushButton::clicked, this, [this]() {
+        const QString path = QFileDialog::getOpenFileName(
+            this,
+            QString::fromUtf8("استيراد الاختصارات"),
+            projectRoot.isEmpty() ? QDir::homePath() : projectRoot,
+            QString::fromUtf8("ملفات اختصارات لسان (*.json);;كل الملفات (*)"));
+        if (path.isEmpty()) {
+            return;
+        }
+        if (!importShortcutSettingsFromPath(path)) {
+            QMessageBox::warning(this, QString::fromUtf8("تعذر استيراد الاختصارات"), statusLabel->text());
+        }
+    });
     auto *shortcutExportButton = new QPushButton(QString::fromUtf8("تصدير"), shortcutButtonRow);
     shortcutExportButton->setObjectName(QStringLiteral("shortcutExportButton"));
     connect(shortcutExportButton, &QPushButton::clicked, this, [this]() {

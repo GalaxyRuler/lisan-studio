@@ -97,6 +97,8 @@ private slots:
     void settingsDialogPersistsThemePreference();
     void persistedShortcutOverrideAppliesToWorkbenchActions();
     void shortcutSettingsExportWritesPersistedJson();
+    void shortcutSettingsImportAppliesValidJson();
+    void shortcutSettingsImportRejectsInvalidJsonWithoutChangingExistingShortcuts();
 };
 
 static QString writeFile(const QDir &root, const QString &relative, const QString &text)
@@ -2478,6 +2480,90 @@ void TestMainWindow::shortcutSettingsExportWritesPersistedJson()
     QCOMPARE(
         exportedJson.value(QStringLiteral("shortcuts")).toObject().value(QStringLiteral("save-file")).toString(),
         QStringLiteral("Ctrl+Alt+S"));
+}
+
+void TestMainWindow::shortcutSettingsImportAppliesValidJson()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    const QString settingsPath = temp.filePath(QStringLiteral("settings.ini"));
+    const QString importPath = temp.filePath(QStringLiteral("shortcuts.json"));
+
+    QJsonObject shortcuts;
+    shortcuts.insert(QStringLiteral("save-file"), QStringLiteral("Ctrl+Alt+S"));
+    QJsonObject shortcutSettings;
+    shortcutSettings.insert(QStringLiteral("version"), 1);
+    shortcutSettings.insert(QStringLiteral("shortcuts"), shortcuts);
+
+    QFile importFile(importPath);
+    QVERIFY(importFile.open(QIODevice::WriteOnly));
+    importFile.write(QJsonDocument(shortcutSettings).toJson(QJsonDocument::Indented));
+    importFile.close();
+
+    MainWindow window(nullptr, settingsPath);
+    bool imported = false;
+    QVERIFY(QMetaObject::invokeMethod(
+        &window,
+        "importShortcutSettingsFromPath",
+        Qt::DirectConnection,
+        Q_RETURN_ARG(bool, imported),
+        Q_ARG(QString, importPath)));
+
+    QVERIFY(imported);
+    QCOMPARE(
+        SettingsStore(settingsPath).shortcutSettingsJson().value(QStringLiteral("shortcuts")).toObject().value(QStringLiteral("save-file")).toString(),
+        QStringLiteral("Ctrl+Alt+S"));
+
+    int saveActionCount = 0;
+    for (auto *action : window.findChildren<QAction *>()) {
+        if (action->property("commandId").toString() != QStringLiteral("save-file")) {
+            continue;
+        }
+        ++saveActionCount;
+        QCOMPARE(action->shortcut(), QKeySequence(QStringLiteral("Ctrl+Alt+S")));
+    }
+    QVERIFY(saveActionCount >= 2);
+}
+
+void TestMainWindow::shortcutSettingsImportRejectsInvalidJsonWithoutChangingExistingShortcuts()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    const QString settingsPath = temp.filePath(QStringLiteral("settings.ini"));
+    const QString importPath = temp.filePath(QStringLiteral("bad-shortcuts.json"));
+
+    QJsonObject existingShortcuts;
+    existingShortcuts.insert(QStringLiteral("save-file"), QStringLiteral("Ctrl+Alt+S"));
+    QJsonObject existingSettings;
+    existingSettings.insert(QStringLiteral("version"), 1);
+    existingSettings.insert(QStringLiteral("shortcuts"), existingShortcuts);
+    SettingsStore(settingsPath).saveShortcutSettingsJson(existingSettings);
+
+    QJsonObject importedShortcuts;
+    importedShortcuts.insert(QStringLiteral("missing-command"), QStringLiteral("Ctrl+M"));
+    QJsonObject importedSettings;
+    importedSettings.insert(QStringLiteral("version"), 1);
+    importedSettings.insert(QStringLiteral("shortcuts"), importedShortcuts);
+
+    QFile importFile(importPath);
+    QVERIFY(importFile.open(QIODevice::WriteOnly));
+    importFile.write(QJsonDocument(importedSettings).toJson(QJsonDocument::Indented));
+    importFile.close();
+
+    MainWindow window(nullptr, settingsPath);
+    bool imported = true;
+    QVERIFY(QMetaObject::invokeMethod(
+        &window,
+        "importShortcutSettingsFromPath",
+        Qt::DirectConnection,
+        Q_RETURN_ARG(bool, imported),
+        Q_ARG(QString, importPath)));
+
+    QVERIFY(!imported);
+    QCOMPARE(
+        SettingsStore(settingsPath).shortcutSettingsJson().value(QStringLiteral("shortcuts")).toObject().value(QStringLiteral("save-file")).toString(),
+        QStringLiteral("Ctrl+Alt+S"));
+    QVERIFY(window.property("shortcutSettingsError").toString().contains(QStringLiteral("missing-command")));
 }
 
 QTEST_MAIN(TestMainWindow)
