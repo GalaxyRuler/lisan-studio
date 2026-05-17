@@ -21,6 +21,7 @@ $logsDir = Join-Path $releaseDir "logs"
 $screenshotsDir = Join-Path $releaseDir "screenshots"
 $msiFileName = "LisanStudio-$ProductVersion-beta.msi"
 $msiPath = Join-Path (Join-Path $repo "artifacts") $msiFileName
+$signingStatusPath = Join-Path $repo "artifacts\SIGNING_STATUS.txt"
 $installRoot = Join-Path $env:LOCALAPPDATA "LisanStudio"
 $app = Join-Path $installRoot "LisanStudio.exe"
 
@@ -177,6 +178,9 @@ $steps += Invoke-LoggedStep -Name "msi-smoke-keep-installed" -Command {
 if (-not (Test-Path -LiteralPath $msiPath)) {
     throw "Release MSI missing after package step: $msiPath"
 }
+if (-not (Test-Path -LiteralPath $signingStatusPath)) {
+    throw "Signing status evidence missing after package step: $signingStatusPath"
+}
 if (-not (Test-Path -LiteralPath $app)) {
     throw "Installed app missing after MSI smoke: $app"
 }
@@ -275,6 +279,7 @@ $validationLines = @(
     "",
     "- MSI: $msiPath",
     "- MSI SHA256: $msiHash",
+    "- Signing status: $signingStatusPath",
     "- Checksums: $checksumsPath",
     "- Known issues: $knownIssuesPath",
     "- Screenshot: $screenshot",
@@ -317,5 +322,6 @@ $validationLines | Set-Content -LiteralPath $validationLog -Encoding UTF8
     KnownIssues = $knownIssuesPath
     Screenshot = $screenshot
     Msi = $msiPath
+    SigningStatus = $signingStatusPath
     MsiSha256 = $msiHash
 }

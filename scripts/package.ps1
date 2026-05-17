@@ -213,6 +213,29 @@ function Copy-RequiredNativeRuntimeDlls {
     }
 }
 
+function Write-SigningStatus {
+    param(
+        [Parameter(Mandatory = $true)][string]$MsiPath,
+        [Parameter(Mandatory = $true)][string]$OutputPath
+    )
+
+    $signature = Get-AuthenticodeSignature -LiteralPath $MsiPath
+    $authenticodeStatus = [string]$signature.Status
+    $signer = if ($signature.SignerCertificate) {
+        $signature.SignerCertificate.Subject
+    } else {
+        'None'
+    }
+
+    @(
+        "MSI: $MsiPath",
+        "AuthenticodeStatus: $authenticodeStatus",
+        "Signer: $signer",
+        "Policy: Public distribution requires a valid Authenticode signature.",
+        "PrivateBetaPolicy: unsigned or unverifiable packages are allowed only for private QA handoff evidence."
+    ) | Set-Content -LiteralPath $OutputPath -Encoding UTF8
+}
+
 $repo = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $stage = Join-Path $repo "stage"
 $artifacts = Join-Path $repo "artifacts"
@@ -223,6 +246,7 @@ $nativeRuntimeBin = Split-Path -Parent $windeployqt
 $wix = $WixPath
 $wxs = Join-Path $repo "packaging\wix\LisanStudio.wxs"
 $msiFileName = "LisanStudio-$ProductVersion-beta.msi"
+$msiPath = Join-Path $artifacts $msiFileName
 $repoUnix = Convert-ToMsysPath -WindowsPath $repo
 
 if ([string]::IsNullOrWhiteSpace($BuildId)) {
@@ -328,7 +352,8 @@ if (-not $SkipMsi) {
         -define "ProductVersion=$ProductVersion" `
         -define "BuildId=$BuildId" `
         -define "SourceDir=$stage" `
-        -out (Join-Path $artifacts $msiFileName)
+        -out $msiPath
+    Write-SigningStatus -MsiPath $msiPath -OutputPath (Join-Path $artifacts "SIGNING_STATUS.txt")
 }
 
 Get-ChildItem $artifacts -File -ErrorAction SilentlyContinue | Get-FileHash -Algorithm SHA256 |
