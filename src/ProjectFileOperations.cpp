@@ -130,3 +130,13 @@ QString ProjectFileOperations::containingFolder(const QString &path)
     const QFileInfo info(path);
     return info.isDir() ? info.absoluteFilePath() : info.absolutePath();
 }
+
+QStringList ProjectFileOperations::explorerRevealArguments(const QString &path)
+{
+    const QFileInfo info(path);
+    const QString nativePath = QDir::toNativeSeparators(info.absoluteFilePath());
+    if (info.isFile()) {
+        return {QStringLiteral("/select,%1").arg(nativePath)};
+    }
+    return {nativePath};
+}

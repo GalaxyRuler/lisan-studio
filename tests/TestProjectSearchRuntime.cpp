@@ -32,6 +32,7 @@ private slots:
     void projectModelDetectsPathsCoveredByProjectOperations();
     void projectFileOperationsRejectUnsafeTargetsAndCollisions();
     void projectFileOperationsProtectRootAndResolveContainingFolder();
+    void projectFileOperationsBuildsExplorerRevealArguments();
     void searchServiceFindsUtf8ArabicMatches();
     void searchServiceFindsUnsavedEditorMatches();
     void searchServiceMergesImmediateRowsBeforeProjectRows();
@@ -216,6 +217,21 @@ void TestProjectSearchRuntime::projectFileOperationsProtectRootAndResolveContain
     QCOMPARE(ProjectFileOperations::pathForClipboard(filePath), QDir::toNativeSeparators(QFileInfo(filePath).absoluteFilePath()));
     QCOMPARE(ProjectFileOperations::containingFolder(filePath), QFileInfo(filePath).absolutePath());
     QCOMPARE(ProjectFileOperations::containingFolder(root.absolutePath()), QFileInfo(root.absolutePath()).absoluteFilePath());
+}
+
+void TestProjectSearchRuntime::projectFileOperationsBuildsExplorerRevealArguments()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    QDir root(temp.path());
+    const QString filePath = writeFile(root, QStringLiteral("src/main.apy"), QString::fromUtf8("اطبع(\"مرحبا\")\n"));
+
+    const QStringList fileArguments = ProjectFileOperations::explorerRevealArguments(filePath);
+    QCOMPARE(fileArguments.size(), 1);
+    QCOMPARE(fileArguments.first(), QStringLiteral("/select,%1").arg(QDir::toNativeSeparators(QFileInfo(filePath).absoluteFilePath())));
+
+    const QStringList folderArguments = ProjectFileOperations::explorerRevealArguments(root.absolutePath());
+    QCOMPARE(folderArguments, QStringList({QDir::toNativeSeparators(QFileInfo(root.absolutePath()).absoluteFilePath())}));
 }
 
 void TestProjectSearchRuntime::searchServiceFindsUtf8ArabicMatches()

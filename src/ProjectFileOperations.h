@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QString>
+#include <QStringList>
 
 struct ProjectFileOperationTarget
 {
@@ -25,4 +26,5 @@ public:
     static bool canDelete(const QString &path, const QString &projectRoot, QString *error = nullptr);
     static QString pathForClipboard(const QString &path);
     static QString containingFolder(const QString &path);
+    static QStringList explorerRevealArguments(const QString &path);
 };

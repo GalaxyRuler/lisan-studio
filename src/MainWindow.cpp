@@ -2668,14 +2668,7 @@ void MainWindow::revealProjectTreeItem()
         return;
     }
 
-    const QFileInfo info(path);
-    QStringList arguments;
-    if (info.isFile()) {
-        arguments << QStringLiteral("/select,") << QDir::toNativeSeparators(info.absoluteFilePath());
-    } else {
-        arguments << QDir::toNativeSeparators(info.absoluteFilePath());
-    }
-    QProcess::startDetached(QStringLiteral("explorer.exe"), arguments);
+    QProcess::startDetached(QStringLiteral("explorer.exe"), ProjectFileOperations::explorerRevealArguments(path));
 }
 
 void MainWindow::copyProjectTreeItemPath()
