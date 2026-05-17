@@ -68,7 +68,8 @@ private slots:
     void dirtyBufferCancelPreventsProjectSwitch();
     void openingMultipleFilesKeepsEachDocumentInATab();
     void openDocumentRecordsExposeRegistryVersionsAcrossEditAndSave();
-    void documentChangePollingMarksExternallyModifiedOpenFile();
+    void documentChangePromptReloadsExternallyModifiedOpenFile();
+    void documentChangePromptKeepsCurrentBufferDirty();
     void projectTreeShowsOnlyFileNames();
     void projectTreeExposesRtlContextActions();
     void projectTreeOpenActionOpensSelectedFile();
@@ -1443,7 +1444,7 @@ void TestMainWindow::openDocumentRecordsExposeRegistryVersionsAcrossEditAndSave(
     QCOMPARE(QDir::toNativeSeparators(records.first().path), QDir::toNativeSeparators(filePath));
 }
 
-void TestMainWindow::documentChangePollingMarksExternallyModifiedOpenFile()
+void TestMainWindow::documentChangePromptReloadsExternallyModifiedOpenFile()
 {
     QTemporaryDir temp;
     QVERIFY(temp.isValid());
@@ -1461,11 +1462,92 @@ void TestMainWindow::documentChangePollingMarksExternallyModifiedOpenFile()
     QString error;
     QVERIFY2(DocumentFileIO::saveUtf8Atomically(filePath, QString::fromUtf8("عدد = 2\n"), &error), qPrintable(error));
 
-    QVERIFY(QMetaObject::invokeMethod(&window, "pollOpenDocumentChanges", Qt::DirectConnection));
+    bool clickedPrompt = false;
+    bool pollFinished = false;
+    QString failure;
+    QTimer::singleShot(0, &window, [&window, &pollFinished]() {
+        QMetaObject::invokeMethod(&window, "pollOpenDocumentChanges", Qt::DirectConnection);
+        pollFinished = true;
+    });
+    QTimer::singleShot(150, &window, [&clickedPrompt, &failure]() {
+        auto *box = qobject_cast<QMessageBox *>(QApplication::activeModalWidget());
+        if (!box) {
+            failure = QStringLiteral("external change prompt did not open");
+            return;
+        }
+        auto *reload = box->findChild<QPushButton *>(QStringLiteral("externalChangeReloadButton"));
+        if (!reload) {
+            failure = QStringLiteral("external change reload button missing");
+            return;
+        }
+        clickedPrompt = true;
+        reload->click();
+    });
 
+    QTRY_VERIFY2(clickedPrompt, qPrintable(failure));
+    QTRY_VERIFY(pollFinished);
+
+    auto *editor = window.findChild<EditorSurface *>(QStringLiteral("editorSurface"));
+    QVERIFY(editor != nullptr);
+    QCOMPARE(editor->toPlainText(), QString::fromUtf8("عدد = 2\n"));
+    QVERIFY(!editor->isDirty());
     records = window.openDocumentRecords();
     QCOMPARE(records.size(), 1);
-    QCOMPARE(records.first().externalState, DocumentExternalState::Modified);
+    QCOMPARE(records.first().externalState, DocumentExternalState::Unchanged);
+    QVERIFY(!records.first().dirty);
+}
+
+void TestMainWindow::documentChangePromptKeepsCurrentBufferDirty()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    QDir root(temp.path());
+    const QString filePath = writeFile(root, QStringLiteral("main.apy"), QString::fromUtf8("عدد = 1\n"));
+
+    MainWindow window;
+    QVERIFY(window.openPath(filePath));
+
+    auto *editor = window.findChild<EditorSurface *>(QStringLiteral("editorSurface"));
+    QVERIFY(editor != nullptr);
+    QCOMPARE(editor->toPlainText(), QString::fromUtf8("عدد = 1\n"));
+    QVERIFY(!editor->isDirty());
+
+    QTest::qWait(1100);
+    QString error;
+    QVERIFY2(DocumentFileIO::saveUtf8Atomically(filePath, QString::fromUtf8("عدد = 2\n"), &error), qPrintable(error));
+
+    bool clickedPrompt = false;
+    bool pollFinished = false;
+    QString failure;
+    QTimer::singleShot(0, &window, [&window, &pollFinished]() {
+        QMetaObject::invokeMethod(&window, "pollOpenDocumentChanges", Qt::DirectConnection);
+        pollFinished = true;
+    });
+    QTimer::singleShot(150, &window, [&clickedPrompt, &failure]() {
+        auto *box = qobject_cast<QMessageBox *>(QApplication::activeModalWidget());
+        if (!box) {
+            failure = QStringLiteral("external change prompt did not open");
+            return;
+        }
+        auto *keep = box->findChild<QPushButton *>(QStringLiteral("externalChangeKeepButton"));
+        if (!keep) {
+            failure = QStringLiteral("external change keep button missing");
+            return;
+        }
+        clickedPrompt = true;
+        keep->click();
+    });
+
+    QTRY_VERIFY2(clickedPrompt, qPrintable(failure));
+    QTRY_VERIFY(pollFinished);
+
+    QCOMPARE(editor->toPlainText(), QString::fromUtf8("عدد = 1\n"));
+    QVERIFY(editor->isDirty());
+    const QVector<DocumentRecord> records = window.openDocumentRecords();
+    QCOMPARE(records.size(), 1);
+    QCOMPARE(records.first().externalState, DocumentExternalState::Unchanged);
+    QVERIFY(records.first().dirty);
+    QCOMPARE(records.first().text, QString::fromUtf8("عدد = 1\n"));
 }
 
 void TestMainWindow::projectTreeShowsOnlyFileNames()

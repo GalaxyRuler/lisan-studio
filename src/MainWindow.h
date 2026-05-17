@@ -201,11 +201,13 @@ private:
     void syncEditorSession(EditorSurface *surface);
     DocumentId documentIdForSurface(EditorSurface *surface) const;
     void setDocumentIdForSurface(EditorSurface *surface, DocumentId id);
+    EditorSurface *surfaceForDocument(DocumentId id) const;
     void syncDocumentRegistryFromSurface(EditorSurface *surface);
     void markDocumentSaved(EditorSurface *surface);
     void setCurrentEditor(EditorSurface *surface);
     void updateEditorTabTitle(EditorSurface *surface);
     void closeEditorTab(int index);
+    void resolveExternalDocumentChange(const DocumentRecord &record);
     void writeOutput(const QString &title, const QString &text);
     void showOutputPanel();
     void showTerminalPanel();

@@ -3217,7 +3217,82 @@ void MainWindow::pollOpenDocumentChanges()
     }
 
     setStatus(QString::fromUtf8("تغيرت ملفات مفتوحة خارج الاستوديو"));
+    for (const DocumentRecord &record : snapshot.changedDocuments) {
+        resolveExternalDocumentChange(record);
+    }
     refreshEditorProblems();
+}
+
+void MainWindow::resolveExternalDocumentChange(const DocumentRecord &record)
+{
+    DocumentRecord current = documentRegistry.document(record.id);
+    if (!current.id.isValid() || current.externalState == DocumentExternalState::Unchanged) {
+        return;
+    }
+
+    EditorSurface *surface = surfaceForDocument(current.id);
+    const bool hasDirtyBuffer = (surface && surface->isDirty()) || current.dirty;
+
+    QMessageBox box(this);
+    box.setObjectName(QStringLiteral("externalChangeDialog"));
+    box.setIcon(QMessageBox::Warning);
+    box.setWindowTitle(QString::fromUtf8("تغير ملف مفتوح"));
+    box.setText(current.externalState == DocumentExternalState::Deleted
+            ? QString::fromUtf8("تم حذف ملف مفتوح خارج استوديو لسان.")
+            : QString::fromUtf8("تغير ملف مفتوح خارج استوديو لسان."));
+    box.setInformativeText(QString::fromUtf8("%1\n%2")
+            .arg(QDir::toNativeSeparators(current.path))
+            .arg(hasDirtyBuffer
+                    ? QString::fromUtf8("لديك تغييرات غير محفوظة. الاحتفاظ بنسختك سيجعلها جاهزة للحفظ فوق النسخة الخارجية.")
+                    : QString::fromUtf8("اختر إعادة تحميل نسخة القرص أو الاحتفاظ بالنسخة الحالية في المحرر.")));
+    box.setLayoutDirection(Qt::RightToLeft);
+
+    auto *reloadButton = box.addButton(QString::fromUtf8("إعادة تحميل"), QMessageBox::AcceptRole);
+    reloadButton->setObjectName(QStringLiteral("externalChangeReloadButton"));
+    reloadButton->setEnabled(current.externalState != DocumentExternalState::Deleted && !hasDirtyBuffer);
+    auto *keepButton = box.addButton(QString::fromUtf8("الاحتفاظ بنسختي"), QMessageBox::RejectRole);
+    keepButton->setObjectName(QStringLiteral("externalChangeKeepButton"));
+    box.setDefaultButton(reloadButton->isEnabled() ? reloadButton : keepButton);
+    box.exec();
+
+    if (box.clickedButton() == reloadButton && reloadButton->isEnabled()) {
+        QString error;
+        if (!documentRegistry.reloadFromDisk(current.id, &error)) {
+            QMessageBox::warning(this, QString::fromUtf8("تعذر إعادة التحميل"), error);
+            return;
+        }
+
+        const DocumentRecord reloaded = documentRegistry.document(current.id);
+        if (surface) {
+            if (!surface->openFile(reloaded.path, &error)) {
+                QMessageBox::warning(this, QString::fromUtf8("تعذر إعادة التحميل"), error);
+                return;
+            }
+            setDocumentIdForSurface(surface, reloaded.id);
+            syncEditorSession(surface);
+            updateEditorTabTitle(surface);
+            if (surface == editor) {
+                updateBreadcrumbBar();
+                updateStatusIndicators();
+            }
+        }
+        setStatus(QString::fromUtf8("أعيد تحميل الملف من القرص"));
+        return;
+    }
+
+    if (surface && documentRegistry.document(current.id).text != surface->toPlainText()) {
+        documentRegistry.setText(current.id, surface->toPlainText());
+    }
+    documentRegistry.keepCurrentVersion(current.id);
+    if (surface) {
+        surface->document()->setModified(true);
+        syncEditorSession(surface);
+        updateEditorTabTitle(surface);
+        if (surface == editor) {
+            updateStatusIndicators();
+        }
+    }
+    setStatus(QString::fromUtf8("تم الاحتفاظ بنسخة المحرر"));
 }
 
 void MainWindow::applyEditorFont(EditorSurface *surface)
@@ -3375,6 +3450,21 @@ void MainWindow::setDocumentIdForSurface(EditorSurface *surface, DocumentId id)
         return;
     }
     surface->setProperty(DocumentIdProperty, id.value());
+}
+
+EditorSurface *MainWindow::surfaceForDocument(DocumentId id) const
+{
+    if (!id.isValid() || !editorTabs) {
+        return nullptr;
+    }
+
+    for (int i = 0; i < editorTabs->count(); ++i) {
+        auto *surface = qobject_cast<EditorSurface *>(editorTabs->widget(i));
+        if (surface && documentIdForSurface(surface) == id) {
+            return surface;
+        }
+    }
+    return nullptr;
 }
 
 void MainWindow::syncDocumentRegistryFromSurface(EditorSurface *surface)
