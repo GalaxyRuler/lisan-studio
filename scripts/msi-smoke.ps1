@@ -1,11 +1,15 @@
 param(
-    [string]$MsiPath = (Join-Path (Join-Path $PSScriptRoot "..\artifacts") "LisanStudio-0.1.0-beta.msi"),
+    [string]$ProductVersion = "0.1.0",
+    [string]$MsiPath = "",
     [string]$InstallRoot = (Join-Path $env:LOCALAPPDATA "LisanStudio"),
     [switch]$KeepInstalled
 )
 
 $ErrorActionPreference = "Stop"
 
+if ([string]::IsNullOrWhiteSpace($MsiPath)) {
+    $MsiPath = Join-Path (Join-Path $PSScriptRoot "..\artifacts") "LisanStudio-$ProductVersion-beta.msi"
+}
 $MsiPath = (Resolve-Path $MsiPath).Path
 $repo = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $smokeLogDir = Join-Path $repo "artifacts\msi-smoke"

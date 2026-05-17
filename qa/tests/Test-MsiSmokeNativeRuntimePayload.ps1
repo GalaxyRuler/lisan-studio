@@ -20,7 +20,15 @@ if ($parseErrors -and $parseErrors.Count -gt 0) {
 
 $source = Get-Content -Raw -LiteralPath $msiSmokeScript
 
+if ($source -match [regex]::Escape('LisanStudio-0.1.0-beta.msi')) {
+    throw 'msi-smoke.ps1 should derive its default MSI path from ProductVersion instead of hardcoding 0.1.0-beta.'
+}
+
 foreach ($requiredToken in @(
+        '[string]$ProductVersion = "0.1.0"',
+        '[string]$MsiPath = ""',
+        'if ([string]::IsNullOrWhiteSpace($MsiPath))',
+        'LisanStudio-$ProductVersion-beta.msi',
         'libgcc_s_seh-1.dll',
         'libstdc++-6.dll',
         'libwinpthread-1.dll',
