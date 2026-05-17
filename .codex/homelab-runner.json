@@ -26,6 +26,11 @@
                                              "class":  "vm-gui",
                                              "profilePath":  "qa\\vm\\profiles\\lisanstudio-msi-smoke.json",
                                              "approvalRequired":  true
+                                         },
+                     "desktopMsiUpgrade":  {
+                                             "class":  "vm-gui",
+                                             "profilePath":  "qa\\vm\\profiles\\lisanstudio-msi-upgrade.json",
+                                             "approvalRequired":  true
                                          }
                  },
     "forbidden":  [

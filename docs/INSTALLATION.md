@@ -253,6 +253,26 @@ To leave the app installed after the smoke pass:
 Do not run MSI install/uninstall validation on an active work desktop unless
 that is explicitly approved for the current run.
 
+## MSI Upgrade Smoke
+
+Upgrade validation is also MSI-mutating and belongs in `LisanStudio-QA`, not on
+active `WHITEDRAGON`. The project-owned scripts cover:
+
+- same-version private beta replace leaving exactly one Windows Apps uninstall
+  entry;
+- older-version to replacement-version upgrade;
+- optional downgrade refusal that keeps the replacement install active.
+
+The scenario wrappers are:
+
+```powershell
+.\qa\vm\Test-MsiSameVersionReplaceLeavesRegistryClean.ps1
+.\qa\vm\Test-MsiUpgradeReplacesEarlierVersion.ps1
+```
+
+Both wrappers call `scripts\msi-upgrade-smoke.ps1` and require explicit
+mutation switches from the approved VM lane.
+
 ## Release Evidence
 
 Generate the private beta evidence bundle:

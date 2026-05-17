@@ -13,8 +13,11 @@ installedDesktopQa -> project-vm
 Project-owned VM files in this repo:
 
 - `qa\vm\profiles\lisanstudio-msi-smoke.json`
+- `qa\vm\profiles\lisanstudio-msi-upgrade.json`
 - `qa\vm\Install-LisanStudioQaGuest.ps1`
 - `qa\vm\Invoke-LisanStudioVmSmoke.ps1`
+- `qa\vm\Test-MsiUpgradeReplacesEarlierVersion.ps1`
+- `qa\vm\Test-MsiSameVersionReplaceLeavesRegistryClean.ps1`
 - `qa\vm\lisan-studio-qa-plan.md`
 
 Use the LisanStudio-QA lane for workflows such as:
@@ -24,6 +27,7 @@ Use the LisanStudio-QA lane for workflows such as:
 - collecting logs, screenshots, and release evidence
 - validating Arabic and RTL shell behavior
 - checking shortcut/install payload behavior
+- checking same-version replace, upgrade, downgrade refusal, and registry cleanup
 - running modal and project-tree GUI checks that should not interrupt the host
 
 Safety boundaries:
@@ -49,6 +53,10 @@ Current implementation state:
   copies logs and evidence back to the host. The smoke task records raw
   stdout, raw stderr, combined logs, and exit-code JSON for both validation
   steps before reporting failure.
+- MSI upgrade coverage is represented by an approval-required profile and
+  scenario scripts. These scripts install, replace, optionally attempt a
+  downgrade, verify the Windows Apps uninstall entry is clean, run installed
+  smoke, and uninstall unless explicitly asked to keep the replacement build.
 
 No VM creation, deletion, checkpoint, rollback, MSI install, GUI automation, or
 desktop mutation should happen without explicit later approval.
