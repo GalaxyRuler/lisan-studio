@@ -327,6 +327,19 @@ QString MainWindow::materializeRunnableBuffer(QString *error)
 
     if (!editor->currentFilePath().isEmpty()) {
         if (editor->isDirty()) {
+            const auto answer = QMessageBox::question(
+                this,
+                QString::fromUtf8("حفظ قبل المتابعة"),
+                QString::fromUtf8("يحتوي الملف الحالي على تغييرات غير محفوظة. احفظه قبل تشغيله؟"),
+                QMessageBox::Save | QMessageBox::Cancel,
+                QMessageBox::Cancel);
+            if (answer != QMessageBox::Save) {
+                if (error) {
+                    *error = QString::fromUtf8("أُلغي التشغيل لأن الملف يحتوي على تغييرات غير محفوظة.");
+                }
+                return QString();
+            }
+
             QString saveError;
             if (!editor->saveFile(&saveError)) {
                 if (error) {

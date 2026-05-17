@@ -94,6 +94,7 @@ private slots:
     void outputPlaceholderPaintsFromRight();
     void untitledEditorBufferMaterializesForRunWithoutSaveDialog();
     void runCurrentDirtySavedFileSavesBeforeRuntime();
+    void runCurrentDirtySavedFileCancelLeavesDiskUntouched();
     void runUsesUntitledBufferWithoutOpeningSaveDialog();
     void runToolProvidesCancelableStructuredFeedback();
     void rerunLastRuntimeActionReusesLastLaunchPlan();
@@ -2287,11 +2288,59 @@ void TestMainWindow::runCurrentDirtySavedFileSavesBeforeRuntime()
     editor->insertPlainText(QString::fromUtf8("عدد = 2\n"));
     QVERIFY(editor->isDirty());
 
+    bool sawSavePrompt = false;
+    QTimer::singleShot(0, this, [&]() {
+        auto *box = qobject_cast<QMessageBox *>(QApplication::activeModalWidget());
+        if (!box) {
+            return;
+        }
+        sawSavePrompt = true;
+        box->button(QMessageBox::Save)->click();
+    });
     QVERIFY(QMetaObject::invokeMethod(&window, "runCurrentFile", Qt::DirectConnection));
+    QVERIFY(sawSavePrompt);
 
     QFile saved(filePath);
     QVERIFY(saved.open(QIODevice::ReadOnly));
     QCOMPARE(saved.readAll(), expectedSavedBytes);
+}
+
+void TestMainWindow::runCurrentDirtySavedFileCancelLeavesDiskUntouched()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    QDir root(temp.path());
+    const QString filePath = writeFile(root, QStringLiteral("main.apy"), QString::fromUtf8("عدد = 1\n"));
+    QFile before(filePath);
+    QVERIFY(before.open(QIODevice::ReadOnly));
+    const QByteArray originalBytes = before.readAll();
+    before.close();
+
+    MainWindow window;
+    QVERIFY(window.openPath(filePath));
+
+    auto *editor = window.findChild<EditorSurface *>(QStringLiteral("editorSurface"));
+    QVERIFY(editor != nullptr);
+    editor->selectAll();
+    editor->insertPlainText(QString::fromUtf8("عدد = 2\n"));
+    QVERIFY(editor->isDirty());
+
+    bool sawSavePrompt = false;
+    QTimer::singleShot(0, this, [&]() {
+        auto *box = qobject_cast<QMessageBox *>(QApplication::activeModalWidget());
+        if (!box) {
+            return;
+        }
+        sawSavePrompt = true;
+        box->button(QMessageBox::Cancel)->click();
+    });
+    QVERIFY(QMetaObject::invokeMethod(&window, "runCurrentFile", Qt::DirectConnection));
+    QVERIFY(sawSavePrompt);
+
+    QFile saved(filePath);
+    QVERIFY(saved.open(QIODevice::ReadOnly));
+    QCOMPARE(saved.readAll(), originalBytes);
+    QVERIFY(editor->isDirty());
 }
 
 void TestMainWindow::runUsesUntitledBufferWithoutOpeningSaveDialog()
