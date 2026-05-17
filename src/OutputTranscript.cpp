@@ -61,3 +61,8 @@ QString OutputTranscript::render(const OutputTranscriptFilter &filter) const
     }
     return renderedChunks.join(QLatin1Char('\n'));
 }
+
+QVector<TerminalLink> OutputTranscript::links(const OutputTranscriptFilter &filter) const
+{
+    return TerminalLinkParser::linksForText(render(filter));
+}

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "TerminalLinkParser.h"
+
 #include <QString>
 #include <QVector>
 
@@ -33,6 +35,7 @@ public:
 
     QVector<OutputTranscriptChunk> chunks() const;
     QString render(const OutputTranscriptFilter &filter = OutputTranscriptFilter()) const;
+    QVector<TerminalLink> links(const OutputTranscriptFilter &filter = OutputTranscriptFilter()) const;
 
 private:
     QVector<OutputTranscriptChunk> recordedChunks;

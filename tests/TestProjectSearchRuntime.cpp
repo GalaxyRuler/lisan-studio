@@ -53,6 +53,7 @@ private slots:
     void terminalLinkParserExtractsForwardSlashPaths();
     void outputTranscriptRendersAndFiltersByChannel();
     void outputTranscriptFiltersByCaseInsensitiveText();
+    void outputTranscriptExposesLinksFromRenderedText();
     void runtimeProblemParserExtractsArabicSyntaxLine();
     void settingsStorePersistsArabicFontAndRecentProject();
     void settingsStorePersistsRecentFilesMostRecentFirst();
@@ -581,6 +582,26 @@ void TestProjectSearchRuntime::outputTranscriptFiltersByCaseInsensitiveText()
 
     transcript.clear();
     QCOMPARE(transcript.render(), QString());
+}
+
+void TestProjectSearchRuntime::outputTranscriptExposesLinksFromRenderedText()
+{
+    OutputTranscript transcript;
+    transcript.append(OutputTranscriptChannel::System, QString::fromUtf8("النظام"), QString::fromUtf8("بدأ التشغيل"));
+    transcript.append(OutputTranscriptChannel::Stderr, QStringLiteral("stderr"), QStringLiteral("C:/project/app.apy:9:2: syntax error"));
+
+    const QVector<TerminalLink> links = transcript.links();
+    const QString rendered = transcript.render();
+
+    QCOMPARE(links.size(), 1);
+    QCOMPARE(links.first().path, QStringLiteral("C:/project/app.apy"));
+    QCOMPARE(links.first().line, 9);
+    QCOMPARE(links.first().column, 2);
+    QCOMPARE(rendered.mid(links.first().start, links.first().length), QStringLiteral("C:/project/app.apy:9:2"));
+
+    OutputTranscriptFilter filter;
+    filter.includeStderr = false;
+    QVERIFY(transcript.links(filter).isEmpty());
 }
 
 void TestProjectSearchRuntime::runtimeProblemParserExtractsArabicSyntaxLine()
