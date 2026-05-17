@@ -36,6 +36,7 @@
 class MainWindow final : public QMainWindow
 {
     Q_OBJECT
+    friend class TestMainWindow;
 
 public:
     explicit MainWindow(QWidget *parent = nullptr);
@@ -163,6 +164,7 @@ private:
     RuntimeRunner runtime;
     RuntimeHistory runtimeHistory;
     CommandRegistry commandRegistry;
+    DocumentRegistry documentRegistry;
     WorkbenchState workbenchState;
     WorkspaceSettings workspaceSettings;
     OutputTranscript outputTranscript;
@@ -187,6 +189,10 @@ private:
     void updateBreadcrumbBar();
     void updateStatusIndicators();
     void syncEditorSession(EditorSurface *surface);
+    DocumentId documentIdForSurface(EditorSurface *surface) const;
+    void setDocumentIdForSurface(EditorSurface *surface, DocumentId id);
+    void syncDocumentRegistryFromSurface(EditorSurface *surface);
+    void markDocumentSaved(EditorSurface *surface);
     void setCurrentEditor(EditorSurface *surface);
     void updateEditorTabTitle(EditorSurface *surface);
     void closeEditorTab(int index);

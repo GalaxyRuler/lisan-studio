@@ -65,6 +65,7 @@ private slots:
     void dirtyBufferCancelPreventsNewFile();
     void dirtyBufferCancelPreventsProjectSwitch();
     void openingMultipleFilesKeepsEachDocumentInATab();
+    void openDocumentRecordsExposeRegistryVersionsAcrossEditAndSave();
     void projectTreeShowsOnlyFileNames();
     void projectTreeExposesRtlContextActions();
     void projectTreeOpenActionOpensSelectedFile();
@@ -1359,6 +1360,42 @@ void TestMainWindow::openingMultipleFilesKeepsEachDocumentInATab()
 
     tabs->setCurrentIndex(0);
     QCOMPARE(QDir::toNativeSeparators(window.currentEditorPath()), QDir::toNativeSeparators(firstPath));
+}
+
+void TestMainWindow::openDocumentRecordsExposeRegistryVersionsAcrossEditAndSave()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    QDir root(temp.path());
+    const QString filePath = writeFile(root, QStringLiteral("main.apy"), QString::fromUtf8("عدد = 1\n"));
+
+    MainWindow window;
+    QVERIFY(window.openPath(filePath));
+
+    QVector<DocumentRecord> records = window.openDocumentRecords();
+    QCOMPARE(records.size(), 1);
+    QVERIFY(records.first().id.isValid());
+    QCOMPARE(records.first().version, 1);
+    QVERIFY(!records.first().dirty);
+
+    auto *editor = window.findChild<EditorSurface *>(QStringLiteral("editorSurface"));
+    QVERIFY(editor != nullptr);
+    editor->moveCursor(QTextCursor::End);
+    editor->insertPlainText(QString::fromUtf8("اطبع(عدد)\n"));
+
+    records = window.openDocumentRecords();
+    QCOMPARE(records.size(), 1);
+    QVERIFY(records.first().dirty);
+    QCOMPARE(records.first().version, 2);
+    QCOMPARE(records.first().text, editor->toPlainText());
+
+    QVERIFY(QMetaObject::invokeMethod(&window, "saveFile", Qt::DirectConnection));
+
+    records = window.openDocumentRecords();
+    QCOMPARE(records.size(), 1);
+    QCOMPARE(records.first().version, 2);
+    QVERIFY(!records.first().dirty);
+    QCOMPARE(QDir::toNativeSeparators(records.first().path), QDir::toNativeSeparators(filePath));
 }
 
 void TestMainWindow::projectTreeShowsOnlyFileNames()

@@ -46,11 +46,16 @@
 #include <QTextStream>
 #include <QToolButton>
 #include <QStandardPaths>
+#include <QVariant>
 #include <QVBoxLayout>
 #include <QtConcurrent>
 
 #include <algorithm>
 #include <functional>
+
+namespace {
+constexpr const char *DocumentIdProperty = "lisanDocumentId";
+}
 
 class ArabicPlaceholderPlainTextEdit final : public QPlainTextEdit
 {
@@ -323,6 +328,7 @@ QString MainWindow::materializeRunnableBuffer(QString *error)
                 }
                 return QString();
             }
+            markDocumentSaved(editor);
         }
         return editor->currentFilePath();
     }
@@ -959,6 +965,7 @@ void MainWindow::saveFile()
         saveFileAs();
         return;
     }
+    markDocumentSaved(editor);
     setStatus(QString::fromUtf8("تم الحفظ"));
 }
 
@@ -978,6 +985,7 @@ void MainWindow::saveFileAs()
         QMessageBox::warning(this, QString::fromUtf8("تعذر الحفظ"), error);
         return;
     }
+    markDocumentSaved(editor);
     setStatus(QString::fromUtf8("تم الحفظ"));
 }
 
@@ -3009,11 +3017,22 @@ bool MainWindow::openEditorFile(const QString &path)
         target = createEditorTab(QFileInfo(normalizedPath).fileName());
     }
 
+    const DocumentId previousId = documentIdForSurface(target);
     QString error;
     if (!target->openFile(normalizedPath, &error)) {
         QMessageBox::warning(this, QString::fromUtf8("تعذر فتح الملف"), error);
         return false;
     }
+    const DocumentId openedId = documentRegistry.openPath(normalizedPath, &error);
+    if (!openedId.isValid()) {
+        QMessageBox::warning(this, QString::fromUtf8("تعذر فتح الملف"), error);
+        return false;
+    }
+    if (previousId.isValid() && previousId != openedId) {
+        documentRegistry.close(previousId);
+    }
+    setDocumentIdForSurface(target, openedId);
+    documentRegistry.markClean(openedId);
     setCurrentEditor(target);
     syncEditorSession(target);
     updateEditorTabTitle(target);
@@ -3028,6 +3047,7 @@ bool MainWindow::openEditorFile(const QString &path)
 EditorSurface *MainWindow::createEditorTab(const QString &title)
 {
     auto *surface = new EditorSurface(editorTabs);
+    setDocumentIdForSurface(surface, documentRegistry.createUntitled());
     applyEditorFont(surface);
     applyWorkspaceSettings(surface);
     const int index = editorTabs->addTab(surface, title);
@@ -3048,12 +3068,14 @@ EditorSurface *MainWindow::createEditorTab(const QString &title)
         }
     });
     connect(surface, &EditorSurface::dirtyStateChanged, this, [this, surface](bool) {
+        syncDocumentRegistryFromSurface(surface);
         syncEditorSession(surface);
         updateEditorTabTitle(surface);
         updateBreadcrumbBar();
         updateStatusIndicators();
     });
     connect(surface->document(), &QTextDocument::contentsChanged, this, [this, surface]() {
+        syncDocumentRegistryFromSurface(surface);
         if (surface == editor) {
             refreshEditorProblems();
             updateStatusIndicators();
@@ -3197,6 +3219,77 @@ void MainWindow::syncEditorSession(EditorSurface *surface)
     workbenchState.setEditorSessionDirty(index, surface->isDirty());
 }
 
+DocumentId MainWindow::documentIdForSurface(EditorSurface *surface) const
+{
+    if (!surface) {
+        return {};
+    }
+
+    bool ok = false;
+    const int id = surface->property(DocumentIdProperty).toInt(&ok);
+    return ok && id > 0 ? DocumentId(id) : DocumentId();
+}
+
+void MainWindow::setDocumentIdForSurface(EditorSurface *surface, DocumentId id)
+{
+    if (!surface) {
+        return;
+    }
+
+    if (!id.isValid()) {
+        surface->setProperty(DocumentIdProperty, QVariant());
+        return;
+    }
+    surface->setProperty(DocumentIdProperty, id.value());
+}
+
+void MainWindow::syncDocumentRegistryFromSurface(EditorSurface *surface)
+{
+    const DocumentId id = documentIdForSurface(surface);
+    if (!id.isValid()) {
+        return;
+    }
+
+    DocumentRecord record = documentRegistry.document(id);
+    if (!record.id.isValid()) {
+        return;
+    }
+
+    const QString text = surface->toPlainText();
+    if (record.text != text) {
+        documentRegistry.setText(id, text);
+        record = documentRegistry.document(id);
+    }
+    if (!surface->isDirty() && record.dirty) {
+        documentRegistry.markClean(id);
+    }
+}
+
+void MainWindow::markDocumentSaved(EditorSurface *surface)
+{
+    if (!surface) {
+        return;
+    }
+
+    DocumentId id = documentIdForSurface(surface);
+    if (!id.isValid()) {
+        id = documentRegistry.createUntitled(surface->toPlainText());
+        setDocumentIdForSurface(surface, id);
+    }
+
+    const DocumentRecord record = documentRegistry.document(id);
+    const QString text = surface->toPlainText();
+    if (record.id.isValid() && record.text != text) {
+        documentRegistry.setText(id, text);
+    }
+
+    if (!surface->currentFilePath().isEmpty()) {
+        documentRegistry.setPathAfterSave(id, surface->currentFilePath());
+    } else {
+        documentRegistry.markClean(id);
+    }
+}
+
 void MainWindow::setCurrentEditor(EditorSurface *surface)
 {
     if (!surface) {
@@ -3261,13 +3354,22 @@ void MainWindow::closeEditorTab(int index)
     }
 
     if (editorTabs->count() == 1) {
+        const DocumentId previousId = documentIdForSurface(surface);
         surface->resetForNewFile();
+        if (previousId.isValid()) {
+            documentRegistry.close(previousId);
+        }
+        setDocumentIdForSurface(surface, documentRegistry.createUntitled());
         syncEditorSession(surface);
         updateEditorTabTitle(surface);
         refreshEditorProblems();
         return;
     }
 
+    const DocumentId closedId = documentIdForSurface(surface);
+    if (closedId.isValid()) {
+        documentRegistry.close(closedId);
+    }
     editorTabs->removeTab(index);
     workbenchState.removeEditorSession(index);
     surface->deleteLater();
@@ -3466,14 +3568,10 @@ QVector<DocumentRecord> MainWindow::openDocumentRecords() const
             continue;
         }
 
-        DocumentRecord record;
-        record.id = DocumentId(i + 1);
-        record.path = surface->currentFilePath();
-        record.text = surface->toPlainText();
-        record.dirty = surface->isDirty();
-        record.identity = record.path.isEmpty() ? DocumentFileIdentity {} : DocumentFileIO::identityForPath(record.path);
-        record.lineEnding = DocumentFileIO::detectLineEnding(record.text);
-        records.push_back(record);
+        const DocumentRecord record = documentRegistry.document(documentIdForSurface(surface));
+        if (record.id.isValid()) {
+            records.push_back(record);
+        }
     }
     return records;
 }
