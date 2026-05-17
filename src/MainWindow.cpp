@@ -4,6 +4,7 @@
 #include "DocumentFileIO.h"
 #include "ProjectFileOperations.h"
 #include "RuntimeProblemParser.h"
+#include "ShortcutSettingsModel.h"
 
 #include <QApplication>
 #include <QCheckBox>
@@ -22,6 +23,7 @@
 #include <QHideEvent>
 #include <QInputDialog>
 #include <QIcon>
+#include <QJsonObject>
 #include <QListWidget>
 #include <QListWidgetItem>
 #include <QMenu>
@@ -893,6 +895,7 @@ void MainWindow::buildUi()
     statusBar()->addPermanentWidget(statusLanguageModeLabel);
     statusBar()->addPermanentWidget(statusRuntimeLabel);
     statusBar()->addPermanentWidget(statusGitLabel);
+    applyShortcutSettings();
     updateStatusIndicators();
 }
 
@@ -2868,6 +2871,40 @@ void MainWindow::applyThemePreference()
     const QString preference = settings.themePreference();
     setProperty("themePreference", preference);
     setStyleSheet(preference == QStringLiteral("light") ? lightWorkbenchStyleSheet() : darkThemeStyleSheet);
+}
+
+void MainWindow::applyShortcutSettings()
+{
+    const QJsonObject shortcutJson = settings.shortcutSettingsJson();
+    if (shortcutJson.isEmpty()) {
+        return;
+    }
+
+    ShortcutSettingsModel shortcutSettings;
+    QString error;
+    if (!shortcutSettings.loadJson(shortcutJson, commandRegistry, &error)) {
+        setProperty("shortcutSettingsError", error);
+        return;
+    }
+    setProperty("shortcutSettingsError", QString());
+
+    for (auto *action : findChildren<QAction *>()) {
+        const QString commandId = action->property("commandId").toString();
+        if (commandId.isEmpty() || !commandRegistry.contains(commandId)) {
+            continue;
+        }
+
+        const QKeySequence shortcut = shortcutSettings.effectiveShortcut(commandRegistry, commandId);
+        if (shortcut.isEmpty()) {
+            continue;
+        }
+
+        action->setShortcut(shortcut);
+        action->setShortcutContext(Qt::ApplicationShortcut);
+        if (!actions().contains(action)) {
+            addAction(action);
+        }
+    }
 }
 
 void MainWindow::updateBreadcrumbBar()

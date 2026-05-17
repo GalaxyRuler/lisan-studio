@@ -10,6 +10,7 @@
 #include <QDialogButtonBox>
 #include <QFontComboBox>
 #include <QFontDatabase>
+#include <QJsonObject>
 #include <QMenuBar>
 #include <QMessageBox>
 #include <QFrame>
@@ -92,6 +93,7 @@ private slots:
     void settingsDialogExposesCategoriesAndRuntimeDiagnostics();
     void settingsDialogAppliesEditorFontVisibly();
     void settingsDialogPersistsThemePreference();
+    void persistedShortcutOverrideAppliesToWorkbenchActions();
 };
 
 static QString writeFile(const QDir &root, const QString &relative, const QString &text)
@@ -2352,6 +2354,34 @@ void TestMainWindow::settingsDialogPersistsThemePreference()
     QTRY_COMPARE(SettingsStore(settingsPath).themePreference(), QStringLiteral("light"));
     QCOMPARE(window.property("themePreference").toString(), QStringLiteral("light"));
     QVERIFY2(window.styleSheet().contains(QStringLiteral("#F6F7FB")), qPrintable(window.styleSheet()));
+}
+
+void TestMainWindow::persistedShortcutOverrideAppliesToWorkbenchActions()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    const QString settingsPath = temp.filePath(QStringLiteral("settings.ini"));
+
+    QJsonObject shortcuts;
+    shortcuts.insert(QStringLiteral("save-file"), QStringLiteral("Ctrl+Alt+S"));
+    QJsonObject shortcutSettings;
+    shortcutSettings.insert(QStringLiteral("version"), 1);
+    shortcutSettings.insert(QStringLiteral("shortcuts"), shortcuts);
+    SettingsStore(settingsPath).saveShortcutSettingsJson(shortcutSettings);
+
+    MainWindow window(nullptr, settingsPath);
+
+    int saveActionCount = 0;
+    for (auto *action : window.findChildren<QAction *>()) {
+        if (action->property("commandId").toString() != QStringLiteral("save-file")) {
+            continue;
+        }
+        ++saveActionCount;
+        QCOMPARE(action->shortcut(), QKeySequence(QStringLiteral("Ctrl+Alt+S")));
+        QCOMPARE(action->shortcutContext(), Qt::ApplicationShortcut);
+    }
+
+    QVERIFY(saveActionCount >= 2);
 }
 
 QTEST_MAIN(TestMainWindow)

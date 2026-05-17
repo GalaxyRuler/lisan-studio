@@ -179,6 +179,7 @@ private:
     void applyWorkspaceSettings(EditorSurface *surface);
     void applyWorkspaceSettingsToOpenEditors();
     void applyThemePreference();
+    void applyShortcutSettings();
     void updateBreadcrumbBar();
     void updateStatusIndicators();
     void syncEditorSession(EditorSurface *surface);
