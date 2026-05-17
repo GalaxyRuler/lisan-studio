@@ -78,6 +78,11 @@ int DocumentRegistry::documentCount() const
     return records.size();
 }
 
+QVector<DocumentRecord> DocumentRegistry::documents() const
+{
+    return records;
+}
+
 DocumentRecord DocumentRegistry::document(DocumentId id) const
 {
     const int index = indexOf(id);

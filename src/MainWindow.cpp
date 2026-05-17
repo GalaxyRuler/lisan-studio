@@ -3077,9 +3077,10 @@ bool MainWindow::loadProject(const QString &path)
 bool MainWindow::openEditorFile(const QString &path)
 {
     const QString normalizedPath = QFileInfo(path).absoluteFilePath();
-    const int existingIndex = workbenchState.findEditorSessionByPath(normalizedPath);
-    if (existingIndex >= 0 && editorTabs && existingIndex < editorTabs->count()) {
-        editorTabs->setCurrentIndex(existingIndex);
+    const DocumentId existingId = documentRegistry.findByPath(normalizedPath);
+    const bool alreadyRegistered = existingId.isValid();
+    if (EditorSurface *existingSurface = surfaceForDocument(existingId)) {
+        editorTabs->setCurrentWidget(existingSurface);
         return true;
     }
 
@@ -3094,13 +3095,17 @@ bool MainWindow::openEditorFile(const QString &path)
 
     const DocumentId previousId = documentIdForSurface(target);
     QString error;
-    if (!target->openFile(normalizedPath, &error)) {
-        QMessageBox::warning(this, QString::fromUtf8("تعذر فتح الملف"), error);
-        return false;
-    }
     const DocumentId openedId = documentRegistry.openPath(normalizedPath, &error);
     if (!openedId.isValid()) {
         QMessageBox::warning(this, QString::fromUtf8("تعذر فتح الملف"), error);
+        return false;
+    }
+
+    if (!target->openFile(normalizedPath, &error)) {
+        QMessageBox::warning(this, QString::fromUtf8("تعذر فتح الملف"), error);
+        if (!alreadyRegistered) {
+            documentRegistry.close(openedId);
+        }
         return false;
     }
     if (previousId.isValid() && previousId != openedId) {
@@ -3380,8 +3385,9 @@ void MainWindow::syncEditorSession(EditorSurface *surface)
         return;
     }
 
-    workbenchState.setEditorSessionPath(index, surface->currentFilePath());
-    workbenchState.setEditorSessionDirty(index, surface->isDirty());
+    const DocumentRecord record = documentRegistry.document(documentIdForSurface(surface));
+    workbenchState.setEditorSessionPath(index, record.id.isValid() ? record.path : surface->currentFilePath());
+    workbenchState.setEditorSessionDirty(index, record.id.isValid() ? record.dirty : surface->isDirty());
 }
 
 DocumentId MainWindow::documentIdForSurface(EditorSurface *surface) const
@@ -3765,30 +3771,9 @@ bool MainWindow::confirmHiddenBidiSave()
     return box.clickedButton() == saveAnyway;
 }
 
-QVector<DocumentRecord> MainWindow::openDocumentRecords() const
-{
-    QVector<DocumentRecord> records;
-    if (!editorTabs) {
-        return records;
-    }
-
-    for (int i = 0; i < editorTabs->count(); ++i) {
-        auto *surface = qobject_cast<EditorSurface *>(editorTabs->widget(i));
-        if (!surface) {
-            continue;
-        }
-
-        const DocumentRecord record = documentRegistry.document(documentIdForSurface(surface));
-        if (record.id.isValid()) {
-            records.push_back(record);
-        }
-    }
-    return records;
-}
-
 bool MainWindow::confirmUnsavedDocuments(UnsavedChangesOperation operation)
 {
-    const UnsavedChangesRequest request = UnsavedChangesGuard::requestFor(openDocumentRecords(), operation);
+    const UnsavedChangesRequest request = UnsavedChangesGuard::requestFor(documentRegistry.documents(), operation);
     if (!request.required) {
         return true;
     }
@@ -3809,13 +3794,18 @@ bool MainWindow::confirmUnsavedDocuments(UnsavedChangesOperation operation)
 
     for (int i = 0; editorTabs && i < editorTabs->count(); ++i) {
         auto *surface = qobject_cast<EditorSurface *>(editorTabs->widget(i));
-        if (!surface || !surface->isDirty()) {
+        if (!surface) {
+            continue;
+        }
+
+        const DocumentId id = documentIdForSurface(surface);
+        if (!documentRegistry.document(id).dirty) {
             continue;
         }
 
         setCurrentEditor(surface);
         saveFile();
-        if (surface->isDirty()) {
+        if (documentRegistry.document(id).dirty) {
             return false;
         }
     }

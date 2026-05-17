@@ -200,6 +200,8 @@ private:
     void applyShortcutSettings();
     void updateBreadcrumbBar();
     void updateStatusIndicators();
+    // Test-only snapshot for verifying MainWindow's registry integration.
+    QVector<DocumentRecord> documentRecordsForTest() const { return documentRegistry.documents(); }
     void syncEditorSession(EditorSurface *surface);
     DocumentId documentIdForSurface(EditorSurface *surface) const;
     void setDocumentIdForSurface(EditorSurface *surface, DocumentId id);
@@ -230,7 +232,6 @@ private:
     QString runtimeWorkingDirectory() const;
     bool confirmSaveIfDirty();
     bool confirmHiddenBidiSave();
-    QVector<DocumentRecord> openDocumentRecords() const;
     bool confirmUnsavedDocuments(UnsavedChangesOperation operation);
     void discardUntitledDrafts();
     void runRuntimeAction(RuntimeAction action, const QString &title, bool reloadAfterSuccess = false);

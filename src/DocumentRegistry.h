@@ -58,6 +58,7 @@ public:
     DocumentId createUntitled(const QString &text = QString());
     bool close(DocumentId id);
     int documentCount() const;
+    QVector<DocumentRecord> documents() const;
     DocumentRecord document(DocumentId id) const;
     DocumentId findByPath(const QString &path) const;
     void setText(DocumentId id, const QString &text);

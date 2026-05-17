@@ -76,7 +76,9 @@ private slots:
     void dirtyBufferCancelPreventsNewFile();
     void dirtyBufferCancelPreventsProjectSwitch();
     void openingMultipleFilesKeepsEachDocumentInATab();
-    void openDocumentRecordsExposeRegistryVersionsAcrossEditAndSave();
+    void mainWindowOpenFileRegistersDocument();
+    void mainWindowSaveMarksRegistryClean();
+    void mainWindowConfirmUnsavedConsultsRegistry();
     void documentChangePromptReloadsExternallyModifiedOpenFile();
     void documentChangePromptKeepsCurrentBufferDirty();
     void projectTreeShowsOnlyFileNames();
@@ -1587,7 +1589,7 @@ void TestMainWindow::openingMultipleFilesKeepsEachDocumentInATab()
     QCOMPARE(QDir::toNativeSeparators(window.currentEditorPath()), QDir::toNativeSeparators(firstPath));
 }
 
-void TestMainWindow::openDocumentRecordsExposeRegistryVersionsAcrossEditAndSave()
+void TestMainWindow::mainWindowOpenFileRegistersDocument()
 {
     QTemporaryDir temp;
     QVERIFY(temp.isValid());
@@ -1597,18 +1599,30 @@ void TestMainWindow::openDocumentRecordsExposeRegistryVersionsAcrossEditAndSave(
     MainWindow window;
     QVERIFY(window.openPath(filePath));
 
-    QVector<DocumentRecord> records = window.openDocumentRecords();
+    const QVector<DocumentRecord> records = window.documentRecordsForTest();
     QCOMPARE(records.size(), 1);
     QVERIFY(records.first().id.isValid());
     QCOMPARE(records.first().version, 1);
     QVERIFY(!records.first().dirty);
+    QCOMPARE(QDir::toNativeSeparators(records.first().path), QDir::toNativeSeparators(filePath));
+}
+
+void TestMainWindow::mainWindowSaveMarksRegistryClean()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    QDir root(temp.path());
+    const QString filePath = writeFile(root, QStringLiteral("main.apy"), QString::fromUtf8("عدد = 1\n"));
+
+    MainWindow window;
+    QVERIFY(window.openPath(filePath));
 
     auto *editor = window.findChild<EditorSurface *>(QStringLiteral("editorSurface"));
     QVERIFY(editor != nullptr);
     editor->moveCursor(QTextCursor::End);
     editor->insertPlainText(QString::fromUtf8("اطبع(عدد)\n"));
 
-    records = window.openDocumentRecords();
+    QVector<DocumentRecord> records = window.documentRecordsForTest();
     QCOMPARE(records.size(), 1);
     QVERIFY(records.first().dirty);
     QCOMPARE(records.first().version, 2);
@@ -1616,11 +1630,69 @@ void TestMainWindow::openDocumentRecordsExposeRegistryVersionsAcrossEditAndSave(
 
     QVERIFY(QMetaObject::invokeMethod(&window, "saveFile", Qt::DirectConnection));
 
-    records = window.openDocumentRecords();
+    records = window.documentRecordsForTest();
     QCOMPARE(records.size(), 1);
     QCOMPARE(records.first().version, 2);
     QVERIFY(!records.first().dirty);
     QCOMPARE(QDir::toNativeSeparators(records.first().path), QDir::toNativeSeparators(filePath));
+}
+
+void TestMainWindow::mainWindowConfirmUnsavedConsultsRegistry()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    QDir root(temp.path());
+    const QString cleanPath = writeFile(root, QStringLiteral("clean.apy"), QString::fromUtf8("نظيف = 1\n"));
+    const QString dirtyPath = writeFile(root, QStringLiteral("dirty.apy"), QString::fromUtf8("متغير = 1\n"));
+
+    MainWindow window;
+    QVERIFY(window.openPath(cleanPath));
+    QVERIFY(window.openPath(dirtyPath));
+
+    auto *editor = window.findChild<EditorSurface *>(QStringLiteral("editorSurface"));
+    QVERIFY(editor != nullptr);
+    editor->moveCursor(QTextCursor::End);
+    editor->insertPlainText(QString::fromUtf8("اطبع(متغير)\n"));
+
+    const UnsavedChangesRequest request = UnsavedChangesGuard::requestFor(
+        window.documentRecordsForTest(),
+        UnsavedChangesOperation::Exit);
+    QVERIFY(request.required);
+    QCOMPARE(request.dirtyDocuments.size(), 1);
+    QCOMPARE(QDir::toNativeSeparators(request.dirtyDocuments.first().path), QDir::toNativeSeparators(dirtyPath));
+
+    bool promptObserved = false;
+    bool confirmFinished = false;
+    bool allowed = true;
+    QString failure;
+    QTimer::singleShot(0, &window, [&window, &allowed, &confirmFinished]() {
+        allowed = window.confirmUnsavedDocuments(UnsavedChangesOperation::Exit);
+        confirmFinished = true;
+    });
+    QTimer::singleShot(150, &window, [&promptObserved, &failure]() {
+        auto *box = qobject_cast<QMessageBox *>(QApplication::activeModalWidget());
+        if (!box) {
+            failure = QStringLiteral("unsaved changes prompt did not open");
+            return;
+        }
+
+        const QString promptText = box->text() + QLatin1Char('\n') + box->informativeText();
+        if (!promptText.contains(QStringLiteral("dirty.apy"))) {
+            failure = QStringLiteral("dirty document missing from unsaved changes prompt");
+            return;
+        }
+        if (promptText.contains(QStringLiteral("clean.apy"))) {
+            failure = QStringLiteral("clean document was included in unsaved changes prompt");
+            return;
+        }
+
+        promptObserved = true;
+        box->button(QMessageBox::Cancel)->click();
+    });
+
+    QTRY_VERIFY2(promptObserved, qPrintable(failure));
+    QTRY_VERIFY(confirmFinished);
+    QVERIFY(!allowed);
 }
 
 void TestMainWindow::documentChangePromptReloadsExternallyModifiedOpenFile()
@@ -1633,7 +1705,7 @@ void TestMainWindow::documentChangePromptReloadsExternallyModifiedOpenFile()
     MainWindow window;
     QVERIFY(window.openPath(filePath));
 
-    QVector<DocumentRecord> records = window.openDocumentRecords();
+    QVector<DocumentRecord> records = window.documentRecordsForTest();
     QCOMPARE(records.size(), 1);
     QCOMPARE(records.first().externalState, DocumentExternalState::Unchanged);
 
@@ -1670,7 +1742,7 @@ void TestMainWindow::documentChangePromptReloadsExternallyModifiedOpenFile()
     QVERIFY(editor != nullptr);
     QCOMPARE(editor->toPlainText(), QString::fromUtf8("عدد = 2\n"));
     QVERIFY(!editor->isDirty());
-    records = window.openDocumentRecords();
+    records = window.documentRecordsForTest();
     QCOMPARE(records.size(), 1);
     QCOMPARE(records.first().externalState, DocumentExternalState::Unchanged);
     QVERIFY(!records.first().dirty);
@@ -1722,7 +1794,7 @@ void TestMainWindow::documentChangePromptKeepsCurrentBufferDirty()
 
     QCOMPARE(editor->toPlainText(), QString::fromUtf8("عدد = 1\n"));
     QVERIFY(editor->isDirty());
-    const QVector<DocumentRecord> records = window.openDocumentRecords();
+    const QVector<DocumentRecord> records = window.documentRecordsForTest();
     QCOMPARE(records.size(), 1);
     QCOMPARE(records.first().externalState, DocumentExternalState::Unchanged);
     QVERIFY(records.first().dirty);
