@@ -49,16 +49,11 @@
 #include <QTextStream>
 #include <QToolButton>
 #include <QStandardPaths>
-#include <QVariant>
 #include <QVBoxLayout>
 #include <QtConcurrent>
 
 #include <algorithm>
 #include <functional>
-
-namespace {
-constexpr const char *DocumentIdProperty = "lisanDocumentId";
-}
 
 class ArabicPlaceholderPlainTextEdit final : public QPlainTextEdit
 {
@@ -222,6 +217,15 @@ static QString resolvedArabicEditorFontFamily(const QString &configuredFamily)
     return arabicEditorFontFamilies().first();
 }
 
+static QFont configuredEditorFont(const SettingsStore &settings)
+{
+    QFont font;
+    font.setFamily(resolvedArabicEditorFontFamily(settings.editorFontFamily()));
+    font.setPointSize(settings.editorFontSize());
+    font.setStyleHint(QFont::Monospace);
+    return font;
+}
+
 static QIcon lightPlayIcon()
 {
     QPixmap pixmap(28, 28);
@@ -271,7 +275,9 @@ MainWindow::MainWindow(QWidget *parent, const QString &settingsPath)
     connect(&runtimeOrchestrator, &RuntimeOrchestrator::reloadRequested, this, [this](const QString &path) {
         if (!editor) return;
         QString error;
-        editor->openFile(path, &error);
+        if (editor->openFile(path, &error) && editorTabsController) {
+            editorTabsController->syncSessionsInto(workbenchState);
+        }
     });
     documentChangePollTimer = new QTimer(this);
     documentChangePollTimer->setInterval(2000);
@@ -337,13 +343,12 @@ QString MainWindow::materializeRunnableBuffer(QString *error)
             }
 
             QString saveError;
-            if (!editor->saveFile(&saveError)) {
+            if (!editorTabsController || !editorTabsController->saveCurrent(&saveError)) {
                 if (error) {
                     *error = saveError;
                 }
                 return QString();
             }
-            markDocumentSaved(editor);
         }
         return editor->currentFilePath();
     }
@@ -795,12 +800,28 @@ void MainWindow::buildUi()
     editorTabs->setDocumentMode(true);
     editorTabs->setTabsClosable(true);
     editorTabs->setLayoutDirection(Qt::RightToLeft);
-    connect(editorTabs, &QTabWidget::currentChanged, this, [this](int index) {
-        workbenchState.setCurrentEditorSessionIndex(index);
-        setCurrentEditor(qobject_cast<EditorSurface *>(editorTabs->widget(index)));
+    editorTabsController = std::make_unique<EditorTabsController>(editorTabs, documentRegistry, workbenchState, this);
+    editorTabsController->applyFont(configuredEditorFont(settings));
+    editorTabsController->applyWorkspaceSettings(workspaceSettings);
+    connect(editorTabsController.get(), &EditorTabsController::currentEditorChanged, this, [this](EditorSurface *surface) {
+        editor = surface;
+        refreshCurrentEditorUi(true);
     });
-    connect(editorTabs, &QTabWidget::tabCloseRequested, this, &MainWindow::closeEditorTab);
-    createEditorTab(QString::fromUtf8("ملف جديد"));
+    connect(editorTabsController.get(), &EditorTabsController::pathChanged, this, [this](DocumentId, const QString &) {
+        refreshCurrentEditorUi(false);
+    });
+    connect(editorTabsController.get(), &EditorTabsController::dirtyStateChanged, this, [this](DocumentId, bool) {
+        refreshCurrentEditorUi(true);
+        saveWorkbenchSession();
+    });
+    connect(editorTabsController.get(), &EditorTabsController::tabClosed, this, [this](DocumentId) {
+        refreshEditorProblems();
+        saveWorkbenchSession();
+    });
+    connect(editorTabs, &QTabWidget::tabCloseRequested, this, [this](int index) {
+        requestCloseEditorTab(index);
+    });
+    editorTabsController->createUntitled(QString::fromUtf8("ملف جديد"));
     editorColumnLayout->addWidget(editorTabs, 1);
 
     splitter->addWidget(projectTree);
@@ -930,7 +951,9 @@ void MainWindow::newFile()
     if (!confirmSaveIfDirty()) {
         return;
     }
-    createEditorTab(QString::fromUtf8("ملف جديد"));
+    if (editorTabsController) {
+        editorTabsController->createUntitled(QString::fromUtf8("ملف جديد"));
+    }
     outputPanel->clear();
     refreshEditorProblems();
     setStatus(QString::fromUtf8("ملف جديد"));
@@ -964,11 +987,10 @@ void MainWindow::saveFile()
     }
 
     QString error;
-    if (!editor->saveFile(&error)) {
+    if (!editorTabsController || !editorTabsController->saveCurrent(&error)) {
         QMessageBox::warning(this, QString::fromUtf8("تعذر الحفظ"), error);
         return;
     }
-    markDocumentSaved(editor);
     setStatus(QString::fromUtf8("تم الحفظ"));
 }
 
@@ -989,11 +1011,10 @@ void MainWindow::saveFileAs()
     }
 
     QString error;
-    if (!editor->saveFileAs(path, &error)) {
+    if (!editorTabsController || !editorTabsController->saveCurrentAs(path, &error)) {
         QMessageBox::warning(this, QString::fromUtf8("تعذر الحفظ"), error);
         return;
     }
-    markDocumentSaved(editor);
     setStatus(QString::fromUtf8("تم الحفظ"));
 }
 
@@ -1224,12 +1245,9 @@ void MainWindow::registerWorkbenchCommands()
         QKeySequence(),
         QString::fromUtf8("حفظ كل المستندات المفتوحة save all"),
         [this]() {
-            for (int i = 0; editorTabs && i < editorTabs->count(); ++i) {
-                auto *surface = qobject_cast<EditorSurface *>(editorTabs->widget(i));
-                if (!surface || !surface->isDirty()) {
-                    continue;
-                }
-                setCurrentEditor(surface);
+            const QVector<EditorSurface *> surfaces = editorTabsController ? editorTabsController->dirtySurfaces() : QVector<EditorSurface *> {};
+            for (EditorSurface *surface : surfaces) {
+                editorTabs->setCurrentWidget(surface);
                 saveFile();
                 if (surface->isDirty()) {
                     return;
@@ -1256,8 +1274,9 @@ void MainWindow::registerWorkbenchCommands()
                 QMessageBox::warning(this, QString::fromUtf8("تعذر فتح الملف"), error);
                 return;
             }
-            syncEditorSession(editor);
-            updateEditorTabTitle(editor);
+            if (editorTabsController) {
+                editorTabsController->syncSessionsInto(workbenchState);
+            }
         },
         [this]() { return editor && !editor->currentFilePath().isEmpty(); });
     registerCommand(
@@ -1268,7 +1287,7 @@ void MainWindow::registerWorkbenchCommands()
         QString::fromUtf8("إغلاق المستند الحالي مع حماية التغييرات close document"),
         [this]() {
             if (editorTabs) {
-                closeEditorTab(editorTabs->currentIndex());
+                requestCloseEditorTab(editorTabs->currentIndex());
             }
         },
         [this]() { return editorTabs && editorTabs->count() > 0; });
@@ -2265,12 +2284,8 @@ QVector<ProjectReplacePreviewRow> MainWindow::acceptedProjectReplaceRows() const
 
 bool MainWindow::hasDirtyOpenDocumentForReplaceRows(const QVector<ProjectReplacePreviewRow> &rows) const
 {
-    for (int tabIndex = 0; editorTabs && tabIndex < editorTabs->count(); ++tabIndex) {
-        auto *surface = qobject_cast<EditorSurface *>(editorTabs->widget(tabIndex));
-        if (!surface || !surface->isDirty() || surface->currentFilePath().isEmpty()) {
-            continue;
-        }
-        const QString openPath = QFileInfo(surface->currentFilePath()).absoluteFilePath();
+    const QStringList dirtyPaths = editorTabsController ? editorTabsController->dirtyFilePaths() : QStringList {};
+    for (const QString &openPath : dirtyPaths) {
         for (const ProjectReplacePreviewRow &row : rows) {
             if (!row.path.isEmpty() && QFileInfo(row.path).absoluteFilePath() == openPath) {
                 return true;
@@ -2621,29 +2636,12 @@ QString MainWindow::activeProjectTreeFolderPath() const
 
 void MainWindow::clearEditorsForDeletedPath(const QString &path)
 {
-    for (int i = editorTabs ? editorTabs->count() - 1 : -1; i >= 0; --i) {
-        auto *surface = qobject_cast<EditorSurface *>(editorTabs->widget(i));
-        if (!surface) {
-            continue;
-        }
-
-        const QString openPath = QFileInfo(surface->currentFilePath()).absoluteFilePath();
-        if (openPath.isEmpty() || !ProjectModel::pathIsSameOrInside(openPath, path)) {
-            continue;
-        }
-
-        if (editorTabs->count() == 1) {
-            surface->resetForNewFile();
-            updateEditorTabTitle(surface);
-            setCurrentEditor(surface);
-            continue;
-        }
-
-        editorTabs->removeTab(i);
-        surface->deleteLater();
+    if (editorTabsController) {
+        editorTabsController->closeTabsMatching([&path](EditorSurface *surface) {
+            const QString openPath = QFileInfo(surface->currentFilePath()).absoluteFilePath();
+            return !openPath.isEmpty() && ProjectModel::pathIsSameOrInside(openPath, path);
+        });
     }
-
-    setCurrentEditor(qobject_cast<EditorSurface *>(editorTabs->currentWidget()));
     refreshEditorProblems();
 }
 
@@ -2918,10 +2916,8 @@ void MainWindow::openSettings()
     settings.setEditorFontSize(fontSizeInput->value());
     settings.setThemePreference(themePreferenceCombo->currentData().toString());
     applyThemePreference();
-    for (int i = 0; editorTabs && i < editorTabs->count(); ++i) {
-        if (auto *surface = qobject_cast<EditorSurface *>(editorTabs->widget(i))) {
-            applyEditorFont(surface);
-        }
+    if (editorTabsController) {
+        editorTabsController->applyFont(configuredEditorFont(settings));
     }
     setStatus(QString::fromUtf8("تم تحديث الإعدادات"));
 }
@@ -2949,7 +2945,9 @@ bool MainWindow::loadProject(const QString &path)
     workspaceSettings = WorkspaceSettingsStore(projectRoot).load();
     fileSystemModel->setRootPath(projectRoot);
     projectTree->setRootIndex(fileSystemModel->index(projectRoot));
-    applyWorkspaceSettingsToOpenEditors();
+    if (editorTabsController) {
+        editorTabsController->applyWorkspaceSettings(workspaceSettings);
+    }
     settings.addRecentProject(projectRoot);
     setStatus(QString::fromUtf8("المشروع: %1").arg(projectRoot));
     return true;
@@ -2959,9 +2957,8 @@ bool MainWindow::openEditorFile(const QString &path)
 {
     const QString normalizedPath = QFileInfo(path).absoluteFilePath();
     const DocumentId existingId = documentRegistry.findByPath(normalizedPath);
-    const bool alreadyRegistered = existingId.isValid();
-    if (EditorSurface *existingSurface = surfaceForDocument(existingId)) {
-        editorTabs->setCurrentWidget(existingSurface);
+    if (editorTabsController && editorTabsController->surfaceForDocument(existingId)) {
+        editorTabsController->openFile(normalizedPath);
         return true;
     }
 
@@ -2969,34 +2966,12 @@ bool MainWindow::openEditorFile(const QString &path)
         return false;
     }
 
-    EditorSurface *target = editor;
-    if (!target || !target->currentFilePath().isEmpty() || target->isDirty() || editorTabs->count() > 1) {
-        target = createEditorTab(QFileInfo(normalizedPath).fileName());
-    }
-
-    const DocumentId previousId = documentIdForSurface(target);
     QString error;
-    const DocumentId openedId = documentRegistry.openPath(normalizedPath, &error);
-    if (!openedId.isValid()) {
+    if (!editorTabsController || !editorTabsController->openFile(normalizedPath, &error)) {
         QMessageBox::warning(this, QString::fromUtf8("تعذر فتح الملف"), error);
         return false;
     }
 
-    if (!target->openFile(normalizedPath, &error)) {
-        QMessageBox::warning(this, QString::fromUtf8("تعذر فتح الملف"), error);
-        if (!alreadyRegistered) {
-            documentRegistry.close(openedId);
-        }
-        return false;
-    }
-    if (previousId.isValid() && previousId != openedId) {
-        documentRegistry.close(previousId);
-    }
-    setDocumentIdForSurface(target, openedId);
-    documentRegistry.markClean(openedId);
-    setCurrentEditor(target);
-    syncEditorSession(target);
-    updateEditorTabTitle(target);
     if (projectRoot.isEmpty()) {
         loadProject(QFileInfo(normalizedPath).absolutePath());
     }
@@ -3005,48 +2980,28 @@ bool MainWindow::openEditorFile(const QString &path)
     return true;
 }
 
-EditorSurface *MainWindow::createEditorTab(const QString &title)
+bool MainWindow::requestCloseEditorTab(int index)
 {
-    auto *surface = new EditorSurface(editorTabs);
-    setDocumentIdForSurface(surface, documentRegistry.createUntitled());
-    applyEditorFont(surface);
-    applyWorkspaceSettings(surface);
-    const int index = editorTabs->addTab(surface, title);
-    workbenchState.addEditorSession(surface->currentFilePath());
-    workbenchState.setCurrentEditorSessionIndex(index);
-    editorTabs->setCurrentIndex(index);
-    setCurrentEditor(surface);
+    if (!editorTabs || !editorTabsController || index < 0 || index >= editorTabs->count()) {
+        return false;
+    }
 
-    connect(surface, &EditorSurface::filePathChanged, this, [this, surface](const QString &) {
-        syncEditorSession(surface);
-        updateEditorTabTitle(surface);
-        updateBreadcrumbBar();
-        updateStatusIndicators();
-        if (surface == editor) {
-            setWindowTitle(surface->currentFilePath().isEmpty()
-                ? QString::fromUtf8("استوديو لسان")
-                : QString::fromUtf8("استوديو لسان - %1").arg(QFileInfo(surface->currentFilePath()).fileName()));
-        }
-    });
-    connect(surface, &EditorSurface::dirtyStateChanged, this, [this, surface](bool) {
-        syncDocumentRegistryFromSurface(surface);
-        syncEditorSession(surface);
-        updateEditorTabTitle(surface);
-        updateBreadcrumbBar();
-        updateStatusIndicators();
-        saveWorkbenchSession();
-    });
-    connect(surface->document(), &QTextDocument::contentsChanged, this, [this, surface]() {
-        syncDocumentRegistryFromSurface(surface);
-        if (surface == editor) {
-            refreshEditorProblems();
-            updateStatusIndicators();
-        }
-        saveWorkbenchSession();
-    });
+    auto *surface = qobject_cast<EditorSurface *>(editorTabs->widget(index));
+    if (!surface) {
+        return false;
+    }
 
-    updateEditorTabTitle(surface);
-    return surface;
+    EditorSurface *previousEditor = editor;
+    editorTabs->setCurrentWidget(surface);
+    if (!confirmSaveIfDirty()) {
+        if (previousEditor) {
+            editorTabs->setCurrentWidget(previousEditor);
+        }
+        return false;
+    }
+
+    editorTabsController->closeTab(index);
+    return true;
 }
 
 void MainWindow::pollOpenDocumentChanges()
@@ -3070,7 +3025,7 @@ void MainWindow::resolveExternalDocumentChange(const DocumentRecord &record)
         return;
     }
 
-    EditorSurface *surface = surfaceForDocument(current.id);
+    EditorSurface *surface = editorTabsController ? editorTabsController->surfaceForDocument(current.id) : nullptr;
     const bool hasDirtyBuffer = (surface && surface->isDirty()) || current.dirty;
 
     QMessageBox box(this);
@@ -3108,9 +3063,9 @@ void MainWindow::resolveExternalDocumentChange(const DocumentRecord &record)
                 QMessageBox::warning(this, QString::fromUtf8("تعذر إعادة التحميل"), error);
                 return;
             }
-            setDocumentIdForSurface(surface, reloaded.id);
-            syncEditorSession(surface);
-            updateEditorTabTitle(surface);
+            if (editorTabsController) {
+                editorTabsController->syncSessionsInto(workbenchState);
+            }
             if (surface == editor) {
                 updateBreadcrumbBar();
                 updateStatusIndicators();
@@ -3126,55 +3081,14 @@ void MainWindow::resolveExternalDocumentChange(const DocumentRecord &record)
     documentRegistry.keepCurrentVersion(current.id);
     if (surface) {
         surface->document()->setModified(true);
-        syncEditorSession(surface);
-        updateEditorTabTitle(surface);
+        if (editorTabsController) {
+            editorTabsController->syncSessionsInto(workbenchState);
+        }
         if (surface == editor) {
             updateStatusIndicators();
         }
     }
     setStatus(QString::fromUtf8("تم الاحتفاظ بنسخة المحرر"));
-}
-
-void MainWindow::applyEditorFont(EditorSurface *surface)
-{
-    if (!surface) {
-        return;
-    }
-
-    const QString family = resolvedArabicEditorFontFamily(settings.editorFontFamily());
-    QFont configuredFont = surface->font();
-    configuredFont.setFamily(family);
-    configuredFont.setPointSize(settings.editorFontSize());
-    configuredFont.setStyleHint(QFont::Monospace);
-    surface->setFont(configuredFont);
-
-    QString stylesheetFamily = family;
-    stylesheetFamily.replace(QLatin1Char('\\'), QStringLiteral("\\\\"));
-    stylesheetFamily.replace(QLatin1Char('"'), QStringLiteral("\\\""));
-    surface->setStyleSheet(QStringLiteral("font-family: \"%1\"; font-size: %2pt;")
-        .arg(stylesheetFamily)
-        .arg(settings.editorFontSize()));
-    surface->setTabStopDistance(surface->fontMetrics().horizontalAdvance(QLatin1Char(' ')) * 4);
-}
-
-void MainWindow::applyWorkspaceSettings(EditorSurface *surface)
-{
-    if (!surface) {
-        return;
-    }
-
-    surface->setTrimTrailingWhitespaceOnSave(workspaceSettings.trimTrailingWhitespaceOnSave);
-}
-
-void MainWindow::applyWorkspaceSettingsToOpenEditors()
-{
-    if (!editorTabs) {
-        return;
-    }
-
-    for (int i = 0; i < editorTabs->count(); ++i) {
-        applyWorkspaceSettings(qobject_cast<EditorSurface *>(editorTabs->widget(i)));
-    }
 }
 
 void MainWindow::applyThemePreference()
@@ -3239,6 +3153,22 @@ void MainWindow::updateBreadcrumbBar()
     breadcrumbSymbolLabel->setText(QString::fromUtf8("الرموز: لاحقا"));
 }
 
+void MainWindow::refreshCurrentEditorUi(bool includeProblems)
+{
+    if (!editor) {
+        return;
+    }
+
+    setWindowTitle(editor->currentFilePath().isEmpty()
+        ? QString::fromUtf8("استوديو لسان")
+        : QString::fromUtf8("استوديو لسان - %1").arg(QFileInfo(editor->currentFilePath()).fileName()));
+    updateBreadcrumbBar();
+    updateStatusIndicators();
+    if (includeProblems) {
+        refreshEditorProblems();
+    }
+}
+
 void MainWindow::updateStatusIndicators()
 {
     if (!statusEncodingLabel || !statusLineEndingLabel || !statusIndentationLabel || !statusLanguageModeLabel || !statusRuntimeLabel || !statusGitLabel) {
@@ -3253,195 +3183,6 @@ void MainWindow::updateStatusIndicators()
     statusLanguageModeLabel->setText(languageModeStatusText(path));
     statusRuntimeLabel->setText(QString::fromUtf8("التشغيل: جاهز"));
     statusGitLabel->setText(QStringLiteral("Git: --"));
-}
-
-void MainWindow::syncEditorSession(EditorSurface *surface)
-{
-    if (!surface || !editorTabs) {
-        return;
-    }
-
-    const int index = editorTabs->indexOf(surface);
-    if (index < 0) {
-        return;
-    }
-
-    const DocumentRecord record = documentRegistry.document(documentIdForSurface(surface));
-    workbenchState.setEditorSessionPath(index, record.id.isValid() ? record.path : surface->currentFilePath());
-    workbenchState.setEditorSessionDirty(index, record.id.isValid() ? record.dirty : surface->isDirty());
-}
-
-DocumentId MainWindow::documentIdForSurface(EditorSurface *surface) const
-{
-    if (!surface) {
-        return {};
-    }
-
-    bool ok = false;
-    const int id = surface->property(DocumentIdProperty).toInt(&ok);
-    return ok && id > 0 ? DocumentId(id) : DocumentId();
-}
-
-void MainWindow::setDocumentIdForSurface(EditorSurface *surface, DocumentId id)
-{
-    if (!surface) {
-        return;
-    }
-
-    if (!id.isValid()) {
-        surface->setProperty(DocumentIdProperty, QVariant());
-        return;
-    }
-    surface->setProperty(DocumentIdProperty, id.value());
-}
-
-EditorSurface *MainWindow::surfaceForDocument(DocumentId id) const
-{
-    if (!id.isValid() || !editorTabs) {
-        return nullptr;
-    }
-
-    for (int i = 0; i < editorTabs->count(); ++i) {
-        auto *surface = qobject_cast<EditorSurface *>(editorTabs->widget(i));
-        if (surface && documentIdForSurface(surface) == id) {
-            return surface;
-        }
-    }
-    return nullptr;
-}
-
-void MainWindow::syncDocumentRegistryFromSurface(EditorSurface *surface)
-{
-    const DocumentId id = documentIdForSurface(surface);
-    if (!id.isValid()) {
-        return;
-    }
-
-    DocumentRecord record = documentRegistry.document(id);
-    if (!record.id.isValid()) {
-        return;
-    }
-
-    const QString text = surface->toPlainText();
-    if (record.text != text) {
-        documentRegistry.setText(id, text);
-        record = documentRegistry.document(id);
-    }
-    if (!surface->isDirty() && record.dirty) {
-        documentRegistry.markClean(id);
-    }
-}
-
-void MainWindow::markDocumentSaved(EditorSurface *surface)
-{
-    if (!surface) {
-        return;
-    }
-
-    DocumentId id = documentIdForSurface(surface);
-    if (!id.isValid()) {
-        id = documentRegistry.createUntitled(surface->toPlainText());
-        setDocumentIdForSurface(surface, id);
-    }
-
-    const DocumentRecord record = documentRegistry.document(id);
-    const QString text = surface->toPlainText();
-    if (record.id.isValid() && record.text != text) {
-        documentRegistry.setText(id, text);
-    }
-
-    if (!surface->currentFilePath().isEmpty()) {
-        documentRegistry.setPathAfterSave(id, surface->currentFilePath());
-    } else {
-        documentRegistry.markClean(id);
-    }
-}
-
-void MainWindow::setCurrentEditor(EditorSurface *surface)
-{
-    if (!surface) {
-        return;
-    }
-
-    const int currentIndex = editorTabs ? editorTabs->indexOf(surface) : -1;
-    workbenchState.setCurrentEditorSessionIndex(currentIndex);
-    syncEditorSession(surface);
-
-    for (int i = 0; editorTabs && i < editorTabs->count(); ++i) {
-        if (auto *tabEditor = qobject_cast<EditorSurface *>(editorTabs->widget(i))) {
-            tabEditor->setObjectName(tabEditor == surface ? QStringLiteral("editorSurface") : QStringLiteral("editorSurfaceInactive"));
-        }
-    }
-
-    editor = surface;
-    setWindowTitle(editor->currentFilePath().isEmpty()
-        ? QString::fromUtf8("استوديو لسان")
-        : QString::fromUtf8("استوديو لسان - %1").arg(QFileInfo(editor->currentFilePath()).fileName()));
-    updateBreadcrumbBar();
-    updateStatusIndicators();
-    refreshEditorProblems();
-}
-
-void MainWindow::updateEditorTabTitle(EditorSurface *surface)
-{
-    if (!surface || !editorTabs) {
-        return;
-    }
-
-    const int index = editorTabs->indexOf(surface);
-    if (index < 0) {
-        return;
-    }
-
-    syncEditorSession(surface);
-    const auto sessions = workbenchState.editorSessions();
-    const EditorSessionState session = index < sessions.size() ? sessions.at(index) : EditorSessionState {};
-
-    QString title = session.path.isEmpty()
-        ? QString::fromUtf8("ملف جديد")
-        : QFileInfo(session.path).fileName();
-    if (session.dirty) {
-        title.prepend(QLatin1Char('*'));
-    }
-    editorTabs->setTabText(index, title);
-}
-
-void MainWindow::closeEditorTab(int index)
-{
-    auto *surface = qobject_cast<EditorSurface *>(editorTabs->widget(index));
-    if (!surface) {
-        return;
-    }
-
-    EditorSurface *previousEditor = editor;
-    setCurrentEditor(surface);
-    if (!confirmSaveIfDirty()) {
-        setCurrentEditor(previousEditor);
-        return;
-    }
-
-    if (editorTabs->count() == 1) {
-        const DocumentId previousId = documentIdForSurface(surface);
-        surface->resetForNewFile();
-        if (previousId.isValid()) {
-            documentRegistry.close(previousId);
-        }
-        setDocumentIdForSurface(surface, documentRegistry.createUntitled());
-        syncEditorSession(surface);
-        updateEditorTabTitle(surface);
-        refreshEditorProblems();
-        return;
-    }
-
-    const DocumentId closedId = documentIdForSurface(surface);
-    if (closedId.isValid()) {
-        documentRegistry.close(closedId);
-    }
-    editorTabs->removeTab(index);
-    workbenchState.removeEditorSession(index);
-    surface->deleteLater();
-    setCurrentEditor(qobject_cast<EditorSurface *>(editorTabs->currentWidget()));
-    refreshEditorProblems();
 }
 
 void MainWindow::writeOutput(const QString &title, const QString &text)
@@ -3673,18 +3414,10 @@ bool MainWindow::confirmUnsavedDocuments(UnsavedChangesOperation operation)
         return true;
     }
 
-    for (int i = 0; editorTabs && i < editorTabs->count(); ++i) {
-        auto *surface = qobject_cast<EditorSurface *>(editorTabs->widget(i));
-        if (!surface) {
-            continue;
-        }
-
-        const DocumentId id = documentIdForSurface(surface);
-        if (!documentRegistry.document(id).dirty) {
-            continue;
-        }
-
-        setCurrentEditor(surface);
+    const QVector<EditorSurface *> surfaces = editorTabsController ? editorTabsController->dirtySurfaces() : QVector<EditorSurface *> {};
+    for (EditorSurface *surface : surfaces) {
+        const DocumentId id = editorTabsController->documentIdForSurface(surface);
+        editorTabs->setCurrentWidget(surface);
         saveFile();
         if (documentRegistry.document(id).dirty) {
             return false;
@@ -3695,17 +3428,8 @@ bool MainWindow::confirmUnsavedDocuments(UnsavedChangesOperation operation)
 
 void MainWindow::discardUntitledDrafts()
 {
-    for (int i = 0; editorTabs && i < editorTabs->count(); ++i) {
-        auto *surface = qobject_cast<EditorSurface *>(editorTabs->widget(i));
-        if (!surface || !surface->isDirty() || !surface->currentFilePath().isEmpty()) {
-            continue;
-        }
-
-        surface->clear();
-        surface->document()->setModified(false);
-        syncDocumentRegistryFromSurface(surface);
-        syncEditorSession(surface);
-        updateEditorTabTitle(surface);
+    if (editorTabsController) {
+        editorTabsController->discardUntitledDrafts();
     }
     saveWorkbenchSession();
 }
@@ -3802,16 +3526,13 @@ void MainWindow::restoreWorkbenchSession()
             && editor->toPlainText().isEmpty();
         EditorSurface *target = canReuseInitialTab
             ? editor
-            : createEditorTab(QString::fromUtf8("مسودة مستعادة"));
+            : (editorTabsController ? editorTabsController->createUntitled(QString::fromUtf8("مسودة مستعادة")) : nullptr);
         if (!target) {
             continue;
         }
 
         target->setPlainText(draftText);
         target->document()->setModified(true);
-        syncDocumentRegistryFromSurface(target);
-        syncEditorSession(target);
-        updateEditorTabTitle(target);
         restoredAnyDraft = true;
     }
 
@@ -3827,26 +3548,16 @@ void MainWindow::restoreWorkbenchSession()
 
 void MainWindow::saveWorkbenchSession()
 {
+    if (editorTabsController) {
+        editorTabsController->syncSessionsInto(workbenchState);
+    }
+
     SavedWorkbenchSession session;
     session.projectRoot = projectRoot;
-    if (editorTabs) {
-        for (int i = 0; i < editorTabs->count(); ++i) {
-            auto *surface = qobject_cast<EditorSurface *>(editorTabs->widget(i));
-            if (!surface) {
-                continue;
-            }
-            if (surface->currentFilePath().isEmpty()) {
-                const QString text = surface->toPlainText();
-                if (surface->isDirty() || !text.isEmpty()) {
-                    session.untitledDrafts.append(text);
-                }
-                continue;
-            }
-            session.openFiles.append(surface->currentFilePath());
-            if (i == editorTabs->currentIndex()) {
-                session.activeFileIndex = session.openFiles.size() - 1;
-            }
-        }
+    if (editorTabsController) {
+        session.openFiles = editorTabsController->openFilePaths();
+        session.untitledDrafts = editorTabsController->untitledDrafts();
+        session.activeFileIndex = editorTabsController->activeFileIndexAmongSavedFiles();
     }
     if (session.activeFileIndex < 0 && !session.openFiles.isEmpty()) {
         session.activeFileIndex = 0;

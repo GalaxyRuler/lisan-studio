@@ -30,6 +30,8 @@ add_library(acs_core
     src/DocumentRegistry.cpp
     src/BottomPanelController.h
     src/BottomPanelController.cpp
+    src/EditorTabsController.h
+    src/EditorTabsController.cpp
     src/EditorFindService.h
     src/EditorFindService.cpp
     src/OutputTranscript.h
@@ -104,6 +106,12 @@ qt_add_executable(acs_editor_tests
 
 target_link_libraries(acs_editor_tests PRIVATE acs_core Qt6::Test)
 
+qt_add_executable(acs_editor_tabs_controller_tests
+    tests/TestEditorTabsController.cpp
+)
+
+target_link_libraries(acs_editor_tabs_controller_tests PRIVATE acs_core Qt6::Test)
+
 qt_add_executable(acs_command_registry_tests
     tests/TestCommandRegistry.cpp
 )
@@ -144,6 +152,7 @@ qt_add_executable(acs_editor_torture_tests
 target_link_libraries(acs_editor_torture_tests PRIVATE acs_core Qt6::Test)
 
 add_test(NAME acs_editor_tests COMMAND acs_editor_tests)
+add_test(NAME acs_editor_tabs_controller_tests COMMAND acs_editor_tabs_controller_tests)
 add_test(NAME acs_command_registry_tests COMMAND acs_command_registry_tests)
 add_test(NAME acs_workbench_state_tests COMMAND acs_workbench_state_tests)
 add_test(NAME acs_project_runtime_tests COMMAND acs_project_runtime_tests)

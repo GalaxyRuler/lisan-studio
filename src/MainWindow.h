@@ -4,6 +4,7 @@
 #include "CommandRegistry.h"
 #include "DocumentChangePoller.h"
 #include "DocumentRegistry.h"
+#include "EditorTabsController.h"
 #include "EditorSurface.h"
 #include "OutputTranscript.h"
 #include "ProjectModel.h"
@@ -162,6 +163,7 @@ private:
     WorkspaceSettings workspaceSettings;
     OutputTranscript outputTranscript;
     OutputTranscriptFilter outputFilter;
+    std::unique_ptr<EditorTabsController> editorTabsController;
     std::unique_ptr<BottomPanelController> bottomPanels;
     QString projectRoot;
 
@@ -170,29 +172,18 @@ private:
     void setStatus(const QString &text);
     bool loadProject(const QString &path);
     bool openEditorFile(const QString &path);
+    bool requestCloseEditorTab(int index);
     QModelIndex activeProjectTreeIndex() const;
     QString activeProjectTreePath() const;
     QString activeProjectTreeFolderPath() const;
     void clearEditorsForDeletedPath(const QString &path);
-    EditorSurface *createEditorTab(const QString &title);
-    void applyEditorFont(EditorSurface *surface);
-    void applyWorkspaceSettings(EditorSurface *surface);
-    void applyWorkspaceSettingsToOpenEditors();
     void applyThemePreference();
     void applyShortcutSettings();
+    void refreshCurrentEditorUi(bool includeProblems);
     void updateBreadcrumbBar();
     void updateStatusIndicators();
     // Test-only snapshot for verifying MainWindow's registry integration.
     QVector<DocumentRecord> documentRecordsForTest() const { return documentRegistry.documents(); }
-    void syncEditorSession(EditorSurface *surface);
-    DocumentId documentIdForSurface(EditorSurface *surface) const;
-    void setDocumentIdForSurface(EditorSurface *surface, DocumentId id);
-    EditorSurface *surfaceForDocument(DocumentId id) const;
-    void syncDocumentRegistryFromSurface(EditorSurface *surface);
-    void markDocumentSaved(EditorSurface *surface);
-    void setCurrentEditor(EditorSurface *surface);
-    void updateEditorTabTitle(EditorSurface *surface);
-    void closeEditorTab(int index);
     void resolveExternalDocumentChange(const DocumentRecord &record);
     void writeOutput(const QString &title, const QString &text);
     void showOutputPanel();
