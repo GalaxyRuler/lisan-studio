@@ -192,6 +192,10 @@ Qt test targets:
 - `acs_main_window_tests`
 - `acs_editor_torture_tests`
 
+## Editor torture deferrals
+
+- V1.5: Multi-cursor overlay and column-selection torture remain deferred until the multi-cursor/column-selection feature spike is accepted for V1.5 scope; V1 has no production multi-cursor surface to exercise yet.
+
 Normal local gate:
 
 ```powershell
