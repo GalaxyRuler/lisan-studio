@@ -4,7 +4,6 @@
 #include "CommandPaletteModel.h"
 #include "DocumentFileIO.h"
 #include "ProjectFileOperations.h"
-#include "RuntimeProblemParser.h"
 #include "ShortcutSettingsModel.h"
 #include "WorkbenchTheme.h"
 
@@ -37,6 +36,7 @@
 #include <QPaintEvent>
 #include <QPixmap>
 #include <QPointer>
+#include <QProcess>
 #include <QPushButton>
 #include <QSplitter>
 #include <QSaveFile>
@@ -249,9 +249,30 @@ MainWindow::MainWindow(QWidget *parent)
 MainWindow::MainWindow(QWidget *parent, const QString &settingsPath)
     : QMainWindow(parent),
       settings(settingsPath),
+      runtimeOrchestrator(this),
       documentChangePoller(&documentRegistry)
 {
     buildUi();
+    connect(&runtimeOrchestrator, &RuntimeOrchestrator::outputCleared, this, [this]() {
+        showOutputPanel();
+        outputTranscript.clear();
+        renderOutputTranscript();
+    });
+    connect(&runtimeOrchestrator, &RuntimeOrchestrator::outputProduced, this, &MainWindow::appendRuntimeOutput);
+    connect(&runtimeOrchestrator, &RuntimeOrchestrator::problemDetected, this, &MainWindow::addProblem);
+    connect(&runtimeOrchestrator, &RuntimeOrchestrator::problemsRequested, this, &MainWindow::showProblemsPanel);
+    connect(&runtimeOrchestrator, &RuntimeOrchestrator::statusChanged, this, &MainWindow::setStatus);
+    connect(&runtimeOrchestrator, &RuntimeOrchestrator::runningChanged, this, [this](bool running) {
+        if (runAction) runAction->setEnabled(!running);
+        if (lintAction) lintAction->setEnabled(!running);
+        if (formatAction) formatAction->setEnabled(!running);
+        if (cancelRunAction) cancelRunAction->setEnabled(running);
+    });
+    connect(&runtimeOrchestrator, &RuntimeOrchestrator::reloadRequested, this, [this](const QString &path) {
+        if (!editor) return;
+        QString error;
+        editor->openFile(path, &error);
+    });
     documentChangePollTimer = new QTimer(this);
     documentChangePollTimer->setInterval(2000);
     connect(documentChangePollTimer, &QTimer::timeout, this, &MainWindow::pollOpenDocumentChanges);
@@ -599,18 +620,6 @@ void MainWindow::buildUi()
     connect(addTextOnlyMenuAction(helpMenu, QString::fromUtf8("عن استوديو لسان")), &QAction::triggered, this, [this]() {
         QMessageBox::information(this, QString::fromUtf8("عن استوديو لسان"), QString::fromUtf8("استوديو لسان\nبيئة عربية أصلية لملفات .apy"));
     });
-
-    runtimeTimeoutTimer = new QTimer(this);
-    runtimeTimeoutTimer->setObjectName(QStringLiteral("runtimeTimeoutTimer"));
-    runtimeTimeoutTimer->setSingleShot(true);
-    runtimeTimeoutTimer->setInterval(30000);
-    connect(runtimeTimeoutTimer, &QTimer::timeout, this, &MainWindow::handleRuntimeTimeout);
-
-    runtimeKillEscalationTimer = new QTimer(this);
-    runtimeKillEscalationTimer->setObjectName(QStringLiteral("runtimeKillEscalationTimer"));
-    runtimeKillEscalationTimer->setSingleShot(true);
-    runtimeKillEscalationTimer->setInterval(1500);
-    connect(runtimeKillEscalationTimer, &QTimer::timeout, this, &MainWindow::escalateRuntimeKill);
 
     commandBox = new QLineEdit(this);
     commandBox->setObjectName(QStringLiteral("commandBox"));
@@ -1013,141 +1022,13 @@ void MainWindow::formatCurrentFile()
 
 void MainWindow::rerunLastRuntimeAction()
 {
-    if (activeRuntimeProcess && activeRuntimeProcess->state() != QProcess::NotRunning) {
-        showOutputPanel();
-        setStatus(QString::fromUtf8("هناك عملية قيد التشغيل"));
-        return;
-    }
-
-    const QVector<RuntimeHistoryEntry> entries = runtimeHistory.entries();
-    if (entries.isEmpty()) {
-        showOutputPanel();
-        setStatus(QString::fromUtf8("لا يوجد تشغيل سابق"));
-        return;
-    }
-
-    const RuntimeHistoryEntry lastRun = entries.first();
-    const RuntimeLaunchPlan plan = runtime.buildLaunchPlan(
-        lastRun.action,
-        lastRun.title,
-        lastRun.filePath,
-        lastRun.workingDirectory,
-        lastRun.reloadAfterSuccess);
-    startRuntimeLaunchPlan(plan, true);
+    showOutputPanel();
+    runtimeOrchestrator.rerunLast();
 }
 
 void MainWindow::cancelRuntimeProcess()
 {
-    if (!activeRuntimeProcess || activeRuntimeProcess->state() == QProcess::NotRunning) {
-        return;
-    }
-
-    appendRuntimeOutput(QString::fromUtf8("النظام"), QString::fromUtf8("تم طلب إيقاف العملية."));
-    activeRuntimeProcess->terminate();
-    if (runtimeKillEscalationTimer) {
-        runtimeKillEscalationTimer->start();
-    }
-    setStatus(QString::fromUtf8("جار إيقاف التشغيل"));
-}
-
-void MainWindow::appendRuntimeStdout()
-{
-    if (!activeRuntimeProcess) {
-        return;
-    }
-    const QString text = QString::fromUtf8(activeRuntimeProcess->readAllStandardOutput());
-    activeRuntimeStdout.append(text);
-    appendRuntimeOutput(QString::fromUtf8("stdout"), text);
-}
-
-void MainWindow::appendRuntimeStderr()
-{
-    if (!activeRuntimeProcess) {
-        return;
-    }
-    const QString text = QString::fromUtf8(activeRuntimeProcess->readAllStandardError());
-    activeRuntimeStderr.append(text);
-    appendRuntimeOutput(QString::fromUtf8("stderr"), text);
-}
-
-void MainWindow::finishRuntimeProcess(int exitCode, QProcess::ExitStatus exitStatus)
-{
-    Q_UNUSED(exitStatus);
-    if (!activeRuntimeProcess) {
-        return;
-    }
-
-    appendRuntimeStdout();
-    appendRuntimeStderr();
-    const QString finalText = QString::fromUtf8("رمز الخروج: %1\nالمدة: %2 ms")
-        .arg(exitCode)
-        .arg(activeRuntimeTimer.isValid() ? activeRuntimeTimer.elapsed() : 0);
-    appendRuntimeOutput(QString::fromUtf8("النظام"), finalText);
-    if (exitCode != 0) {
-        const RuntimeProblemDetail detail = parseRuntimeProblemDetail(
-            activeRuntimeStderr.isEmpty() ? activeRuntimeStdout : activeRuntimeStderr,
-            activeRuntimeTitle,
-            exitCode);
-        addProblem(
-            QString::fromUtf8("خطأ"),
-            detail.message,
-            activeRuntimeProcess->property("runFilePath").toString(),
-            detail.line);
-        showProblemsPanel();
-    }
-    completeRuntimeProcess(QString::fromUtf8("%1 انتهى: %2").arg(activeRuntimeTitle).arg(exitCode));
-}
-
-void MainWindow::handleRuntimeProcessError(QProcess::ProcessError error)
-{
-    if (!activeRuntimeProcess || activeRuntimeHandledError) {
-        return;
-    }
-
-    if (error != QProcess::FailedToStart) {
-        return;
-    }
-
-    activeRuntimeHandledError = true;
-    appendRuntimeOutput(
-        QString::fromUtf8("النظام"),
-        QString::fromUtf8("تعذر بدء العملية: %1\nرمز الخروج: -1").arg(activeRuntimeProcess->errorString()));
-    addProblem(
-        QString::fromUtf8("خطأ"),
-        QString::fromUtf8("تعذر بدء %1: %2").arg(activeRuntimeTitle, activeRuntimeProcess->errorString()),
-        activeRuntimeProcess->property("runFilePath").toString(),
-        0);
-    completeRuntimeProcess(QString::fromUtf8("تعذر بدء %1").arg(activeRuntimeTitle));
-}
-
-void MainWindow::handleRuntimeTimeout()
-{
-    if (!activeRuntimeProcess || activeRuntimeProcess->state() == QProcess::NotRunning) {
-        return;
-    }
-
-    appendRuntimeOutput(QString::fromUtf8("النظام"), QString::fromUtf8("انتهت مهلة التشغيل."));
-    addProblem(
-        QString::fromUtf8("خطأ"),
-        QString::fromUtf8("انتهت مهلة %1 بعد 30 ثانية.").arg(activeRuntimeTitle),
-        activeRuntimeProcess->property("runFilePath").toString(),
-        0);
-    activeRuntimeProcess->terminate();
-    if (runtimeKillEscalationTimer) {
-        runtimeKillEscalationTimer->start();
-    }
-    setStatus(QString::fromUtf8("انتهت مهلة التشغيل"));
-}
-
-void MainWindow::escalateRuntimeKill()
-{
-    if (!activeRuntimeProcess || activeRuntimeProcess->state() == QProcess::NotRunning) {
-        return;
-    }
-
-    appendRuntimeOutput(QString::fromUtf8("النظام"), QString::fromUtf8("لم تتوقف العملية، سيتم إجبار الإيقاف."));
-    activeRuntimeProcess->kill();
-    setStatus(QString::fromUtf8("تم إجبار إيقاف التشغيل"));
+    runtimeOrchestrator.cancel();
 }
 
 void MainWindow::openCommandPalette()
@@ -1437,7 +1318,7 @@ void MainWindow::registerWorkbenchCommands()
         QKeySequence(QStringLiteral("Ctrl+F5")),
         QString::fromUtf8("إعادة آخر تشغيل rerun last run history"),
         [this]() { rerunLastRuntimeAction(); },
-        [this]() { return !runtimeHistory.entries().isEmpty(); });
+        [this]() { return runtimeOrchestrator.hasHistory(); });
     registerCommand(
         QStringLiteral("lint-current-file"),
         QString::fromUtf8("فحص الملف الحالي"),
@@ -1459,7 +1340,7 @@ void MainWindow::registerWorkbenchCommands()
         QKeySequence(QStringLiteral("Shift+F5")),
         QString::fromUtf8("إيقاف التشغيل stop cancel run"),
         [this]() { cancelRuntimeProcess(); },
-        [this]() { return activeRuntimeProcess && activeRuntimeProcess->state() != QProcess::NotRunning; });
+        [this]() { return runtimeOrchestrator.isRunning(); });
     registerCommand(
         QStringLiteral("output.copy"),
         QString::fromUtf8("نسخ الإخراج"),
@@ -2770,7 +2651,7 @@ void MainWindow::openSettings()
 {
     const QStringList orderedFamilies = arabicEditorFontFamilies();
     RuntimeDiagnostics diagnostics;
-    diagnostics.pythonExecutable = runtime.pythonExecutablePath();
+    diagnostics.pythonExecutable = runtimeOrchestrator.pythonExecutablePath();
     diagnostics.statusText = QString::fromUtf8("جار فحص التشغيل...");
     const SettingsDialogState settingsState = SettingsDialogModel::build(settings, diagnostics, orderedFamilies);
 
@@ -2879,7 +2760,7 @@ void MainWindow::openSettings()
         applyRuntimeDiagnostics(diagnosticsWatcher->result());
         diagnosticsWatcher->deleteLater();
     });
-    const QString runtimeRoot = runtime.runtimeRoot();
+    const QString runtimeRoot = runtimeOrchestrator.runtimeRoot();
     const auto diagnosticsProvider = runtimeDiagnosticsProvider;
     diagnosticsWatcher->setFuture(QtConcurrent::run([diagnosticsProvider, runtimeRoot]() {
         if (diagnosticsProvider) {
@@ -3842,7 +3723,7 @@ QString MainWindow::runtimeWorkingDirectory() const
 
 void MainWindow::runRuntimeAction(RuntimeAction action, const QString &title, bool reloadAfterSuccess)
 {
-    if (activeRuntimeProcess && activeRuntimeProcess->state() != QProcess::NotRunning) {
+    if (runtimeOrchestrator.isRunning()) {
         showOutputPanel();
         setStatus(QString::fromUtf8("هناك عملية قيد التشغيل"));
         return;
@@ -3856,58 +3737,18 @@ void MainWindow::runRuntimeAction(RuntimeAction action, const QString &title, bo
     }
 
     const QString workingDirectory = runtimeWorkingDirectory();
-    const RuntimeLaunchPlan plan = runtime.buildLaunchPlan(action, title, runFilePath, workingDirectory, reloadAfterSuccess);
-    startRuntimeLaunchPlan(plan, true);
-}
-
-void MainWindow::startRuntimeLaunchPlan(const RuntimeLaunchPlan &plan, bool recordHistory)
-{
-    if (recordHistory) {
-        runtimeHistory.recordLaunch(plan);
-    }
-
-    activeRuntimeTitle = plan.title;
-    activeRuntimeHandledError = false;
-    activeRuntimeStdout.clear();
-    activeRuntimeStderr.clear();
     showOutputPanel();
-    outputTranscript.clear();
-    const QString initialText = plan.initialOutput.section(QLatin1Char('\n'), 1).trimmed();
-    outputTranscript.append(OutputTranscriptChannel::System, plan.title, initialText);
-    renderOutputTranscript();
-    setStatus(plan.runningStatus);
-    setRuntimeActionsRunning(true);
-
-    activeRuntimeProcess = new QProcess(this);
-    activeRuntimeProcess->setProgram(plan.command.program);
-    activeRuntimeProcess->setArguments(plan.command.arguments);
-    activeRuntimeProcess->setWorkingDirectory(plan.command.workingDirectory);
-    activeRuntimeProcess->setProcessEnvironment(runtime.processEnvironment());
-    activeRuntimeProcess->setProperty("reloadAfterSuccess", plan.reloadAfterSuccess);
-    activeRuntimeProcess->setProperty("runFilePath", plan.filePath);
-    connect(activeRuntimeProcess, &QProcess::readyReadStandardOutput, this, &MainWindow::appendRuntimeStdout);
-    connect(activeRuntimeProcess, &QProcess::readyReadStandardError, this, &MainWindow::appendRuntimeStderr);
-    connect(activeRuntimeProcess, &QProcess::finished, this, &MainWindow::finishRuntimeProcess);
-    connect(activeRuntimeProcess, &QProcess::errorOccurred, this, &MainWindow::handleRuntimeProcessError);
-
-    activeRuntimeTimer.start();
-    runtimeTimeoutTimer->start();
-    activeRuntimeProcess->start();
+    const RuntimeLaunchPlan plan = runtimeOrchestrator.buildLaunchPlan(action, title, runFilePath, workingDirectory, reloadAfterSuccess);
+    runtimeOrchestrator.start(plan, true);
 }
 
-void MainWindow::appendRuntimeOutput(const QString &label, const QString &text)
+void MainWindow::appendRuntimeOutput(OutputTranscriptChannel channel, const QString &label, const QString &text)
 {
     if (text.isEmpty()) {
         return;
     }
 
     showOutputPanel();
-    OutputTranscriptChannel channel = OutputTranscriptChannel::System;
-    if (label == QStringLiteral("stdout")) {
-        channel = OutputTranscriptChannel::Stdout;
-    } else if (label == QStringLiteral("stderr")) {
-        channel = OutputTranscriptChannel::Stderr;
-    }
     outputTranscript.append(channel, label, text);
     renderOutputTranscript();
 }
@@ -3926,49 +3767,6 @@ void MainWindow::renderOutputTranscript()
     }
 
     outputPanel->setPlainText(outputTranscript.render(outputFilter));
-}
-
-void MainWindow::completeRuntimeProcess(const QString &statusText)
-{
-    if (!activeRuntimeProcess) {
-        return;
-    }
-
-    const bool reloadAfterSuccess = activeRuntimeProcess->property("reloadAfterSuccess").toBool();
-    const QString runFilePath = activeRuntimeProcess->property("runFilePath").toString();
-    const int exitCode = activeRuntimeProcess->exitCode();
-    QProcess *finishedProcess = activeRuntimeProcess;
-    activeRuntimeProcess = nullptr;
-    if (runtimeTimeoutTimer) {
-        runtimeTimeoutTimer->stop();
-    }
-    if (runtimeKillEscalationTimer) {
-        runtimeKillEscalationTimer->stop();
-    }
-    setRuntimeActionsRunning(false);
-    setStatus(statusText);
-    finishedProcess->deleteLater();
-
-    if (reloadAfterSuccess && exitCode == 0) {
-        QString error;
-        editor->openFile(runFilePath, &error);
-    }
-}
-
-void MainWindow::setRuntimeActionsRunning(bool running)
-{
-    if (runAction) {
-        runAction->setEnabled(!running);
-    }
-    if (lintAction) {
-        lintAction->setEnabled(!running);
-    }
-    if (formatAction) {
-        formatAction->setEnabled(!running);
-    }
-    if (cancelRunAction) {
-        cancelRunAction->setEnabled(running);
-    }
 }
 
 void MainWindow::restoreWorkbenchSession()

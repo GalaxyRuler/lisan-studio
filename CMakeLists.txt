@@ -54,6 +54,8 @@ add_library(acs_core
     src/ProjectReplaceService.cpp
     src/RuntimeRunner.h
     src/RuntimeRunner.cpp
+    src/RuntimeOrchestrator.h
+    src/RuntimeOrchestrator.cpp
     src/RuntimeRunConfiguration.h
     src/RuntimeRunConfiguration.cpp
     src/RuntimeRunConfigurationStore.h
@@ -120,6 +122,12 @@ qt_add_executable(acs_project_runtime_tests
 
 target_link_libraries(acs_project_runtime_tests PRIVATE acs_core Qt6::Test)
 
+qt_add_executable(acs_runtime_orchestrator_tests
+    tests/TestRuntimeOrchestrator.cpp
+)
+
+target_link_libraries(acs_runtime_orchestrator_tests PRIVATE acs_core Qt6::Test)
+
 qt_add_executable(acs_main_window_tests
     src/MainWindow.h
     src/MainWindow.cpp
@@ -139,5 +147,6 @@ add_test(NAME acs_editor_tests COMMAND acs_editor_tests)
 add_test(NAME acs_command_registry_tests COMMAND acs_command_registry_tests)
 add_test(NAME acs_workbench_state_tests COMMAND acs_workbench_state_tests)
 add_test(NAME acs_project_runtime_tests COMMAND acs_project_runtime_tests)
+add_test(NAME acs_runtime_orchestrator_tests COMMAND acs_runtime_orchestrator_tests)
 add_test(NAME acs_main_window_tests COMMAND acs_main_window_tests)
 add_test(NAME acs_editor_torture_tests COMMAND acs_editor_torture_tests)

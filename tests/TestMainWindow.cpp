@@ -110,8 +110,7 @@ private slots:
     void runCurrentDirtySavedFileSavesBeforeRuntime();
     void runCurrentDirtySavedFileCancelLeavesDiskUntouched();
     void runUsesUntitledBufferWithoutOpeningSaveDialog();
-    void runToolProvidesCancelableStructuredFeedback();
-    void cancelRuntimeProcessArmsKillEscalationTimer();
+    void mainWindowRoutesOrchestratorOutputToOutputPanel();
     void rerunLastRuntimeActionReusesLastLaunchPlan();
     void settingsDialogExposesCategoriesAndRuntimeDiagnostics();
     void settingsDialogOpensBeforeRuntimeDiagnosticsCompletes();
@@ -2704,7 +2703,7 @@ void TestMainWindow::runUsesUntitledBufferWithoutOpeningSaveDialog()
     QVERIFY(!outputPanel->toPlainText().isEmpty());
 }
 
-void TestMainWindow::runToolProvidesCancelableStructuredFeedback()
+void TestMainWindow::mainWindowRoutesOrchestratorOutputToOutputPanel()
 {
     QTemporaryDir temp;
     QVERIFY(temp.isValid());
@@ -2736,39 +2735,6 @@ void TestMainWindow::runToolProvidesCancelableStructuredFeedback()
     QVERIFY2(output.contains(QString::fromUtf8("ملف:")), qPrintable(output));
     QVERIFY2(output.contains(QString::fromUtf8("مجلد العمل:")), qPrintable(output));
     QVERIFY2(output.contains(QString::fromUtf8("رمز الخروج:")) || output.contains(QString::fromUtf8("تعذر بدء العملية")), qPrintable(output));
-}
-
-void TestMainWindow::cancelRuntimeProcessArmsKillEscalationTimer()
-{
-    MainWindow window;
-
-    QProcess process;
-    process.setProgram(QStringLiteral("cmd.exe"));
-    process.setArguments({QStringLiteral("/C"), QStringLiteral("ping -n 5 127.0.0.1 > nul")});
-    process.start();
-    QVERIFY2(process.waitForStarted(3000), qPrintable(process.errorString()));
-    window.activeRuntimeProcess = &process;
-
-    auto *killTimer = window.findChild<QTimer *>(QStringLiteral("runtimeKillEscalationTimer"));
-    const bool foundKillTimer = killTimer != nullptr;
-    const bool killTimerWasSingleShot = killTimer && killTimer->isSingleShot();
-    const bool killTimerWasInitiallyStopped = killTimer && !killTimer->isActive();
-
-    QVERIFY(QMetaObject::invokeMethod(&window, "cancelRuntimeProcess", Qt::DirectConnection));
-    const bool killTimerWasArmed = killTimer && killTimer->isActive();
-    const bool processStillRunningAfterCancel = process.state() != QProcess::NotRunning;
-
-    if (process.state() != QProcess::NotRunning) {
-        process.kill();
-        process.waitForFinished(3000);
-    }
-    window.activeRuntimeProcess = nullptr;
-
-    QVERIFY(foundKillTimer);
-    QVERIFY(killTimerWasSingleShot);
-    QVERIFY(killTimerWasInitiallyStopped);
-    QVERIFY(killTimerWasArmed);
-    QVERIFY(processStillRunningAfterCancel);
 }
 
 void TestMainWindow::rerunLastRuntimeActionReusesLastLaunchPlan()

@@ -8,8 +8,7 @@
 #include "OutputTranscript.h"
 #include "ProjectModel.h"
 #include "ProjectReplaceService.h"
-#include "RuntimeHistory.h"
-#include "RuntimeRunner.h"
+#include "RuntimeOrchestrator.h"
 #include "SearchService.h"
 #include "SettingsDialogModel.h"
 #include "SettingsStore.h"
@@ -22,14 +21,12 @@
 #include <QAction>
 #include <QCloseEvent>
 #include <QDockWidget>
-#include <QElapsedTimer>
 #include <QFutureWatcher>
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
 #include <QMainWindow>
 #include <QPlainTextEdit>
-#include <QProcess>
 #include <QPushButton>
 #include <QTabWidget>
 #include <QTimer>
@@ -78,12 +75,6 @@ private slots:
     void openPowerShellTerminal();
     void trustCurrentWorkspace();
     void untrustCurrentWorkspace();
-    void appendRuntimeStdout();
-    void appendRuntimeStderr();
-    void finishRuntimeProcess(int exitCode, QProcess::ExitStatus exitStatus);
-    void handleRuntimeProcessError(QProcess::ProcessError error);
-    void handleRuntimeTimeout();
-    void escalateRuntimeKill();
     void openCommandPalette();
     void findInProject();
     void previewProjectReplace();
@@ -157,22 +148,13 @@ private:
     QAction *projectTreeCopyPathAction = nullptr;
     QAction *projectTreeOpenContainingFolderAction = nullptr;
     QAction *projectTreeRefreshAction = nullptr;
-    QProcess *activeRuntimeProcess = nullptr;
-    QTimer *runtimeTimeoutTimer = nullptr;
-    QTimer *runtimeKillEscalationTimer = nullptr;
     QTimer *documentChangePollTimer = nullptr;
     QFutureWatcher<QVector<SearchResultRow>> *activeSearchWatcher = nullptr;
-    QElapsedTimer activeRuntimeTimer;
-    QString activeRuntimeTitle;
-    QString activeRuntimeStdout;
-    QString activeRuntimeStderr;
     QVector<ProjectReplacePreviewRow> currentProjectReplacePreviewRows;
     QModelIndex projectTreeContextIndex;
-    bool activeRuntimeHandledError = false;
     SettingsStore settings;
-    RuntimeRunner runtime;
     std::function<RuntimeDiagnostics(int)> runtimeDiagnosticsProvider;
-    RuntimeHistory runtimeHistory;
+    RuntimeOrchestrator runtimeOrchestrator;
     CommandRegistry commandRegistry;
     DocumentRegistry documentRegistry;
     DocumentChangePoller documentChangePoller;
@@ -235,12 +217,9 @@ private:
     bool confirmUnsavedDocuments(UnsavedChangesOperation operation);
     void discardUntitledDrafts();
     void runRuntimeAction(RuntimeAction action, const QString &title, bool reloadAfterSuccess = false);
-    void startRuntimeLaunchPlan(const RuntimeLaunchPlan &plan, bool recordHistory);
-    void appendRuntimeOutput(const QString &label, const QString &text);
+    void appendRuntimeOutput(OutputTranscriptChannel channel, const QString &label, const QString &text);
     void setOutputFilter(const OutputTranscriptFilter &filter);
     void renderOutputTranscript();
-    void completeRuntimeProcess(const QString &statusText);
-    void setRuntimeActionsRunning(bool running);
     void restoreWorkbenchSession();
     void saveWorkbenchSession();
     void closeEvent(QCloseEvent *event) override;
