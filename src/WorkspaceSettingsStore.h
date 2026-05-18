@@ -15,6 +15,7 @@ public:
     explicit WorkspaceSettingsStore(const QString &workspaceRoot);
 
     QString settingsFilePath() const;
+    QString trustAuditFilePath() const;
     WorkspaceSettings load(QString *error = nullptr) const;
     bool save(const WorkspaceSettings &settings, QString *error = nullptr) const;
 

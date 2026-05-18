@@ -11,6 +11,7 @@
 #include <QCheckBox>
 #include <QClipboard>
 #include <QComboBox>
+#include <QDateTime>
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QDir>
@@ -169,6 +170,44 @@ static QString lineEndingStatusText(DocumentLineEnding lineEnding)
         return QString::fromUtf8("بدون نهاية");
     }
     return QString::fromUtf8("بدون نهاية");
+}
+
+static bool appendWorkspaceTrustAuditEntry(const QString &projectRoot, const QString &eventName, QString *error)
+{
+    if (error) {
+        error->clear();
+    }
+
+    const WorkspaceSettingsStore store(projectRoot);
+    const QFileInfo auditInfo(store.trustAuditFilePath());
+    if (!QDir().mkpath(auditInfo.absolutePath())) {
+        if (error) {
+            *error = QString::fromUtf8("تم حفظ الثقة، لكن تعذر إنشاء سجل تدقيق الثقة.");
+        }
+        return false;
+    }
+
+    QJsonObject entry;
+    entry.insert(QStringLiteral("event"), eventName);
+    entry.insert(QStringLiteral("projectRoot"), QDir(projectRoot).absolutePath());
+    entry.insert(QStringLiteral("timestampUtc"), QDateTime::currentDateTimeUtc().toString(QStringLiteral("yyyy-MM-dd'T'HH:mm:ss.zzz'Z'")));
+
+    QFile file(auditInfo.absoluteFilePath());
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text)) {
+        if (error) {
+            *error = QString::fromUtf8("تم حفظ الثقة، لكن تعذر كتابة سجل تدقيق الثقة: %1").arg(file.errorString());
+        }
+        return false;
+    }
+
+    const QByteArray line = QJsonDocument(entry).toJson(QJsonDocument::Compact) + '\n';
+    if (file.write(line) != line.size()) {
+        if (error) {
+            *error = QString::fromUtf8("تم حفظ الثقة، لكن تعذر إكمال كتابة سجل تدقيق الثقة: %1").arg(file.errorString());
+        }
+        return false;
+    }
+    return true;
 }
 
 static QString languageModeStatusText(const QString &path)
@@ -1826,6 +1865,10 @@ void MainWindow::trustCurrentWorkspace()
         setStatus(error);
         return;
     }
+    if (!appendWorkspaceTrustAuditEntry(projectRoot, QStringLiteral("workspace.trust.granted"), &error)) {
+        setStatus(error);
+        return;
+    }
 
     setStatus(QString::fromUtf8("تمت الثقة بمساحة العمل"));
 }
@@ -1840,6 +1883,10 @@ void MainWindow::untrustCurrentWorkspace()
     workspaceSettings.trusted = false;
     QString error;
     if (!WorkspaceSettingsStore(projectRoot).save(workspaceSettings, &error)) {
+        setStatus(error);
+        return;
+    }
+    if (!appendWorkspaceTrustAuditEntry(projectRoot, QStringLiteral("workspace.trust.revoked"), &error)) {
         setStatus(error);
         return;
     }

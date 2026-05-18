@@ -6,6 +6,7 @@
 #include <QClipboard>
 #include <QCheckBox>
 #include <QComboBox>
+#include <QDateTime>
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QElapsedTimer>
@@ -93,6 +94,10 @@ private slots:
     void terminalCommandRequiresTrustedWorkspace();
     void trustWorkspaceCommandPersistsAndUnblocksTerminalReadiness();
     void untrustWorkspaceCommandPersistsAndBlocksTerminalAgain();
+    void trustGrantAppendsAuditEntry();
+    void untrustAppendsRevokedAuditEntry();
+    void trustGrantThenUntrustAppendsTwoEntriesInOrder();
+    void trustGrantCancelDoesNotAppendAudit();
     void projectSearchShowsClickableResultRows();
     void projectSearchFindsCurrentUnsavedEditorImmediately();
     void projectReplacePreviewRendersRowsWithoutWritingFile();
@@ -137,6 +142,69 @@ static QString writeFile(const QDir &root, const QString &relative, const QStrin
     }
     file.write(text.toUtf8());
     return info.absoluteFilePath();
+}
+
+static QString trustAuditPath(const QString &projectRoot)
+{
+    return QDir(projectRoot).filePath(QStringLiteral(".lisan-workspace/trust-audit.jsonl"));
+}
+
+static QList<QJsonObject> readTrustAuditEntries(const QString &projectRoot)
+{
+    QFile file(trustAuditPath(projectRoot));
+    if (!file.exists()) {
+        return {};
+    }
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        qFatal("could not read trust audit file");
+    }
+
+    QList<QJsonObject> entries;
+    while (!file.atEnd()) {
+        const QByteArray line = file.readLine().trimmed();
+        if (line.isEmpty()) {
+            continue;
+        }
+        QJsonParseError parseError;
+        const QJsonDocument document = QJsonDocument::fromJson(line, &parseError);
+        if (parseError.error != QJsonParseError::NoError || !document.isObject()) {
+            qFatal("invalid trust audit jsonl entry");
+        }
+        entries.append(document.object());
+    }
+    return entries;
+}
+
+static void acceptNextTrustPrompt(QObject *context)
+{
+    QTimer::singleShot(0, context, []() {
+        auto *box = qobject_cast<QMessageBox *>(QApplication::activeModalWidget());
+        if (box) {
+            box->button(QMessageBox::Yes)->click();
+        }
+    });
+}
+
+static void cancelNextTrustPrompt(QObject *context)
+{
+    QTimer::singleShot(0, context, []() {
+        auto *box = qobject_cast<QMessageBox *>(QApplication::activeModalWidget());
+        if (box) {
+            box->button(QMessageBox::Cancel)->click();
+        }
+    });
+}
+
+static void verifyTrustAuditEntry(const QJsonObject &entry, const QString &eventName, const QString &projectRoot)
+{
+    QCOMPARE(entry.value(QStringLiteral("event")).toString(), eventName);
+    QCOMPARE(QDir::toNativeSeparators(entry.value(QStringLiteral("projectRoot")).toString()), QDir::toNativeSeparators(QDir(projectRoot).absolutePath()));
+
+    const QString timestampUtc = entry.value(QStringLiteral("timestampUtc")).toString();
+    QVERIFY2(timestampUtc.endsWith(QLatin1Char('Z')), qPrintable(timestampUtc));
+    const QDateTime parsed = QDateTime::fromString(timestampUtc, Qt::ISODateWithMs);
+    QVERIFY2(parsed.isValid(), qPrintable(timestampUtc));
+    QCOMPARE(parsed.timeSpec(), Qt::UTC);
 }
 
 static int horizontalGap(const QRect &a, const QRect &b)
@@ -1392,6 +1460,74 @@ void TestMainWindow::untrustWorkspaceCommandPersistsAndBlocksTerminalAgain()
     QVERIFY(terminalPanel != nullptr);
     QVERIFY(QMetaObject::invokeMethod(&window, "openPowerShellTerminal", Qt::DirectConnection));
     QVERIFY2(terminalPanel->toPlainText().contains(QString::fromUtf8("الثقة")), qPrintable(terminalPanel->toPlainText()));
+}
+
+void TestMainWindow::trustGrantAppendsAuditEntry()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+
+    MainWindow window;
+    QVERIFY(window.openPath(temp.path()));
+
+    acceptNextTrustPrompt(this);
+    QVERIFY(QMetaObject::invokeMethod(&window, "trustCurrentWorkspace", Qt::DirectConnection));
+
+    const QList<QJsonObject> entries = readTrustAuditEntries(temp.path());
+    QCOMPARE(entries.size(), 1);
+    verifyTrustAuditEntry(entries.first(), QStringLiteral("workspace.trust.granted"), temp.path());
+}
+
+void TestMainWindow::untrustAppendsRevokedAuditEntry()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+
+    WorkspaceSettings settings;
+    settings.trusted = true;
+    QString error;
+    QVERIFY2(WorkspaceSettingsStore(temp.path()).save(settings, &error), qPrintable(error));
+
+    MainWindow window;
+    QVERIFY(window.openPath(temp.path()));
+    QVERIFY(QMetaObject::invokeMethod(&window, "untrustCurrentWorkspace", Qt::DirectConnection));
+
+    const QList<QJsonObject> entries = readTrustAuditEntries(temp.path());
+    QCOMPARE(entries.size(), 1);
+    verifyTrustAuditEntry(entries.first(), QStringLiteral("workspace.trust.revoked"), temp.path());
+}
+
+void TestMainWindow::trustGrantThenUntrustAppendsTwoEntriesInOrder()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+
+    MainWindow window;
+    QVERIFY(window.openPath(temp.path()));
+
+    acceptNextTrustPrompt(this);
+    QVERIFY(QMetaObject::invokeMethod(&window, "trustCurrentWorkspace", Qt::DirectConnection));
+    QVERIFY(QMetaObject::invokeMethod(&window, "untrustCurrentWorkspace", Qt::DirectConnection));
+
+    const QList<QJsonObject> entries = readTrustAuditEntries(temp.path());
+    QCOMPARE(entries.size(), 2);
+    verifyTrustAuditEntry(entries.at(0), QStringLiteral("workspace.trust.granted"), temp.path());
+    verifyTrustAuditEntry(entries.at(1), QStringLiteral("workspace.trust.revoked"), temp.path());
+}
+
+void TestMainWindow::trustGrantCancelDoesNotAppendAudit()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+
+    MainWindow window;
+    QVERIFY(window.openPath(temp.path()));
+
+    cancelNextTrustPrompt(this);
+    QVERIFY(QMetaObject::invokeMethod(&window, "trustCurrentWorkspace", Qt::DirectConnection));
+
+    const QFileInfo auditInfo(trustAuditPath(temp.path()));
+    QVERIFY(!auditInfo.exists() || auditInfo.size() == 0);
 }
 
 void TestMainWindow::insertPrintSnippetPlacesCursorInsideQuotes()

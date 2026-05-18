@@ -17,6 +17,11 @@ QString WorkspaceSettingsStore::settingsFilePath() const
     return QDir(rootPath).filePath(QStringLiteral(".lisan-workspace/settings.json"));
 }
 
+QString WorkspaceSettingsStore::trustAuditFilePath() const
+{
+    return QDir(rootPath).filePath(QStringLiteral(".lisan-workspace/trust-audit.jsonl"));
+}
+
 WorkspaceSettings WorkspaceSettingsStore::load(QString *error) const
 {
     if (error) {

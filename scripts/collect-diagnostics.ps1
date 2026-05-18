@@ -3,6 +3,7 @@ param(
     [string]$ArtifactRoot,
     [string]$OutputRoot,
     [string]$RunId,
+    [string]$WorkspaceRoot,
     [switch]$Json
 )
 
@@ -25,6 +26,7 @@ $logsRoot = Join-Path $bundleRoot 'logs'
 $manifestPath = Join-Path $bundleRoot 'diagnostics-manifest.json'
 $environmentPath = Join-Path $bundleRoot 'environment.txt'
 $gitStatusPath = Join-Path $bundleRoot 'git-status.txt'
+$workspaceTrustAuditPath = Join-Path $bundleRoot 'workspace-trust-audit.md'
 $bundlePath = Join-Path $OutputRoot ("lisan-studio-diagnostics-{0}.zip" -f $RunId)
 
 function Test-SecretLikePath {
@@ -63,6 +65,35 @@ function Invoke-GitText {
     }
 }
 
+function Get-WorkspaceTrustAuditLines {
+    param([string]$CandidateWorkspaceRoot)
+
+    $auditLines = New-Object System.Collections.Generic.List[string]
+    $auditLines.Add('## Workspace Trust Audit')
+    $auditLines.Add('')
+
+    if ([string]::IsNullOrWhiteSpace($CandidateWorkspaceRoot)) {
+        $auditLines.Add('No workspace trust events recorded.')
+        return @($auditLines)
+    }
+
+    $workspaceFullPath = [System.IO.Path]::GetFullPath($CandidateWorkspaceRoot)
+    $auditFilePath = Join-Path (Join-Path $workspaceFullPath '.lisan-workspace') 'trust-audit.jsonl'
+    if (-not (Test-Path -LiteralPath $auditFilePath)) {
+        $auditLines.Add('No workspace trust events recorded.')
+        return @($auditLines)
+    }
+
+    $eventLines = @(Get-Content -LiteralPath $auditFilePath -Encoding UTF8 | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    if ($eventLines.Count -eq 0) {
+        $auditLines.Add('No workspace trust events recorded.')
+        return @($auditLines)
+    }
+
+    $auditLines.AddRange([string[]]$eventLines)
+    return @($auditLines)
+}
+
 New-Item -ItemType Directory -Force -Path $bundleRoot, $logsRoot, $OutputRoot | Out-Null
 
 $environmentLines = @(
@@ -87,6 +118,8 @@ $gitLines = @(
     (Invoke-GitText -Arguments @('-C', $repoRoot, 'status', '--short', '--branch'))
 )
 $gitLines | Set-Content -LiteralPath $gitStatusPath -Encoding UTF8
+
+Get-WorkspaceTrustAuditLines -CandidateWorkspaceRoot $WorkspaceRoot | Set-Content -LiteralPath $workspaceTrustAuditPath -Encoding UTF8
 
 $safeExtensions = @('.log', '.txt', '.json', '.md')
 $includedFiles = New-Object System.Collections.Generic.List[string]
@@ -141,6 +174,7 @@ $result = [ordered]@{
     runId = $RunId
     bundlePath = $bundlePath
     manifestPath = $manifestPath
+    workspaceTrustAuditPath = $workspaceTrustAuditPath
     includedFileCount = $includedFiles.Count
     skippedFileCount = $skippedFiles.Count
 }
