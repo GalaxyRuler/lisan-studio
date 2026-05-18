@@ -84,6 +84,7 @@ private slots:
     void projectTreeShowsOnlyFileNames();
     void projectTreeExposesRtlContextActions();
     void projectTreeOpenActionOpensSelectedFile();
+    void mainWindowOpensFileFromTreeAfterRefactor();
     void projectTreeCopyPathActionCopiesSelectedPath();
     void outputPanelActionsCopyAndClearTranscript();
     void outputPanelActionSavesTranscriptToUtf8File();
@@ -1886,6 +1887,38 @@ void TestMainWindow::projectTreeOpenActionOpensSelectedFile()
     open->trigger();
 
     QCOMPARE(QDir::toNativeSeparators(window.currentEditorPath()), QDir::toNativeSeparators(filePath));
+}
+
+void TestMainWindow::mainWindowOpensFileFromTreeAfterRefactor()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    QDir root(temp.path());
+    const QString filePath = writeFile(root, QStringLiteral("double-click.apy"), QString::fromUtf8("اطبع(\"نقرة مزدوجة\")\n"));
+
+    MainWindow window;
+    QVERIFY(window.openPath(root.absolutePath()));
+
+    auto *tree = window.findChild<QTreeView *>(QStringLiteral("projectTree"));
+    auto *model = qobject_cast<QFileSystemModel *>(tree ? tree->model() : nullptr);
+    QVERIFY(tree != nullptr);
+    QVERIFY(model != nullptr);
+
+    QModelIndex fileIndex;
+    QTRY_VERIFY((fileIndex = model->index(filePath)).isValid());
+    fileIndex = fileIndex.siblingAtColumn(0);
+    tree->setCurrentIndex(fileIndex);
+
+    QVERIFY(QMetaObject::invokeMethod(
+        tree,
+        "doubleClicked",
+        Qt::DirectConnection,
+        Q_ARG(QModelIndex, fileIndex)));
+
+    QCOMPARE(QDir::toNativeSeparators(window.currentEditorPath()), QDir::toNativeSeparators(filePath));
+    auto *editor = window.findChild<EditorSurface *>(QStringLiteral("editorSurface"));
+    QVERIFY(editor != nullptr);
+    QVERIFY(editor->toPlainText().contains(QString::fromUtf8("نقرة مزدوجة")));
 }
 
 void TestMainWindow::projectTreeCopyPathActionCopiesSelectedPath()

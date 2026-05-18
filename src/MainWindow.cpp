@@ -22,14 +22,12 @@
 #include <QFrame>
 #include <QHBoxLayout>
 #include <QHideEvent>
-#include <QInputDialog>
 #include <QIcon>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QKeySequenceEdit>
 #include <QListWidget>
 #include <QListWidgetItem>
-#include <QMenu>
 #include <QMessageBox>
 #include <QMouseEvent>
 #include <QPainter>
@@ -668,61 +666,48 @@ void MainWindow::buildUi()
 
     projectTree = new QTreeView(splitter);
     projectTree->setObjectName(QStringLiteral("projectTree"));
-    projectTree->setHeaderHidden(true);
-    projectTree->setModel(fileSystemModel);
-    projectTree->setLayoutDirection(Qt::RightToLeft);
-    projectTree->setContextMenuPolicy(Qt::CustomContextMenu);
-    projectTree->hideColumn(1);
-    projectTree->hideColumn(2);
-    projectTree->hideColumn(3);
-    projectTree->setMinimumWidth(240);
-    connect(projectTree, &QTreeView::doubleClicked, this, &MainWindow::openSelectedProjectFile);
-    connect(projectTree, &QTreeView::customContextMenuRequested, this, &MainWindow::showProjectTreeContextMenu);
+    projectTreeController = std::make_unique<ProjectTreeController>(projectTree, fileSystemModel, this);
+    projectTreeController->setDeleteConfirmationCallback([this](const QString &path, bool isDirectory) {
+        QMessageBox box(this);
+        box.setLayoutDirection(Qt::RightToLeft);
+        box.setIcon(QMessageBox::Warning);
+        box.setWindowTitle(QString::fromUtf8("تأكيد الحذف"));
+        box.setText(isDirectory
+            ? QString::fromUtf8("هل تريد حذف هذا المجلد وكل محتوياته؟")
+            : QString::fromUtf8("هل تريد حذف هذا الملف؟"));
+        box.setInformativeText(QDir::toNativeSeparators(path));
+        auto *deleteButton = box.addButton(QString::fromUtf8("حذف"), QMessageBox::AcceptRole);
+        box.addButton(QString::fromUtf8("إلغاء"), QMessageBox::RejectRole);
+        box.setDefaultButton(qobject_cast<QPushButton *>(box.buttons().last()));
+        box.exec();
+        return box.clickedButton() == deleteButton;
+    });
+    connect(projectTreeController.get(), &ProjectTreeController::openPathRequested, this, [this](const QString &path) {
+        if (editor && editor->isDirty() && !confirmUnsavedDocuments(UnsavedChangesOperation::OpenFile)) {
+            return;
+        }
 
-    projectTreeNewFileAction = new QAction(QString::fromUtf8("ملف جديد"), this);
-    projectTreeNewFileAction->setObjectName(QStringLiteral("projectTreeNewFileAction"));
-    projectTreeNewFileAction->setProperty("commandId", QStringLiteral("project.file.new"));
-    connect(projectTreeNewFileAction, &QAction::triggered, this, &MainWindow::createProjectTreeFile);
-
-    projectTreeNewFolderAction = new QAction(QString::fromUtf8("مجلد جديد"), this);
-    projectTreeNewFolderAction->setObjectName(QStringLiteral("projectTreeNewFolderAction"));
-    projectTreeNewFolderAction->setProperty("commandId", QStringLiteral("project.folder.new"));
-    connect(projectTreeNewFolderAction, &QAction::triggered, this, &MainWindow::createProjectTreeFolder);
-
-    projectTreeOpenAction = new QAction(QString::fromUtf8("فتح"), this);
-    projectTreeOpenAction->setObjectName(QStringLiteral("projectTreeOpenAction"));
-    projectTreeOpenAction->setProperty("commandId", QStringLiteral("project.item.open"));
-    connect(projectTreeOpenAction, &QAction::triggered, this, &MainWindow::openProjectTreeItem);
-
-    projectTreeRenameAction = new QAction(QString::fromUtf8("إعادة تسمية"), this);
-    projectTreeRenameAction->setObjectName(QStringLiteral("projectTreeRenameAction"));
-    projectTreeRenameAction->setProperty("commandId", QStringLiteral("project.item.rename"));
-    connect(projectTreeRenameAction, &QAction::triggered, this, &MainWindow::renameProjectTreeItem);
-
-    projectTreeDeleteAction = new QAction(QString::fromUtf8("حذف"), this);
-    projectTreeDeleteAction->setObjectName(QStringLiteral("projectTreeDeleteAction"));
-    projectTreeDeleteAction->setProperty("commandId", QStringLiteral("project.item.deleteWithPrompt"));
-    connect(projectTreeDeleteAction, &QAction::triggered, this, &MainWindow::deleteProjectTreeItem);
-
-    projectTreeRevealAction = new QAction(QString::fromUtf8("إظهار في مستكشف الملفات"), this);
-    projectTreeRevealAction->setObjectName(QStringLiteral("projectTreeRevealAction"));
-    projectTreeRevealAction->setProperty("commandId", QStringLiteral("project.item.reveal"));
-    connect(projectTreeRevealAction, &QAction::triggered, this, &MainWindow::revealProjectTreeItem);
-
-    projectTreeCopyPathAction = new QAction(QString::fromUtf8("نسخ المسار"), this);
-    projectTreeCopyPathAction->setObjectName(QStringLiteral("projectTreeCopyPathAction"));
-    projectTreeCopyPathAction->setProperty("commandId", QStringLiteral("project.item.copyPath"));
-    connect(projectTreeCopyPathAction, &QAction::triggered, this, &MainWindow::copyProjectTreeItemPath);
-
-    projectTreeOpenContainingFolderAction = new QAction(QString::fromUtf8("فتح المجلد الحاوي"), this);
-    projectTreeOpenContainingFolderAction->setObjectName(QStringLiteral("projectTreeOpenContainingFolderAction"));
-    projectTreeOpenContainingFolderAction->setProperty("commandId", QStringLiteral("project.item.openContainingFolder"));
-    connect(projectTreeOpenContainingFolderAction, &QAction::triggered, this, &MainWindow::openProjectTreeContainingFolder);
-
-    projectTreeRefreshAction = new QAction(QString::fromUtf8("تحديث"), this);
-    projectTreeRefreshAction->setObjectName(QStringLiteral("projectTreeRefreshAction"));
-    projectTreeRefreshAction->setProperty("commandId", QStringLiteral("project.refresh"));
-    connect(projectTreeRefreshAction, &QAction::triggered, this, &MainWindow::refreshProjectTree);
+        QString error;
+        if (!editorTabsController || !editorTabsController->openFile(path, &error)) {
+            QMessageBox::warning(this, QString::fromUtf8("تعذر فتح الملف"), error);
+            return;
+        }
+        settings.addRecentFile(QFileInfo(path).absoluteFilePath());
+        setStatus(QString::fromUtf8("فتح: %1").arg(QFileInfo(path).fileName()));
+    });
+    connect(projectTreeController.get(), &ProjectTreeController::revealRequested, this, [](const QString &path) {
+        QProcess::startDetached(QStringLiteral("explorer.exe"), ProjectFileOperations::explorerRevealArguments(path));
+    });
+    connect(projectTreeController.get(), &ProjectTreeController::pathDeleted, this, &MainWindow::clearEditorsForDeletedPath);
+    connect(projectTreeController.get(), &ProjectTreeController::pathRenamed, this, [this](const QString &oldPath, const QString &newPath) {
+        if (QFileInfo(newPath).isFile() && QFileInfo(currentEditorPath()).absoluteFilePath() == QFileInfo(oldPath).absoluteFilePath()) {
+            openEditorFile(newPath);
+        }
+    });
+    connect(projectTreeController.get(), &ProjectTreeController::statusMessage, this, &MainWindow::setStatus);
+    connect(projectTreeController.get(), &ProjectTreeController::errorMessage, this, [this](const QString &title, const QString &body) {
+        QMessageBox::warning(this, title, body);
+    });
 
     auto *editorColumn = new QWidget(splitter);
     editorColumn->setObjectName(QStringLiteral("editorColumn"));
@@ -1474,7 +1459,7 @@ void MainWindow::registerWorkbenchCommands()
         QString::fromUtf8("المشروع"),
         QKeySequence(),
         QString::fromUtf8("ملف جديد في المشروع project new file"),
-        [this]() { createProjectTreeFile(); },
+        [this]() { if (projectTreeController) projectTreeController->createFile(); },
         [this]() { return !projectRoot.isEmpty(); });
     registerCommand(
         QStringLiteral("project.folder.new"),
@@ -1482,7 +1467,7 @@ void MainWindow::registerWorkbenchCommands()
         QString::fromUtf8("المشروع"),
         QKeySequence(),
         QString::fromUtf8("مجلد جديد في المشروع project new folder"),
-        [this]() { createProjectTreeFolder(); },
+        [this]() { if (projectTreeController) projectTreeController->createFolder(); },
         [this]() { return !projectRoot.isEmpty(); });
     registerCommand(
         QStringLiteral("project.item.open"),
@@ -1490,55 +1475,55 @@ void MainWindow::registerWorkbenchCommands()
         QString::fromUtf8("المشروع"),
         QKeySequence(),
         QString::fromUtf8("فتح عنصر المشروع project open item"),
-        [this]() { openProjectTreeItem(); },
-        [this]() { return !activeProjectTreePath().isEmpty(); });
+        [this]() { if (projectTreeController) projectTreeController->openSelectedItem(); },
+        [this]() { return projectTreeController && !projectTreeController->currentSelectionPath().isEmpty(); });
     registerCommand(
         QStringLiteral("project.item.rename"),
         QString::fromUtf8("إعادة تسمية عنصر المشروع"),
         QString::fromUtf8("المشروع"),
         QKeySequence(),
         QString::fromUtf8("إعادة تسمية rename project item"),
-        [this]() { renameProjectTreeItem(); },
-        [this]() { return !activeProjectTreePath().isEmpty(); });
+        [this]() { if (projectTreeController) projectTreeController->renameSelectedItem(); },
+        [this]() { return projectTreeController && !projectTreeController->currentSelectionPath().isEmpty(); });
     registerCommand(
         QStringLiteral("project.item.deleteWithPrompt"),
         QString::fromUtf8("حذف عنصر المشروع"),
         QString::fromUtf8("المشروع"),
         QKeySequence(),
         QString::fromUtf8("حذف مع تأكيد delete project item"),
-        [this]() { deleteProjectTreeItem(); },
-        [this]() { return !activeProjectTreePath().isEmpty(); });
+        [this]() { if (projectTreeController) projectTreeController->deleteSelectedItem(); },
+        [this]() { return projectTreeController && !projectTreeController->currentSelectionPath().isEmpty(); });
     registerCommand(
         QStringLiteral("project.item.reveal"),
         QString::fromUtf8("إظهار عنصر المشروع"),
         QString::fromUtf8("المشروع"),
         QKeySequence(),
         QString::fromUtf8("إظهار في مستكشف الملفات reveal explorer"),
-        [this]() { revealProjectTreeItem(); },
-        [this]() { return !activeProjectTreePath().isEmpty(); });
+        [this]() { if (projectTreeController) projectTreeController->revealSelectedItem(); },
+        [this]() { return projectTreeController && !projectTreeController->currentSelectionPath().isEmpty(); });
     registerCommand(
         QStringLiteral("project.item.copyPath"),
         QString::fromUtf8("نسخ مسار عنصر المشروع"),
         QString::fromUtf8("المشروع"),
         QKeySequence(),
         QString::fromUtf8("نسخ المسار copy path"),
-        [this]() { copyProjectTreeItemPath(); },
-        [this]() { return !activeProjectTreePath().isEmpty(); });
+        [this]() { if (projectTreeController) projectTreeController->copySelectedItemPath(); },
+        [this]() { return projectTreeController && !projectTreeController->currentSelectionPath().isEmpty(); });
     registerCommand(
         QStringLiteral("project.item.openContainingFolder"),
         QString::fromUtf8("فتح المجلد الحاوي"),
         QString::fromUtf8("المشروع"),
         QKeySequence(),
         QString::fromUtf8("فتح المجلد الحاوي open containing folder"),
-        [this]() { openProjectTreeContainingFolder(); },
-        [this]() { return !activeProjectTreePath().isEmpty(); });
+        [this]() { if (projectTreeController) projectTreeController->openSelectedContainingFolder(); },
+        [this]() { return projectTreeController && !projectTreeController->currentSelectionPath().isEmpty(); });
     registerCommand(
         QStringLiteral("project.refresh"),
         QString::fromUtf8("تحديث المشروع"),
         QString::fromUtf8("المشروع"),
         QKeySequence(),
         QString::fromUtf8("تحديث المشروع refresh project"),
-        [this]() { refreshProjectTree(); },
+        [this]() { if (projectTreeController) projectTreeController->refresh(); },
         [this]() { return !projectRoot.isEmpty(); });
     registerCommand(
         QStringLiteral("settings"),
@@ -2323,317 +2308,6 @@ void MainWindow::openProblemResult(QListWidgetItem *item)
     goToEditorLine(line);
 }
 
-void MainWindow::openSelectedProjectFile(const QModelIndex &index)
-{
-    const QString path = fileSystemModel->filePath(index);
-    if (QFileInfo(path).isFile()) {
-        openEditorFile(path);
-    }
-}
-
-void MainWindow::showProjectTreeContextMenu(const QPoint &pos)
-{
-    if (!projectTree || !fileSystemModel) {
-        return;
-    }
-
-    const QModelIndex index = projectTree->indexAt(pos);
-    if (!index.isValid()) {
-        return;
-    }
-
-    projectTreeContextIndex = index.siblingAtColumn(0);
-    const QFileInfo info(fileSystemModel->filePath(projectTreeContextIndex));
-    if (!info.exists()) {
-        projectTreeContextIndex = QModelIndex();
-        return;
-    }
-
-    QMenu menu(this);
-    menu.setLayoutDirection(Qt::RightToLeft);
-    menu.setObjectName(QStringLiteral("projectTreeContextMenu"));
-
-    if (info.isDir()) {
-        menu.addAction(projectTreeNewFileAction);
-        menu.addAction(projectTreeNewFolderAction);
-        menu.addSeparator();
-        menu.addAction(projectTreeCopyPathAction);
-        menu.addAction(projectTreeOpenContainingFolderAction);
-        menu.addAction(projectTreeRevealAction);
-        menu.addAction(projectTreeRefreshAction);
-    } else {
-        menu.addAction(projectTreeOpenAction);
-        menu.addAction(projectTreeRenameAction);
-        menu.addAction(projectTreeDeleteAction);
-        menu.addSeparator();
-        menu.addAction(projectTreeCopyPathAction);
-        menu.addAction(projectTreeOpenContainingFolderAction);
-        menu.addAction(projectTreeRevealAction);
-    }
-
-    menu.exec(projectTree->viewport()->mapToGlobal(pos));
-    projectTreeContextIndex = QModelIndex();
-}
-
-void MainWindow::createProjectTreeFile()
-{
-    const QString folderPath = activeProjectTreeFolderPath();
-    if (folderPath.isEmpty()) {
-        return;
-    }
-
-    bool accepted = false;
-    const QString name = QInputDialog::getText(
-        this,
-        QString::fromUtf8("ملف جديد"),
-        QString::fromUtf8("اسم الملف"),
-        QLineEdit::Normal,
-        QStringLiteral("main.apy"),
-        &accepted).trimmed();
-    if (!accepted || name.isEmpty()) {
-        return;
-    }
-    QString error;
-    const ProjectFileOperationTarget target = ProjectFileOperations::childTarget(
-        folderPath,
-        projectRoot,
-        name,
-        true,
-        &error);
-    if (!target.allowed) {
-        QMessageBox::warning(this, QString::fromUtf8("تعذر إنشاء الملف"), error);
-        return;
-    }
-
-    QFile file(target.path);
-    if (!file.open(QIODevice::WriteOnly | QIODevice::NewOnly | QIODevice::Text)) {
-        QMessageBox::warning(this, QString::fromUtf8("تعذر إنشاء الملف"), file.errorString());
-        return;
-    }
-    file.close();
-
-    refreshProjectTree();
-    openEditorFile(target.path);
-}
-
-void MainWindow::createProjectTreeFolder()
-{
-    const QString folderPath = activeProjectTreeFolderPath();
-    if (folderPath.isEmpty()) {
-        return;
-    }
-
-    bool accepted = false;
-    const QString name = QInputDialog::getText(
-        this,
-        QString::fromUtf8("مجلد جديد"),
-        QString::fromUtf8("اسم المجلد"),
-        QLineEdit::Normal,
-        QString::fromUtf8("مجلد جديد"),
-        &accepted).trimmed();
-    if (!accepted || name.isEmpty()) {
-        return;
-    }
-    QString error;
-    const ProjectFileOperationTarget target = ProjectFileOperations::childTarget(
-        folderPath,
-        projectRoot,
-        name,
-        false,
-        &error);
-    if (!target.allowed) {
-        QMessageBox::warning(this, QString::fromUtf8("تعذر إنشاء المجلد"), error);
-        return;
-    }
-
-    if (!QDir().mkpath(target.path)) {
-        QMessageBox::warning(this, QString::fromUtf8("تعذر إنشاء المجلد"), QString::fromUtf8("راجع الاسم أو أذونات المجلد."));
-        return;
-    }
-    refreshProjectTree();
-}
-
-void MainWindow::openProjectTreeItem()
-{
-    const QString path = activeProjectTreePath();
-    if (path.isEmpty()) {
-        return;
-    }
-    const QFileInfo info(path);
-    if (info.isDir() && projectTree) {
-        const QModelIndex index = activeProjectTreeIndex();
-        projectTree->setExpanded(index, !projectTree->isExpanded(index));
-        return;
-    }
-    if (info.isFile()) {
-        openEditorFile(path);
-    }
-}
-
-void MainWindow::renameProjectTreeItem()
-{
-    const QString path = activeProjectTreePath();
-    const QFileInfo info(path);
-    if (!info.exists() || info.absoluteFilePath() == QFileInfo(projectRoot).absoluteFilePath()) {
-        return;
-    }
-
-    bool accepted = false;
-    const QString newName = QInputDialog::getText(
-        this,
-        QString::fromUtf8("إعادة تسمية"),
-        QString::fromUtf8("الاسم الجديد"),
-        QLineEdit::Normal,
-        info.fileName(),
-        &accepted).trimmed();
-    if (!accepted || newName.isEmpty() || newName == info.fileName()) {
-        return;
-    }
-    QString error;
-    const ProjectFileOperationTarget target = ProjectFileOperations::renameTarget(
-        info.absoluteFilePath(),
-        newName,
-        projectRoot,
-        &error);
-    if (!target.allowed) {
-        QMessageBox::warning(this, QString::fromUtf8("تعذرت إعادة التسمية"), error);
-        return;
-    }
-
-    QDir parent(info.absolutePath());
-    if (!parent.rename(info.fileName(), QFileInfo(target.path).fileName())) {
-        QMessageBox::warning(this, QString::fromUtf8("تعذرت إعادة التسمية"), QString::fromUtf8("راجع أذونات الملف أو المجلد."));
-        return;
-    }
-
-    refreshProjectTree();
-    if (info.isFile() && QFileInfo(currentEditorPath()).absoluteFilePath() == info.absoluteFilePath()) {
-        openEditorFile(target.path);
-    }
-}
-
-void MainWindow::deleteProjectTreeItem()
-{
-    const QString path = activeProjectTreePath();
-    const QFileInfo info(path);
-    if (!info.exists()) {
-        return;
-    }
-
-    QString error;
-    if (!ProjectFileOperations::canDelete(info.absoluteFilePath(), projectRoot, &error)) {
-        QMessageBox::warning(this, QString::fromUtf8("تعذر الحذف"), error);
-        return;
-    }
-
-    QMessageBox box(this);
-    box.setLayoutDirection(Qt::RightToLeft);
-    box.setIcon(QMessageBox::Warning);
-    box.setWindowTitle(QString::fromUtf8("تأكيد الحذف"));
-    box.setText(info.isDir()
-        ? QString::fromUtf8("هل تريد حذف هذا المجلد وكل محتوياته؟")
-        : QString::fromUtf8("هل تريد حذف هذا الملف؟"));
-    box.setInformativeText(QDir::toNativeSeparators(info.absoluteFilePath()));
-    auto *deleteButton = box.addButton(QString::fromUtf8("حذف"), QMessageBox::AcceptRole);
-    box.addButton(QString::fromUtf8("إلغاء"), QMessageBox::RejectRole);
-    box.setDefaultButton(qobject_cast<QPushButton *>(box.buttons().last()));
-    box.exec();
-    if (box.clickedButton() != deleteButton) {
-        return;
-    }
-
-    bool removed = false;
-    if (info.isDir()) {
-        removed = QDir(info.absoluteFilePath()).removeRecursively();
-    } else {
-        removed = QFile::remove(info.absoluteFilePath());
-    }
-    if (!removed) {
-        QMessageBox::warning(this, QString::fromUtf8("تعذر الحذف"), QString::fromUtf8("راجع أذونات الملف أو المجلد."));
-        return;
-    }
-
-    clearEditorsForDeletedPath(info.absoluteFilePath());
-    refreshProjectTree();
-}
-
-void MainWindow::revealProjectTreeItem()
-{
-    const QString path = activeProjectTreePath();
-    if (path.isEmpty()) {
-        return;
-    }
-
-    QProcess::startDetached(QStringLiteral("explorer.exe"), ProjectFileOperations::explorerRevealArguments(path));
-}
-
-void MainWindow::copyProjectTreeItemPath()
-{
-    const QString path = activeProjectTreePath();
-    if (path.isEmpty() || !QApplication::clipboard()) {
-        return;
-    }
-
-    QApplication::clipboard()->setText(ProjectFileOperations::pathForClipboard(path));
-    setStatus(QString::fromUtf8("تم نسخ المسار"));
-}
-
-void MainWindow::openProjectTreeContainingFolder()
-{
-    const QString path = activeProjectTreePath();
-    if (path.isEmpty()) {
-        return;
-    }
-
-    const QString folderPath = ProjectFileOperations::containingFolder(path);
-    if (folderPath.isEmpty()) {
-        return;
-    }
-
-    QProcess::startDetached(QStringLiteral("explorer.exe"), {QDir::toNativeSeparators(folderPath)});
-}
-
-void MainWindow::refreshProjectTree()
-{
-    if (projectRoot.isEmpty() || !fileSystemModel || !projectTree) {
-        return;
-    }
-
-    fileSystemModel->setRootPath(projectRoot);
-    const QModelIndex rootIndex = fileSystemModel->index(projectRoot);
-    projectTree->setRootIndex(rootIndex);
-    projectTree->expand(rootIndex);
-    setStatus(QString::fromUtf8("تم تحديث المشروع"));
-}
-
-QModelIndex MainWindow::activeProjectTreeIndex() const
-{
-    if (projectTreeContextIndex.isValid()) {
-        return projectTreeContextIndex.siblingAtColumn(0);
-    }
-    if (projectTree && projectTree->currentIndex().isValid()) {
-        return projectTree->currentIndex().siblingAtColumn(0);
-    }
-    return QModelIndex();
-}
-
-QString MainWindow::activeProjectTreePath() const
-{
-    const QModelIndex index = activeProjectTreeIndex();
-    return index.isValid() && fileSystemModel ? fileSystemModel->filePath(index) : QString();
-}
-
-QString MainWindow::activeProjectTreeFolderPath() const
-{
-    const QString path = activeProjectTreePath();
-    if (path.isEmpty()) {
-        return projectRoot;
-    }
-
-    const QFileInfo info(path);
-    return info.isDir() ? info.absoluteFilePath() : info.absolutePath();
-}
-
 void MainWindow::clearEditorsForDeletedPath(const QString &path)
 {
     if (editorTabsController) {
@@ -2943,8 +2617,9 @@ bool MainWindow::loadProject(const QString &path)
 
     projectRoot = requestedRoot;
     workspaceSettings = WorkspaceSettingsStore(projectRoot).load();
-    fileSystemModel->setRootPath(projectRoot);
-    projectTree->setRootIndex(fileSystemModel->index(projectRoot));
+    if (projectTreeController) {
+        projectTreeController->setProjectRoot(projectRoot);
+    }
     if (editorTabsController) {
         editorTabsController->applyWorkspaceSettings(workspaceSettings);
     }

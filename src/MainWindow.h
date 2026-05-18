@@ -8,6 +8,7 @@
 #include "EditorSurface.h"
 #include "OutputTranscript.h"
 #include "ProjectModel.h"
+#include "ProjectTreeController.h"
 #include "ProjectReplaceService.h"
 #include "RuntimeOrchestrator.h"
 #include "SearchService.h"
@@ -91,17 +92,6 @@ private slots:
     void replaceAllInFileMatches();
     void openSearchResult(QListWidgetItem *item);
     void openProblemResult(QListWidgetItem *item);
-    void openSelectedProjectFile(const QModelIndex &index);
-    void showProjectTreeContextMenu(const QPoint &pos);
-    void createProjectTreeFile();
-    void createProjectTreeFolder();
-    void openProjectTreeItem();
-    void renameProjectTreeItem();
-    void deleteProjectTreeItem();
-    void revealProjectTreeItem();
-    void copyProjectTreeItemPath();
-    void openProjectTreeContainingFolder();
-    void refreshProjectTree();
     void openSettings();
     void pollOpenDocumentChanges();
 
@@ -140,19 +130,9 @@ private:
     QAction *lintAction = nullptr;
     QAction *formatAction = nullptr;
     QAction *cancelRunAction = nullptr;
-    QAction *projectTreeNewFileAction = nullptr;
-    QAction *projectTreeNewFolderAction = nullptr;
-    QAction *projectTreeOpenAction = nullptr;
-    QAction *projectTreeRenameAction = nullptr;
-    QAction *projectTreeDeleteAction = nullptr;
-    QAction *projectTreeRevealAction = nullptr;
-    QAction *projectTreeCopyPathAction = nullptr;
-    QAction *projectTreeOpenContainingFolderAction = nullptr;
-    QAction *projectTreeRefreshAction = nullptr;
     QTimer *documentChangePollTimer = nullptr;
     QFutureWatcher<QVector<SearchResultRow>> *activeSearchWatcher = nullptr;
     QVector<ProjectReplacePreviewRow> currentProjectReplacePreviewRows;
-    QModelIndex projectTreeContextIndex;
     SettingsStore settings;
     std::function<RuntimeDiagnostics(int)> runtimeDiagnosticsProvider;
     RuntimeOrchestrator runtimeOrchestrator;
@@ -164,6 +144,7 @@ private:
     OutputTranscript outputTranscript;
     OutputTranscriptFilter outputFilter;
     std::unique_ptr<EditorTabsController> editorTabsController;
+    std::unique_ptr<ProjectTreeController> projectTreeController;
     std::unique_ptr<BottomPanelController> bottomPanels;
     QString projectRoot;
 
@@ -173,9 +154,6 @@ private:
     bool loadProject(const QString &path);
     bool openEditorFile(const QString &path);
     bool requestCloseEditorTab(int index);
-    QModelIndex activeProjectTreeIndex() const;
-    QString activeProjectTreePath() const;
-    QString activeProjectTreeFolderPath() const;
     void clearEditorsForDeletedPath(const QString &path);
     void applyThemePreference();
     void applyShortcutSettings();

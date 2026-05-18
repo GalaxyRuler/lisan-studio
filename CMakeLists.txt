@@ -50,6 +50,8 @@ add_library(acs_core
     src/EditorSurface.cpp
     src/ProjectModel.h
     src/ProjectModel.cpp
+    src/ProjectTreeController.h
+    src/ProjectTreeController.cpp
     src/ProjectFileOperations.h
     src/ProjectFileOperations.cpp
     src/ProjectReplaceService.h
@@ -112,6 +114,12 @@ qt_add_executable(acs_editor_tabs_controller_tests
 
 target_link_libraries(acs_editor_tabs_controller_tests PRIVATE acs_core Qt6::Test)
 
+qt_add_executable(acs_project_tree_controller_tests
+    tests/TestProjectTreeController.cpp
+)
+
+target_link_libraries(acs_project_tree_controller_tests PRIVATE acs_core Qt6::Test)
+
 qt_add_executable(acs_command_registry_tests
     tests/TestCommandRegistry.cpp
 )
@@ -153,6 +161,7 @@ target_link_libraries(acs_editor_torture_tests PRIVATE acs_core Qt6::Test)
 
 add_test(NAME acs_editor_tests COMMAND acs_editor_tests)
 add_test(NAME acs_editor_tabs_controller_tests COMMAND acs_editor_tabs_controller_tests)
+add_test(NAME acs_project_tree_controller_tests COMMAND acs_project_tree_controller_tests)
 add_test(NAME acs_command_registry_tests COMMAND acs_command_registry_tests)
 add_test(NAME acs_workbench_state_tests COMMAND acs_workbench_state_tests)
 add_test(NAME acs_project_runtime_tests COMMAND acs_project_runtime_tests)
