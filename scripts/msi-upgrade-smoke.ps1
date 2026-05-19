@@ -140,7 +140,7 @@ function Assert-SingleLisanUninstallRegistryEntry {
     }
 
     $entry = $entries[0]
-    $expectedHive = 'HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Uninstall'
+    $expectedHive = 'HKEY_LOCAL_MACHINE\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall'
     if (-not $entry.RegistryPath.StartsWith($expectedHive, [System.StringComparison]::OrdinalIgnoreCase)) {
         throw "$Context uninstall registry entry should be under $expectedHive; offending path: $($entry.RegistryPath)"
     }

@@ -22,13 +22,24 @@ multiple Windows Installer clients for shortcut components.
 Rely on Windows Installer's product-code uninstall registration as the canonical
 Windows Apps entry. Do not author a parallel stable
 `HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\LisanStudio` key in
-WiX. Set `MSIINSTALLPERUSER=1` explicitly so the per-user package is registered
-under the current user's uninstall hive instead of the machine uninstall hive.
-Keep installer build metadata under the app-owned `HKCU\Software\LisanStudio`
-key rather than under the Windows Apps uninstall key.
+WiX. Keep installer build metadata under the app-owned
+`HKCU\Software\LisanStudio` key rather than under the Windows Apps uninstall
+key.
+
+Windows Installer strips an authored `MSIINSTALLPERUSER=1` property from this
+self-contained MSI at install time, so the MSI cannot force current-user
+product-code registration without a command-line property, transform, or bundle.
+`Package/@Scope="perUser"` still keeps the installed payload under
+`LocalAppDataFolder`, but the product-code uninstall entry is registered under
+`HKLM\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\{ProductCode}`.
+For V1, accept that native MSI behavior and assert the install leaves exactly
+one Windows Apps entry for `Lisan Studio` in that hive.
 
 The full evidence and trade-off analysis lives in
-`docs/investigations/wix-dual-uninstall-registration-2026-05-19.md`.
+`docs/investigations/wix-dual-uninstall-registration-2026-05-19.md`. The
+decisive install-log evidence is the Homelab smoke run
+`prompt14-rerun-smoke-20260519T184438` (`install.log`: `PROPERTY CHANGE:
+Deleting MSIINSTALLPERUSER property`).
 
 ## Alternatives Considered
 
@@ -36,9 +47,9 @@ The full evidence and trade-off analysis lives in
   installation.
 - NSIS/Inno Setup: deferred because WiX is already available locally and MSI is
   easier to validate for the first beta.
-- Removing only the stable HKCU uninstall component without
-  `MSIINSTALLPERUSER=1`: rejected because the investigation showed Windows
-  Installer still registered the product-code entry under HKLM WOW6432Node.
+- Requiring HKCU product-code registration from the self-contained MSI: rejected
+  because the Homelab install log showed Windows Installer deleting the authored
+  `MSIINSTALLPERUSER` property before registration.
 - Keeping the stable HKCU component and setting `ARPSYSTEMCOMPONENT`: rejected
   for now because it hides Add/Remove Programs metadata but does not prove the
   raw duplicate registry entry disappears.

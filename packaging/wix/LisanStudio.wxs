@@ -9,7 +9,6 @@
     <MajorUpgrade
       AllowSameVersionUpgrades="yes"
       DowngradeErrorMessage="A newer Lisan Studio is already installed." />
-    <Property Id="MSIINSTALLPERUSER" Value="1" />
     <MediaTemplate EmbedCab="yes" />
 
     <Feature Id="MainFeature" Title="Lisan Studio" Level="1">

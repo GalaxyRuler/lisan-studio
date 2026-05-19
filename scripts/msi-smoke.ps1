@@ -57,6 +57,7 @@ function Get-InstalledLisanProductCodes {
 }
 
 function Get-LisanUninstallRegistryEntries {
+    $lisanUpgradeCode = "{B45833FC-87F8-4656-8CC4-DC87769EA386}"
     $uninstallRoots = @(
         'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall',
         'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall',
@@ -69,11 +70,15 @@ function Get-LisanUninstallRegistryEntries {
         }
         foreach ($key in @(Get-ChildItem -LiteralPath $root -ErrorAction SilentlyContinue)) {
             $entry = Get-ItemProperty -LiteralPath $key.PSPath -ErrorAction SilentlyContinue
-            if ($entry.DisplayName -eq 'Lisan Studio') {
+            $entryUpgradeCode = [string]$entry.UpgradeCode
+            $matchesDisplayName = [string]::Equals([string]$entry.DisplayName, 'Lisan Studio', [System.StringComparison]::OrdinalIgnoreCase)
+            $matchesUpgradeCode = [string]::Equals($entryUpgradeCode, $lisanUpgradeCode, [System.StringComparison]::OrdinalIgnoreCase)
+            if ($matchesDisplayName -or $matchesUpgradeCode) {
                 [PSCustomObject]@{
                     RegistryPath = $key.Name
                     DisplayName = [string]$entry.DisplayName
                     DisplayVersion = [string]$entry.DisplayVersion
+                    UpgradeCode = $entryUpgradeCode
                     Publisher = [string]$entry.Publisher
                     InstallLocation = [string]$entry.InstallLocation
                     DisplayIcon = [string]$entry.DisplayIcon
@@ -87,28 +92,29 @@ function Get-LisanUninstallRegistryEntries {
 
 function Assert-LisanUninstallRegistryEntry {
     $entries = @(Get-LisanUninstallRegistryEntries)
-    if ($entries.Count -eq 0) {
-        throw 'Windows Apps uninstall entry missing for Lisan Studio.'
+    if ($entries.Count -ne 1) {
+        throw "Install should leave exactly one Windows Apps uninstall entry for Lisan Studio; found $($entries.Count): $($entries.RegistryPath -join ', ')"
     }
 
-    foreach ($entry in $entries) {
-        if ($entry.UninstallString -notmatch 'msiexec(\.exe)?') {
-            throw "UninstallString should reference msiexec: $($entry.RegistryPath)"
-        }
+    $entry = $entries[0]
+    $expectedHive = 'HKEY_LOCAL_MACHINE\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall'
+    if (-not $entry.RegistryPath.StartsWith($expectedHive, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Install uninstall registry entry should be under $expectedHive; offending path: $($entry.RegistryPath)"
     }
-
-    $projectEntry = @($entries | Where-Object { $_.RegistryPath -like '*\Uninstall\LisanStudio' }) | Select-Object -First 1
-    if (-not $projectEntry) {
-        throw 'Windows Apps project uninstall entry missing: HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\LisanStudio'
+    if (-not [string]::Equals($entry.DisplayName, 'Lisan Studio', [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Windows Apps uninstall entry should have DisplayName 'Lisan Studio': $($entry.RegistryPath)"
     }
-    if (-not $projectEntry.DisplayVersion) {
-        throw "Windows Apps project uninstall entry missing DisplayVersion: $($projectEntry.RegistryPath)"
+    if (-not $entry.DisplayVersion) {
+        throw "Windows Apps uninstall entry missing DisplayVersion: $($entry.RegistryPath)"
     }
-    if ($projectEntry.QuietUninstallString -notmatch 'msiexec(\.exe)?') {
-        throw "QuietUninstallString should reference msiexec: $($projectEntry.RegistryPath)"
+    if ($entry.UninstallString -notmatch 'msiexec(\.exe)?') {
+        throw "UninstallString should reference msiexec: $($entry.RegistryPath)"
     }
-    if ($projectEntry.InstallLocation -and -not $projectEntry.InstallLocation.StartsWith($InstallRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
-        throw "InstallLocation should point at the Lisan install root: $($projectEntry.InstallLocation)"
+    if ($entry.QuietUninstallString -and $entry.QuietUninstallString -notmatch 'msiexec(\.exe)?') {
+        throw "QuietUninstallString should reference msiexec: $($entry.RegistryPath)"
+    }
+    if ($entry.InstallLocation -and -not $entry.InstallLocation.StartsWith($InstallRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "InstallLocation should point at the Lisan install root: $($entry.InstallLocation)"
     }
 
     return $entries
