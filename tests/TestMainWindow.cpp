@@ -23,6 +23,7 @@
 #include <QLineEdit>
 #include <QListWidget>
 #include <QPlainTextEdit>
+#include <QPointer>
 #include <QPushButton>
 #include <QSpinBox>
 #include <QStatusBar>
@@ -100,6 +101,7 @@ private slots:
     void trustGrantCancelDoesNotAppendAudit();
     void projectSearchShowsClickableResultRows();
     void projectSearchFindsCurrentUnsavedEditorImmediately();
+    void overlappingFindInProjectReleasesPriorSearchWatcher();
     void projectReplacePreviewRendersRowsWithoutWritingFile();
     void projectReplacePreviewRowCheckboxesTrackAcceptedState();
     void projectReplacePreviewFileButtonsToggleRowsForThatFile();
@@ -205,6 +207,17 @@ static void verifyTrustAuditEntry(const QJsonObject &entry, const QString &event
     const QDateTime parsed = QDateTime::fromString(timestampUtc, Qt::ISODateWithMs);
     QVERIFY2(parsed.isValid(), qPrintable(timestampUtc));
     QCOMPARE(parsed.timeSpec(), Qt::UTC);
+}
+
+static QVector<QObject *> searchWatcherChildren(const MainWindow &window)
+{
+    QVector<QObject *> watchers;
+    for (QObject *child : window.findChildren<QObject *>(QString(), Qt::FindDirectChildrenOnly)) {
+        if (child->inherits("QFutureWatcherBase")) {
+            watchers.push_back(child);
+        }
+    }
+    return watchers;
 }
 
 static int horizontalGap(const QRect &a, const QRect &b)
@@ -2186,6 +2199,63 @@ void TestMainWindow::projectSearchFindsCurrentUnsavedEditorImmediately()
     QCOMPARE(results->item(0)->data(Qt::UserRole).toString(), QString());
     QCOMPARE(results->item(0)->data(Qt::UserRole + 1).toInt(), 3);
     QVERIFY(results->item(0)->toolTip().contains(QStringLiteral("adult")));
+}
+
+void TestMainWindow::overlappingFindInProjectReleasesPriorSearchWatcher()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    QDir root(temp.path());
+
+    for (int i = 0; i < 100; ++i) {
+        writeFile(
+            root,
+            QStringLiteral("src/a-%1.apy").arg(i, 3, 10, QLatin1Char('0')),
+            QStringLiteral("needleA\n"));
+    }
+    for (int i = 0; i < 3; ++i) {
+        writeFile(
+            root,
+            QStringLiteral("src/b-%1.apy").arg(i, 3, 10, QLatin1Char('0')),
+            QStringLiteral("needleB\n"));
+    }
+
+    MainWindow window;
+    QVERIFY(window.openPath(root.absolutePath()));
+
+    auto *commandBox = window.findChild<QLineEdit *>(QStringLiteral("commandBox"));
+    QVERIFY(commandBox != nullptr);
+    auto *results = window.findChild<QListWidget *>(QStringLiteral("searchResultsPanel"));
+    QVERIFY(results != nullptr);
+
+    commandBox->setText(QStringLiteral("needleA"));
+    QVERIFY(QMetaObject::invokeMethod(&window, "findInProject", Qt::DirectConnection));
+
+    const QVector<QObject *> firstWatchers = searchWatcherChildren(window);
+    QCOMPARE(firstWatchers.size(), 1);
+    QPointer<QObject> priorWatcher(firstWatchers.first());
+
+    commandBox->setText(QStringLiteral("needleB"));
+    QVERIFY(QMetaObject::invokeMethod(&window, "findInProject", Qt::DirectConnection));
+
+    auto showsOnlyNeedleBResults = [results]() {
+        if (results->count() == 0) {
+            return false;
+        }
+        for (int row = 0; row < results->count(); ++row) {
+            if (!results->item(row)->data(Qt::UserRole + 2).toString().contains(QStringLiteral("needleB"))) {
+                return false;
+            }
+        }
+        return true;
+    };
+    QTRY_VERIFY_WITH_TIMEOUT(showsOnlyNeedleBResults(), 5000);
+
+    const QVector<QObject *> watchersAfterSecondSearch = searchWatcherChildren(window);
+    QVERIFY2(watchersAfterSecondSearch.size() <= 1,
+        qPrintable(QStringLiteral("overlapping project search left %1 QFutureWatchers after second results")
+            .arg(watchersAfterSecondSearch.size())));
+    QTRY_VERIFY_WITH_TIMEOUT(priorWatcher.isNull(), 5000);
 }
 
 void TestMainWindow::projectReplacePreviewRendersRowsWithoutWritingFile()

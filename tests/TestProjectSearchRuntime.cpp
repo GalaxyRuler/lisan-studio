@@ -1,5 +1,6 @@
 #include <QtTest/QtTest>
 
+#include <QElapsedTimer>
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QListWidget>
@@ -41,6 +42,7 @@ private slots:
     void searchServiceFindsUnsavedEditorMatches();
     void searchServiceMergesImmediateRowsBeforeProjectRows();
     void searchServiceStopsBeforeHugeProjectTail();
+    void searchServiceClipsAtMaxScannedFilesWithStableOrdering();
     void runtimeRunnerBuildsExplicitArgumentList();
     void runtimeRunnerBuildsLaunchPlanWithSummaryText();
     void runtimeRunnerCanUseExplicitProjectWorkingDirectory();
@@ -306,6 +308,34 @@ void TestProjectSearchRuntime::searchServiceStopsBeforeHugeProjectTail()
     const auto rows = search.search(root.absolutePath(), QStringLiteral("adult"));
 
     QVERIFY(rows.isEmpty());
+}
+
+void TestProjectSearchRuntime::searchServiceClipsAtMaxScannedFilesWithStableOrdering()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    QDir root(temp.path());
+
+    for (int i = 0; i < 600; ++i) {
+        writeFile(
+            root,
+            QStringLiteral("file-%1.apy").arg(i, 3, 10, QLatin1Char('0')),
+            QStringLiteral("needle\n"));
+    }
+
+    SearchService search;
+    QElapsedTimer timer;
+    timer.start();
+    const auto rows = search.search(root.absolutePath(), QStringLiteral("needle"), 1000);
+    const qint64 elapsedMs = timer.elapsed();
+
+    constexpr int expectedMaxScannedFiles = 500; // Mirrors MaxScannedFiles in src/SearchService.cpp.
+    QCOMPARE(rows.size(), expectedMaxScannedFiles);
+    QVERIFY(!rows.isEmpty());
+    QVERIFY2(elapsedMs <= 2000,
+        qPrintable(QStringLiteral("search cap sweep exceeded 2000 ms budget: %1 ms").arg(elapsedMs)));
+    QCOMPARE(QFileInfo(rows.first().path).fileName(), QStringLiteral("file-000.apy"));
+    QCOMPARE(QFileInfo(rows.last().path).fileName(), QStringLiteral("file-499.apy"));
 }
 
 void TestProjectSearchRuntime::runtimeRunnerBuildsExplicitArgumentList()
