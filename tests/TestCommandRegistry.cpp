@@ -2,8 +2,12 @@
 
 #include "CommandPaletteModel.h"
 #include "CommandRegistry.h"
+#include "EditorSurface.h"
+#include "MainWindow.h"
 #include "ShortcutSettingsModel.h"
 
+#include <QRegularExpression>
+#include <QSet>
 #include <QJsonObject>
 
 class TestCommandRegistry : public QObject
@@ -18,6 +22,7 @@ private slots:
     void shortcutSettingsRejectsUnknownCommandsAndConflicts();
     void commandPaletteModelBuildsRowsWithShortcutOverrides();
     void commandPaletteModelFiltersByTitleShortcutAndKeywords();
+    void allRegisteredCommandsSatisfyVisibleSurfaceInvariants();
 };
 
 static CommandDefinition makeCommand(const QString &id, bool *triggered, bool enabled = true)
@@ -155,6 +160,68 @@ void TestCommandRegistry::commandPaletteModelFiltersByTitleShortcutAndKeywords()
     QVERIFY(CommandPaletteModel::matchesQuery(row, QStringLiteral("f5")));
     QVERIFY(CommandPaletteModel::matchesQuery(row, QStringLiteral("CURRENT")));
     QVERIFY(!CommandPaletteModel::matchesQuery(row, QStringLiteral("missing")));
+}
+
+static QByteArray invariantMessage(const QString &id, const QString &invariantName, const QString &detail)
+{
+    return QStringLiteral("command %1 violates invariant %2: %3")
+        .arg(id, invariantName, detail)
+        .toUtf8();
+}
+
+void TestCommandRegistry::allRegisteredCommandsSatisfyVisibleSurfaceInvariants()
+{
+    MainWindow window;
+    const QVector<CommandDefinition> commands = window.registeredCommandDefinitions();
+    QVERIFY2(!commands.isEmpty(), "MainWindow registered no commands to sweep");
+    QSet<QString> commandIds;
+    const QRegularExpression stableIdPattern(QStringLiteral("^[a-z][a-zA-Z0-9._-]*$"));
+    EditorSurface bidiScanner;
+
+    for (const CommandDefinition &command : commands) {
+        const QString idForMessage = command.id.isEmpty() ? QStringLiteral("<empty>") : command.id;
+
+        QVERIFY2(!command.id.isEmpty(),
+                 invariantMessage(idForMessage, QStringLiteral("stable id"), QStringLiteral("id is empty")).constData());
+        QVERIFY2(stableIdPattern.match(command.id).hasMatch(),
+                 invariantMessage(command.id, QStringLiteral("stable id"),
+                                  QStringLiteral("id must match /^[a-z][a-zA-Z0-9._-]*$/"))
+                     .constData());
+        QVERIFY2(!command.title.isEmpty(),
+                 invariantMessage(command.id, QStringLiteral("label"), QStringLiteral("label is empty")).constData());
+        QVERIFY2(!command.category.isEmpty(),
+                 invariantMessage(command.id, QStringLiteral("category"), QStringLiteral("category is empty")).constData());
+        QVERIFY2(command.trigger != nullptr,
+                 invariantMessage(command.id, QStringLiteral("trigger"), QStringLiteral("trigger callback is null"))
+                     .constData());
+        QVERIFY2(!commandIds.contains(command.id),
+                 invariantMessage(command.id, QStringLiteral("unique id"), QStringLiteral("id is registered more than once"))
+                     .constData());
+        commandIds.insert(command.id);
+
+        if (!command.defaultShortcut.isEmpty()) {
+            const QString shortcutText = command.defaultShortcut.toString(QKeySequence::PortableText);
+            const QKeySequence reparsed(shortcutText, QKeySequence::PortableText);
+            QVERIFY2(!shortcutText.isEmpty() && reparsed == command.defaultShortcut,
+                     invariantMessage(command.id, QStringLiteral("shortcut"),
+                                      QStringLiteral("default shortcut does not parse as a valid QKeySequence"))
+                         .constData());
+        }
+
+        QVERIFY2(command.title == command.title.trimmed(),
+                 invariantMessage(command.id, QStringLiteral("label whitespace"),
+                                  QStringLiteral("label has leading or trailing whitespace"))
+                     .constData());
+        const QVector<HiddenBidiFinding> bidiFindings = bidiScanner.findHiddenBidiControls(command.title);
+        const QString bidiDetail = bidiFindings.isEmpty()
+            ? QStringLiteral("label contains no hidden BiDi controls")
+            : QStringLiteral("label contains %1 at position %2")
+                  .arg(bidiFindings.first().unicodeName)
+                  .arg(bidiFindings.first().position);
+        QVERIFY2(bidiFindings.isEmpty(),
+                 invariantMessage(command.id, QStringLiteral("label bidi controls"), bidiDetail)
+                     .constData());
+    }
 }
 
 QTEST_MAIN(TestCommandRegistry)

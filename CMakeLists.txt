@@ -121,10 +121,13 @@ qt_add_executable(acs_project_tree_controller_tests
 target_link_libraries(acs_project_tree_controller_tests PRIVATE acs_core Qt6::Test)
 
 qt_add_executable(acs_command_registry_tests
+    src/MainWindow.h
+    src/MainWindow.cpp
+    resources/resources.qrc
     tests/TestCommandRegistry.cpp
 )
 
-target_link_libraries(acs_command_registry_tests PRIVATE acs_core Qt6::Test)
+target_link_libraries(acs_command_registry_tests PRIVATE acs_core Qt6::Test Qt6::Concurrent)
 
 qt_add_executable(acs_workbench_state_tests
     tests/TestWorkbenchState.cpp

@@ -49,6 +49,7 @@ public:
     QString currentProjectRoot() const;
     QString currentEditorPath() const;
     QString materializeRunnableBuffer(QString *error = nullptr);
+    QVector<CommandDefinition> registeredCommandDefinitions() const { return commandRegistry.commands(); }
 
 private slots:
     void newFile();
