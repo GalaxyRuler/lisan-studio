@@ -94,6 +94,7 @@ function Get-InstalledLisanProductCodes {
 }
 
 function Get-LisanUninstallRegistryEntries {
+    $lisanUpgradeCode = "{B45833FC-87F8-4656-8CC4-DC87769EA386}"
     $uninstallRoots = @(
         'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall',
         'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall',
@@ -106,12 +107,16 @@ function Get-LisanUninstallRegistryEntries {
         }
         foreach ($key in @(Get-ChildItem -LiteralPath $root -ErrorAction SilentlyContinue)) {
             $entry = Get-ItemProperty -LiteralPath $key.PSPath -ErrorAction SilentlyContinue
-            if ($entry.DisplayName -eq 'Lisan Studio') {
+            $entryUpgradeCode = [string]$entry.UpgradeCode
+            $matchesDisplayName = [string]::Equals([string]$entry.DisplayName, 'Lisan Studio', [System.StringComparison]::OrdinalIgnoreCase)
+            $matchesUpgradeCode = [string]::Equals($entryUpgradeCode, $lisanUpgradeCode, [System.StringComparison]::OrdinalIgnoreCase)
+            if ($matchesDisplayName -or $matchesUpgradeCode) {
                 [PSCustomObject]@{
                     RegistryPath = $key.Name
                     DisplayName = [string]$entry.DisplayName
                     DisplayVersion = [string]$entry.DisplayVersion
                     BuildId = [string]$entry.BuildId
+                    UpgradeCode = $entryUpgradeCode
                     Publisher = [string]$entry.Publisher
                     InstallLocation = [string]$entry.InstallLocation
                     DisplayIcon = [string]$entry.DisplayIcon
@@ -135,13 +140,14 @@ function Assert-SingleLisanUninstallRegistryEntry {
     }
 
     $entry = $entries[0]
-    if ($entry.RegistryPath -notlike '*\Uninstall\LisanStudio') {
-        throw "$Context left an unexpected uninstall registry path: $($entry.RegistryPath)"
+    $expectedHive = 'HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Uninstall'
+    if (-not $entry.RegistryPath.StartsWith($expectedHive, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "$Context uninstall registry entry should be under $expectedHive; offending path: $($entry.RegistryPath)"
     }
     if ($entry.UninstallString -notmatch 'msiexec(\.exe)?') {
         throw "$Context UninstallString should reference msiexec: $($entry.RegistryPath)"
     }
-    if ($entry.QuietUninstallString -notmatch 'msiexec(\.exe)?') {
+    if ($entry.QuietUninstallString -and $entry.QuietUninstallString -notmatch 'msiexec(\.exe)?') {
         throw "$Context QuietUninstallString should reference msiexec: $($entry.RegistryPath)"
     }
     if ($entry.InstallLocation -and -not $entry.InstallLocation.StartsWith($InstallRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
