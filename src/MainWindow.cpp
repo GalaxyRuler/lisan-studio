@@ -928,6 +928,7 @@ void MainWindow::buildUi()
     resizeDocks({outputDock}, {190}, Qt::Vertical);
 
     statusLabel = new QLabel(QString::fromUtf8("جاهز"), this);
+    statusLabel->setObjectName(QStringLiteral("statusLabel"));
     statusBar()->addPermanentWidget(statusLabel, 1);
     statusEncodingLabel = createStatusIndicator(QStringLiteral("statusEncodingLabel"), QStringLiteral("UTF-8"), this);
     statusLineEndingLabel = createStatusIndicator(QStringLiteral("statusLineEndingLabel"), QString::fromUtf8("بدون نهاية"), this);
@@ -2009,10 +2010,10 @@ void MainWindow::findInProject()
         ? QString::fromUtf8("جار البحث عن: %1").arg(query)
         : QString::fromUtf8("نتائج فورية: %1، جار البحث في المشروع").arg(immediateRows.size()));
 
-    auto *watcher = new QFutureWatcher<QVector<SearchResultRow>>(this);
+    auto *watcher = new QFutureWatcher<SearchResults>(this);
     activeSearchWatcher = watcher;
-    connect(watcher, &QFutureWatcher<QVector<SearchResultRow>>::finished, this, [this, watcher, generation, immediateRows]() {
-        const QVector<SearchResultRow> rows = watcher->result();
+    connect(watcher, &QFutureWatcher<SearchResults>::finished, this, [this, watcher, generation, immediateRows]() {
+        const SearchResults projectResults = watcher->result();
         watcher->deleteLater();
         if (activeSearchWatcher == watcher) {
             activeSearchWatcher = nullptr;
@@ -2020,13 +2021,15 @@ void MainWindow::findInProject()
         if (!workbenchState.isCurrentSearchGeneration(generation)) {
             return;
         }
-        const QVector<SearchResultRow> mergedRows = SearchService::mergeRows(immediateRows, rows);
+        const QVector<SearchResultRow> mergedRows = SearchService::mergeRows(immediateRows, projectResults.rows);
         renderSearchResults(mergedRows);
-        setStatus(QString::fromUtf8("نتائج البحث: %1").arg(mergedRows.size()));
+        setStatus(projectResults.truncatedAtFileCap
+            ? QString::fromUtf8("تم اقتطاع نتائج البحث عند 500 ملف")
+            : QString::fromUtf8("نتائج البحث: %1").arg(mergedRows.size()));
     });
     watcher->setFuture(QtConcurrent::run([root, query]() {
         SearchService service;
-        return service.search(root, query);
+        return service.searchWithMetadata(root, query, 1000);
     }));
 }
 
@@ -2045,12 +2048,14 @@ void MainWindow::previewProjectReplace()
     const QString replacement = projectReplaceInput ? projectReplaceInput->text() : QString();
     ProjectReplaceService service;
     const QVector<ProjectReplacePreviewRow> immediateRows = currentEditorReplacePreviewRows(query, replacement);
-    const ProjectReplacePreview projectPreview = service.previewProject(projectRoot, query, replacement);
+    const ProjectReplacePreview projectPreview = service.previewProject(projectRoot, query, replacement, 1000);
     const QVector<ProjectReplacePreviewRow> rows = ProjectReplaceService::mergePreviewRows(immediateRows, projectPreview.rows);
 
     renderProjectReplacePreview(rows);
     showSearchResultsPanel();
-    setStatus(QString::fromUtf8("معاينة الاستبدال: %1").arg(rows.size()));
+    setStatus(projectPreview.truncatedAtFileCap
+        ? QString::fromUtf8("تم اقتطاع معاينة الاستبدال عند 500 ملف")
+        : QString::fromUtf8("معاينة الاستبدال: %1").arg(rows.size()));
 }
 
 void MainWindow::applyAcceptedProjectReplaceRows()

@@ -25,23 +25,43 @@ bool hasIgnoredDirectoryPart(const QString &rootPath, const QString &filePath)
     }
     return false;
 }
+
+bool isScannableFile(const QString &rootPath, const QString &path)
+{
+    const QFileInfo info(path);
+    return !hasIgnoredDirectoryPart(rootPath, path)
+        && ProjectModel::isOpenableFile(info.fileName())
+        && info.size() <= MaxFileBytes;
+}
+
+bool hasMoreScannableFile(QDirIterator &iterator, const QString &rootPath)
+{
+    while (iterator.hasNext()) {
+        if (isScannableFile(rootPath, iterator.next())) {
+            return true;
+        }
+    }
+    return false;
+}
 }
 
 QVector<SearchResultRow> SearchService::search(const QString &rootPath, const QString &query, int limit) const
 {
-    QVector<SearchResultRow> rows;
-    if (query.trimmed().isEmpty()) {
-        return rows;
+    return searchWithMetadata(rootPath, query, limit).rows;
+}
+
+SearchResults SearchService::searchWithMetadata(const QString &rootPath, const QString &query, int limit) const
+{
+    SearchResults result;
+    if (query.trimmed().isEmpty() || limit <= 0) {
+        return result;
     }
 
     int scannedFiles = 0;
     QDirIterator iterator(QDir(rootPath).absolutePath(), QDir::Files | QDir::NoSymLinks, QDirIterator::Subdirectories);
     while (iterator.hasNext() && scannedFiles < MaxScannedFiles) {
         const QString path = iterator.next();
-        const QFileInfo info(path);
-        if (hasIgnoredDirectoryPart(rootPath, path)
-            || !ProjectModel::isOpenableFile(info.fileName())
-            || info.size() > MaxFileBytes) {
+        if (!isScannableFile(rootPath, path)) {
             continue;
         }
 
@@ -56,15 +76,16 @@ QVector<SearchResultRow> SearchService::search(const QString &rootPath, const QS
             ++lineNumber;
             const QString line = QString::fromUtf8(file.readLine()).trimmed();
             if (line.contains(query, Qt::CaseInsensitive)) {
-                rows.push_back({path, lineNumber, line});
-                if (rows.size() >= limit) {
-                    return rows;
+                result.rows.push_back({path, lineNumber, line});
+                if (result.rows.size() >= limit) {
+                    return result;
                 }
             }
         }
     }
 
-    return rows;
+    result.truncatedAtFileCap = scannedFiles == MaxScannedFiles && hasMoreScannableFile(iterator, rootPath);
+    return result;
 }
 
 QVector<SearchResultRow> SearchService::searchText(const QString &path, const QString &text, const QString &query, int limit) const

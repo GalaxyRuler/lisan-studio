@@ -25,6 +25,7 @@ struct ProjectReplacePreview
     QVector<ProjectReplaceFileSummary> summaries;
     int totalMatches = 0;
     int scannedFiles = 0;
+    bool truncatedAtFileCap = false;
 };
 
 struct ProjectReplaceApplyResult

@@ -28,6 +28,24 @@ bool hasIgnoredDirectoryPart(const QString &rootPath, const QString &filePath)
     return false;
 }
 
+bool isScannableFile(const QString &rootPath, const QString &path)
+{
+    const QFileInfo info(path);
+    return !hasIgnoredDirectoryPart(rootPath, path)
+        && ProjectModel::isOpenableFile(info.fileName())
+        && info.size() <= MaxFileBytes;
+}
+
+bool hasMoreScannableFile(QDirIterator &iterator, const QString &rootPath)
+{
+    while (iterator.hasNext()) {
+        if (isScannableFile(rootPath, iterator.next())) {
+            return true;
+        }
+    }
+    return false;
+}
+
 void appendSummary(ProjectReplacePreview *preview, const QString &path, int rowCount, int matchCount)
 {
     if (!preview || rowCount <= 0 || matchCount <= 0) {
@@ -189,10 +207,7 @@ ProjectReplacePreview ProjectReplaceService::previewProject(
     QDirIterator iterator(QDir(rootPath).absolutePath(), QDir::Files | QDir::NoSymLinks, QDirIterator::Subdirectories);
     while (iterator.hasNext() && scannedFiles < MaxScannedFiles && preview.rows.size() < limit) {
         const QString path = iterator.next();
-        const QFileInfo info(path);
-        if (hasIgnoredDirectoryPart(rootPath, path)
-            || !ProjectModel::isOpenableFile(info.fileName())
-            || info.size() > MaxFileBytes) {
+        if (!isScannableFile(rootPath, path)) {
             continue;
         }
 
@@ -213,6 +228,9 @@ ProjectReplacePreview ProjectReplaceService::previewProject(
         preview.totalMatches += filePreview.totalMatches;
     }
     preview.scannedFiles = scannedFiles;
+    preview.truncatedAtFileCap = preview.rows.size() < limit
+        && scannedFiles == MaxScannedFiles
+        && hasMoreScannableFile(iterator, rootPath);
     return preview;
 }
 

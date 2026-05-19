@@ -43,6 +43,9 @@ private slots:
     void searchServiceMergesImmediateRowsBeforeProjectRows();
     void searchServiceStopsBeforeHugeProjectTail();
     void searchServiceClipsAtMaxScannedFilesWithStableOrdering();
+    void searchServiceReportsTruncationWhenCapFires();
+    void searchServiceDoesNotReportTruncationWhenLimitHit();
+    void searchServiceDoesNotReportTruncationWhenScanCompletes();
     void runtimeRunnerBuildsExplicitArgumentList();
     void runtimeRunnerBuildsLaunchPlanWithSummaryText();
     void runtimeRunnerCanUseExplicitProjectWorkingDirectory();
@@ -83,6 +86,7 @@ private slots:
     void apySnippetServiceFindsSnippetById();
     void projectReplaceServicePreviewsArabicMixedMatches();
     void projectReplaceServiceSkipsIgnoredDirectories();
+    void projectReplaceServiceReportsTruncationWhenCapFires();
     void projectReplaceServiceMergesImmediateRowsBeforeDiskRows();
     void projectReplaceSelectionAcceptsRowsByDefault();
     void projectReplaceSelectionRejectsSingleRowsAndWholeFiles();
@@ -336,6 +340,65 @@ void TestProjectSearchRuntime::searchServiceClipsAtMaxScannedFilesWithStableOrde
         qPrintable(QStringLiteral("search cap sweep exceeded 2000 ms budget: %1 ms").arg(elapsedMs)));
     QCOMPARE(QFileInfo(rows.first().path).fileName(), QStringLiteral("file-000.apy"));
     QCOMPARE(QFileInfo(rows.last().path).fileName(), QStringLiteral("file-499.apy"));
+}
+
+void TestProjectSearchRuntime::searchServiceReportsTruncationWhenCapFires()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    QDir root(temp.path());
+
+    for (int i = 0; i < 600; ++i) {
+        writeFile(
+            root,
+            QStringLiteral("file-%1.apy").arg(i, 3, 10, QLatin1Char('0')),
+            QStringLiteral("needle\n"));
+    }
+
+    SearchService search;
+    const SearchResults result = search.searchWithMetadata(root.absolutePath(), QStringLiteral("needle"), 1000);
+
+    QVERIFY(result.truncatedAtFileCap);
+}
+
+void TestProjectSearchRuntime::searchServiceDoesNotReportTruncationWhenLimitHit()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    QDir root(temp.path());
+
+    for (int i = 0; i < 50; ++i) {
+        writeFile(
+            root,
+            QStringLiteral("file-%1.apy").arg(i, 3, 10, QLatin1Char('0')),
+            QStringLiteral("needle\n"));
+    }
+
+    SearchService search;
+    const SearchResults result = search.searchWithMetadata(root.absolutePath(), QStringLiteral("needle"), 10);
+
+    QVERIFY(!result.truncatedAtFileCap);
+    QCOMPARE(result.rows.size(), 10);
+}
+
+void TestProjectSearchRuntime::searchServiceDoesNotReportTruncationWhenScanCompletes()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    QDir root(temp.path());
+
+    for (int i = 0; i < 50; ++i) {
+        writeFile(
+            root,
+            QStringLiteral("file-%1.apy").arg(i, 3, 10, QLatin1Char('0')),
+            QStringLiteral("needle\n"));
+    }
+
+    SearchService search;
+    const SearchResults result = search.searchWithMetadata(root.absolutePath(), QStringLiteral("needle"), 1000);
+
+    QVERIFY(!result.truncatedAtFileCap);
+    QCOMPARE(result.rows.size(), 50);
 }
 
 void TestProjectSearchRuntime::runtimeRunnerBuildsExplicitArgumentList()
@@ -1159,6 +1222,29 @@ void TestProjectSearchRuntime::projectReplaceServiceSkipsIgnoredDirectories()
     QCOMPARE(QDir::toNativeSeparators(preview.rows.first().path), QDir::toNativeSeparators(mainPath));
     QCOMPARE(preview.rows.first().after, QString::fromUtf8("اطبع(قيمة)"));
     QCOMPARE(preview.totalMatches, 1);
+}
+
+void TestProjectSearchRuntime::projectReplaceServiceReportsTruncationWhenCapFires()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    QDir root(temp.path());
+
+    for (int i = 0; i < 600; ++i) {
+        writeFile(
+            root,
+            QStringLiteral("file-%1.apy").arg(i, 3, 10, QLatin1Char('0')),
+            QStringLiteral("needle\n"));
+    }
+
+    ProjectReplaceService service;
+    const ProjectReplacePreview preview = service.previewProject(
+        root.absolutePath(),
+        QStringLiteral("needle"),
+        QStringLiteral("replacement"),
+        1000);
+
+    QVERIFY(preview.truncatedAtFileCap);
 }
 
 void TestProjectSearchRuntime::projectReplaceServiceMergesImmediateRowsBeforeDiskRows()

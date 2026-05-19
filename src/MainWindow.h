@@ -132,7 +132,7 @@ private:
     QAction *formatAction = nullptr;
     QAction *cancelRunAction = nullptr;
     QTimer *documentChangePollTimer = nullptr;
-    QFutureWatcher<QVector<SearchResultRow>> *activeSearchWatcher = nullptr;
+    QFutureWatcher<SearchResults> *activeSearchWatcher = nullptr;
     QVector<ProjectReplacePreviewRow> currentProjectReplacePreviewRows;
     SettingsStore settings;
     std::function<RuntimeDiagnostics(int)> runtimeDiagnosticsProvider;

@@ -102,6 +102,8 @@ private slots:
     void projectSearchShowsClickableResultRows();
     void projectSearchFindsCurrentUnsavedEditorImmediately();
     void overlappingFindInProjectReleasesPriorSearchWatcher();
+    void mainWindowSurfacesSearchTruncationInStatusBar();
+    void mainWindowDoesNotSurfaceTruncationWhenScanCompletes();
     void projectReplacePreviewRendersRowsWithoutWritingFile();
     void projectReplacePreviewRowCheckboxesTrackAcceptedState();
     void projectReplacePreviewFileButtonsToggleRowsForThatFile();
@@ -2256,6 +2258,64 @@ void TestMainWindow::overlappingFindInProjectReleasesPriorSearchWatcher()
         qPrintable(QStringLiteral("overlapping project search left %1 QFutureWatchers after second results")
             .arg(watchersAfterSecondSearch.size())));
     QTRY_VERIFY_WITH_TIMEOUT(priorWatcher.isNull(), 5000);
+}
+
+void TestMainWindow::mainWindowSurfacesSearchTruncationInStatusBar()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    QDir root(temp.path());
+
+    for (int i = 0; i < 600; ++i) {
+        writeFile(
+            root,
+            QStringLiteral("file-%1.apy").arg(i, 3, 10, QLatin1Char('0')),
+            QStringLiteral("needle\n"));
+    }
+
+    MainWindow window;
+    QVERIFY(window.openPath(root.absolutePath()));
+
+    auto *commandBox = window.findChild<QLineEdit *>(QStringLiteral("commandBox"));
+    QVERIFY(commandBox != nullptr);
+    auto *status = window.statusBar()->findChild<QLabel *>(QStringLiteral("statusLabel"));
+    QVERIFY(status != nullptr);
+
+    commandBox->setText(QStringLiteral("needle"));
+    QVERIFY(QMetaObject::invokeMethod(&window, "findInProject", Qt::DirectConnection));
+
+    const QString truncationText = QString::fromUtf8("تم اقتطاع نتائج البحث عند 500 ملف");
+    QTRY_VERIFY_WITH_TIMEOUT(status->text().contains(truncationText), 5000);
+}
+
+void TestMainWindow::mainWindowDoesNotSurfaceTruncationWhenScanCompletes()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    QDir root(temp.path());
+
+    for (int i = 0; i < 50; ++i) {
+        writeFile(
+            root,
+            QStringLiteral("file-%1.apy").arg(i, 3, 10, QLatin1Char('0')),
+            QStringLiteral("needle\n"));
+    }
+
+    MainWindow window;
+    QVERIFY(window.openPath(root.absolutePath()));
+
+    auto *commandBox = window.findChild<QLineEdit *>(QStringLiteral("commandBox"));
+    QVERIFY(commandBox != nullptr);
+    auto *results = window.findChild<QListWidget *>(QStringLiteral("searchResultsPanel"));
+    QVERIFY(results != nullptr);
+    auto *status = window.statusBar()->findChild<QLabel *>(QStringLiteral("statusLabel"));
+    QVERIFY(status != nullptr);
+
+    commandBox->setText(QStringLiteral("needle"));
+    QVERIFY(QMetaObject::invokeMethod(&window, "findInProject", Qt::DirectConnection));
+
+    QTRY_COMPARE_WITH_TIMEOUT(results->count(), 50, 5000);
+    QVERIFY(!status->text().contains(QString::fromUtf8("تم اقتطاع نتائج البحث")));
 }
 
 void TestMainWindow::projectReplacePreviewRendersRowsWithoutWritingFile()
