@@ -5,6 +5,7 @@ param(
     [switch]$KeepInstalled
 )
 
+Set-StrictMode -Version 2.0
 $ErrorActionPreference = "Stop"
 
 if ([string]::IsNullOrWhiteSpace($MsiPath)) {
@@ -56,6 +57,25 @@ function Get-InstalledLisanProductCodes {
     }
 }
 
+function Get-RegistryValueOrDefault {
+    param(
+        [Parameter(Mandatory = $true)]$Entry,
+        [Parameter(Mandatory = $true)][string]$Name,
+        [string]$Default = ''
+    )
+
+    if ($null -eq $Entry) {
+        return $Default
+    }
+
+    $prop = $Entry.PSObject.Properties[$Name]
+    if ($prop) {
+        return [string]$prop.Value
+    }
+
+    return $Default
+}
+
 function Get-LisanUninstallRegistryEntries {
     $lisanUpgradeCode = "{B45833FC-87F8-4656-8CC4-DC87769EA386}"
     $uninstallRoots = @(
@@ -70,20 +90,27 @@ function Get-LisanUninstallRegistryEntries {
         }
         foreach ($key in @(Get-ChildItem -LiteralPath $root -ErrorAction SilentlyContinue)) {
             $entry = Get-ItemProperty -LiteralPath $key.PSPath -ErrorAction SilentlyContinue
-            $entryUpgradeCode = [string]$entry.UpgradeCode
-            $matchesDisplayName = [string]::Equals([string]$entry.DisplayName, 'Lisan Studio', [System.StringComparison]::OrdinalIgnoreCase)
+            $entryDisplayName = Get-RegistryValueOrDefault -Entry $entry -Name 'DisplayName'
+            $entryDisplayVersion = Get-RegistryValueOrDefault -Entry $entry -Name 'DisplayVersion'
+            $entryUpgradeCode = Get-RegistryValueOrDefault -Entry $entry -Name 'UpgradeCode'
+            $entryPublisher = Get-RegistryValueOrDefault -Entry $entry -Name 'Publisher'
+            $entryInstallLocation = Get-RegistryValueOrDefault -Entry $entry -Name 'InstallLocation'
+            $entryDisplayIcon = Get-RegistryValueOrDefault -Entry $entry -Name 'DisplayIcon'
+            $entryUninstallString = Get-RegistryValueOrDefault -Entry $entry -Name 'UninstallString'
+            $entryQuietUninstallString = Get-RegistryValueOrDefault -Entry $entry -Name 'QuietUninstallString'
+            $matchesDisplayName = [string]::Equals($entryDisplayName, 'Lisan Studio', [System.StringComparison]::OrdinalIgnoreCase)
             $matchesUpgradeCode = [string]::Equals($entryUpgradeCode, $lisanUpgradeCode, [System.StringComparison]::OrdinalIgnoreCase)
             if ($matchesDisplayName -or $matchesUpgradeCode) {
                 [PSCustomObject]@{
                     RegistryPath = $key.Name
-                    DisplayName = [string]$entry.DisplayName
-                    DisplayVersion = [string]$entry.DisplayVersion
+                    DisplayName = $entryDisplayName
+                    DisplayVersion = $entryDisplayVersion
                     UpgradeCode = $entryUpgradeCode
-                    Publisher = [string]$entry.Publisher
-                    InstallLocation = [string]$entry.InstallLocation
-                    DisplayIcon = [string]$entry.DisplayIcon
-                    UninstallString = [string]$entry.UninstallString
-                    QuietUninstallString = [string]$entry.QuietUninstallString
+                    Publisher = $entryPublisher
+                    InstallLocation = $entryInstallLocation
+                    DisplayIcon = $entryDisplayIcon
+                    UninstallString = $entryUninstallString
+                    QuietUninstallString = $entryQuietUninstallString
                 }
             }
         }
