@@ -95,7 +95,7 @@ function Get-InstalledLisanProductCodes {
 
 function Get-RegistryValueOrDefault {
     param(
-        [Parameter(Mandatory = $true)]$Entry,
+        [Parameter(Mandatory = $true)][AllowNull()]$Entry,
         [Parameter(Mandatory = $true)][string]$Name,
         [string]$Default = ''
     )
