@@ -1,0 +1,87 @@
+name: MSI tests
+
+on:
+  workflow_dispatch:
+    inputs:
+      scenario:
+        description: 'install | upgrade | full'
+        required: true
+        default: 'install'
+
+jobs:
+  msi-install:
+    if: inputs.scenario == 'install' || inputs.scenario == 'full'
+    runs-on: [self-hosted, windows, lisanstudio-qa]
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build MSI
+        shell: powershell
+        run: |
+          .\scripts\build.ps1
+          .\scripts\package.ps1 -ProductVersion 0.1.0 -BuildId $env:GITHUB_SHA
+
+      - name: Install MSI and assert HKLM uninstall state
+        shell: powershell
+        run: |
+          $msiPath = Join-Path $PWD 'artifacts\LisanStudio-0.1.0-beta.msi'
+          .\scripts\msi-smoke.ps1 -MsiPath $msiPath
+
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: msi-install-evidence-${{ github.run_id }}
+          path: |
+            artifacts/LisanStudio-0.1.0-beta.msi
+            artifacts/SIGNING_STATUS.txt
+            artifacts/msi-smoke/**
+
+  msi-upgrade:
+    if: inputs.scenario == 'upgrade' || inputs.scenario == 'full'
+    runs-on: [self-hosted, windows, lisanstudio-qa]
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download v1 MSI from published v0.1.0-beta release
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          New-Item -ItemType Directory -Force -Path C:\msi-fixtures | Out-Null
+          gh release download v0.1.0-beta `
+            --repo $env:GITHUB_REPOSITORY `
+            --pattern '*.msi' `
+            --dir C:\msi-fixtures\
+
+      - name: Build current MSI v2
+        shell: powershell
+        run: |
+          .\scripts\build.ps1
+          .\scripts\package.ps1 -ProductVersion 0.1.1 -BuildId $env:GITHUB_SHA
+
+      - name: Install v1, upgrade to v2, and assert upgrade behavior
+        shell: powershell
+        run: |
+          $earlierMsiPath = 'C:\msi-fixtures\LisanStudio-0.1.0-beta.msi'
+          $replacementMsiPath = Join-Path $PWD 'artifacts\LisanStudio-0.1.1-beta.msi'
+          .\scripts\msi-upgrade-smoke.ps1 `
+            -EarlierMsiPath $earlierMsiPath `
+            -ReplacementMsiPath $replacementMsiPath `
+            -ExpectedEarlierVersion 0.1.0 `
+            -ExpectedReplacementVersion 0.1.1 `
+            -AllowMutation `
+            -IUnderstandThisRunsMsiUpgrade
+
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: msi-upgrade-evidence-${{ github.run_id }}
+          path: |
+            C:/msi-fixtures/LisanStudio-0.1.0-beta.msi
+            artifacts/LisanStudio-0.1.1-beta.msi
+            artifacts/SIGNING_STATUS.txt
+            artifacts/msi-upgrade-smoke/**

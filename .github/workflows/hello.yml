@@ -1,0 +1,13 @@
+name: Self-hosted runner smoke
+
+on:
+  workflow_dispatch:
+
+jobs:
+  hello:
+    runs-on: [self-hosted, windows, lisanstudio-qa]
+    timeout-minutes: 5
+    steps:
+      - name: Echo
+        shell: powershell
+        run: Write-Host "Hello from $env:COMPUTERNAME (Session $((Get-Process -Id $PID).SessionId))"
