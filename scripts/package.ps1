@@ -1,6 +1,7 @@
 param(
     [Parameter()]
     [string]$ApythonRoot = "C:\Users\Admin\apython",
+    [Parameter()]
     [string]$PythonRoot = "C:\Users\Admin\AppData\Local\Programs\Python\Python313",
     [string]$Configuration = "Release",
     [string]$ProductVersion = "0.1.0",
