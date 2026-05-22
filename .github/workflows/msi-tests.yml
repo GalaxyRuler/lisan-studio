@@ -16,11 +16,32 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Checkout apython runtime dependency
+        uses: actions/checkout@v4
+        with:
+          repository: GalaxyRuler/lughat-althuban
+          # pinned 2026-05-22; bump deliberately when adopting newer apython
+          ref: 77cc50db5fe1e35661a0b133945290bbd192e642
+          path: apython-src
+          token: ${{ secrets.APYTHON_CHECKOUT_TOKEN || github.token }}
+
+      - name: Prepare apython runtime metadata
+        shell: powershell
+        working-directory: apython-src
+        run: |
+          $metadataVenv = Join-Path $PWD '.metadata-venv'
+          python -m venv $metadataVenv
+          & (Join-Path $metadataVenv 'Scripts\python.exe') -m pip install --no-deps -e .
+          if (-not (Test-Path -LiteralPath (Join-Path $PWD 'lughat_althuban.egg-info\PKG-INFO'))) {
+            throw 'apython metadata generation did not produce lughat_althuban.egg-info\PKG-INFO'
+          }
+          Remove-Item -LiteralPath $metadataVenv -Recurse -Force
+
       - name: Build MSI
         shell: powershell
         run: |
           .\scripts\build.ps1
-          .\scripts\package.ps1 -ProductVersion 0.1.0 -BuildId $env:GITHUB_SHA
+          .\scripts\package.ps1 -ProductVersion 0.1.0 -BuildId $env:GITHUB_SHA -ApythonRoot "${{ github.workspace }}\apython-src"
 
       - name: Install MSI and assert HKLM uninstall state
         shell: powershell
@@ -45,6 +66,27 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Checkout apython runtime dependency
+        uses: actions/checkout@v4
+        with:
+          repository: GalaxyRuler/lughat-althuban
+          # pinned 2026-05-22; bump deliberately when adopting newer apython
+          ref: 77cc50db5fe1e35661a0b133945290bbd192e642
+          path: apython-src
+          token: ${{ secrets.APYTHON_CHECKOUT_TOKEN || github.token }}
+
+      - name: Prepare apython runtime metadata
+        shell: powershell
+        working-directory: apython-src
+        run: |
+          $metadataVenv = Join-Path $PWD '.metadata-venv'
+          python -m venv $metadataVenv
+          & (Join-Path $metadataVenv 'Scripts\python.exe') -m pip install --no-deps -e .
+          if (-not (Test-Path -LiteralPath (Join-Path $PWD 'lughat_althuban.egg-info\PKG-INFO'))) {
+            throw 'apython metadata generation did not produce lughat_althuban.egg-info\PKG-INFO'
+          }
+          Remove-Item -LiteralPath $metadataVenv -Recurse -Force
+
       - name: Download v1 MSI from published v0.1.0-beta release
         shell: powershell
         env:
@@ -60,7 +102,7 @@ jobs:
         shell: powershell
         run: |
           .\scripts\build.ps1
-          .\scripts\package.ps1 -ProductVersion 0.1.1 -BuildId $env:GITHUB_SHA
+          .\scripts\package.ps1 -ProductVersion 0.1.1 -BuildId $env:GITHUB_SHA -ApythonRoot "${{ github.workspace }}\apython-src"
 
       - name: Install v1, upgrade to v2, and assert upgrade behavior
         shell: powershell
