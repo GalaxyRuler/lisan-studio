@@ -114,11 +114,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          New-Item -ItemType Directory -Force -Path C:\msi-fixtures | Out-Null
+          $fixtureDir = Join-Path $env:GITHUB_WORKSPACE 'msi-fixtures'
+          New-Item -ItemType Directory -Force -Path $fixtureDir | Out-Null
           gh release download v0.1.0-beta `
             --repo $env:GITHUB_REPOSITORY `
             --pattern '*.msi' `
-            --dir C:\msi-fixtures\
+            --dir $fixtureDir
 
       - name: Build current MSI v2
         shell: powershell
@@ -133,7 +134,7 @@ jobs:
       - name: Install v1, upgrade to v2, and assert upgrade behavior
         shell: powershell
         run: |
-          $earlierMsiPath = 'C:\msi-fixtures\LisanStudio-0.1.0-beta.msi'
+          $earlierMsiPath = Join-Path $env:GITHUB_WORKSPACE 'msi-fixtures\LisanStudio-0.1.0-beta.msi'
           $replacementMsiPath = Join-Path $PWD 'artifacts\LisanStudio-0.1.1-beta.msi'
           .\scripts\msi-upgrade-smoke.ps1 `
             -EarlierMsiPath $earlierMsiPath `
@@ -149,7 +150,7 @@ jobs:
         with:
           name: msi-upgrade-evidence-${{ github.run_id }}
           path: |
-            C:/msi-fixtures/LisanStudio-0.1.0-beta.msi
+            msi-fixtures/LisanStudio-0.1.0-beta.msi
             artifacts/LisanStudio-0.1.1-beta.msi
             artifacts/SIGNING_STATUS.txt
             artifacts/msi-upgrade-smoke/**
