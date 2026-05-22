@@ -25,6 +25,10 @@ jobs:
           path: apython-src
           token: ${{ secrets.APYTHON_CHECKOUT_TOKEN || github.token }}
 
+      - name: Ensure setuptools available
+        shell: powershell
+        run: python -m pip install --quiet setuptools wheel
+
       - name: Prepare apython runtime metadata
         shell: powershell
         working-directory: apython-src
@@ -71,6 +75,10 @@ jobs:
           ref: 77cc50db5fe1e35661a0b133945290bbd192e642
           path: apython-src
           token: ${{ secrets.APYTHON_CHECKOUT_TOKEN || github.token }}
+
+      - name: Ensure setuptools available
+        shell: powershell
+        run: python -m pip install --quiet setuptools wheel
 
       - name: Prepare apython runtime metadata
         shell: powershell
