@@ -29,13 +29,10 @@ jobs:
         shell: powershell
         working-directory: apython-src
         run: |
-          $metadataVenv = Join-Path $PWD '.metadata-venv'
-          python -m venv $metadataVenv
-          & (Join-Path $metadataVenv 'Scripts\python.exe') -m pip install --no-deps -e .
+          python -c "from setuptools import setup; setup(script_args=['egg_info'])"
           if (-not (Test-Path -LiteralPath (Join-Path $PWD 'lughat_althuban.egg-info\PKG-INFO'))) {
             throw 'apython metadata generation did not produce lughat_althuban.egg-info\PKG-INFO'
           }
-          Remove-Item -LiteralPath $metadataVenv -Recurse -Force
 
       - name: Build MSI
         shell: powershell
@@ -79,13 +76,10 @@ jobs:
         shell: powershell
         working-directory: apython-src
         run: |
-          $metadataVenv = Join-Path $PWD '.metadata-venv'
-          python -m venv $metadataVenv
-          & (Join-Path $metadataVenv 'Scripts\python.exe') -m pip install --no-deps -e .
+          python -c "from setuptools import setup; setup(script_args=['egg_info'])"
           if (-not (Test-Path -LiteralPath (Join-Path $PWD 'lughat_althuban.egg-info\PKG-INFO'))) {
             throw 'apython metadata generation did not produce lughat_althuban.egg-info\PKG-INFO'
           }
-          Remove-Item -LiteralPath $metadataVenv -Recurse -Force
 
       - name: Download v1 MSI from published v0.1.0-beta release
         shell: powershell
