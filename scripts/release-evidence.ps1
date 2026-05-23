@@ -9,7 +9,8 @@ param(
     [string]$QtLicenseRoot = "C:\msys64\ucrt64\share\licenses\qt6-base",
     [string]$SourceMetadataPath,
     [string]$WorkspaceRoot = "",
-    [switch]$TrustAuditOnly
+    [switch]$TrustAuditOnly,
+    [string]$WorkspaceTrustAuditPath = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -22,14 +23,17 @@ if (-not $WorkspaceRoot) { $WorkspaceRoot = $repo }
 $releaseDir = Join-Path $repo "artifacts\release\$ReleaseLabel"
 $logsDir = Join-Path $releaseDir "logs"
 $screenshotsDir = Join-Path $releaseDir "screenshots"
-$workspaceTrustAuditPath = Join-Path $releaseDir 'workspace-trust-audit.md'
+$workspaceTrustAuditArtifactPath = Join-Path $releaseDir 'workspace-trust-audit.md'
+if ($TrustAuditOnly -and -not [string]::IsNullOrWhiteSpace($WorkspaceTrustAuditPath)) {
+    $workspaceTrustAuditArtifactPath = $WorkspaceTrustAuditPath
+    $auditDir = Split-Path -Parent -Path $workspaceTrustAuditArtifactPath
+    if ($auditDir) { New-Item -ItemType Directory -Force -Path $auditDir | Out-Null }
+}
 $msiFileName = "LisanStudio-$ProductVersion-beta.msi"
 $msiPath = Join-Path (Join-Path $repo "artifacts") $msiFileName
 $signingStatusPath = Join-Path $repo "artifacts\SIGNING_STATUS.txt"
 $installRoot = Join-Path $env:LOCALAPPDATA "LisanStudio"
 $app = Join-Path $installRoot "LisanStudio.exe"
-
-New-Item -ItemType Directory -Force -Path $releaseDir | Out-Null
 
 function Invoke-LoggedStep {
     param(
@@ -93,10 +97,13 @@ function Get-WorkspaceTrustAuditLines {
 }
 
 if ($TrustAuditOnly) {
-    Get-WorkspaceTrustAuditLines -CandidateWorkspaceRoot $WorkspaceRoot | Set-Content -LiteralPath $workspaceTrustAuditPath -Encoding UTF8
+    $auditDir = Split-Path -Parent -Path $workspaceTrustAuditArtifactPath
+    if ($auditDir) { New-Item -ItemType Directory -Force -Path $auditDir | Out-Null }
+    Get-WorkspaceTrustAuditLines -CandidateWorkspaceRoot $WorkspaceRoot | Set-Content -LiteralPath $workspaceTrustAuditArtifactPath -Encoding UTF8
     return
 }
 
+New-Item -ItemType Directory -Force -Path $releaseDir | Out-Null
 New-Item -ItemType Directory -Force -Path $logsDir, $screenshotsDir | Out-Null
 
 function Get-LisanInstalledProducts {
@@ -291,7 +298,7 @@ if (-not $productLines) {
     $productLines = @("- None")
 }
 
-Get-WorkspaceTrustAuditLines -CandidateWorkspaceRoot $WorkspaceRoot | Set-Content -LiteralPath $workspaceTrustAuditPath -Encoding UTF8
+Get-WorkspaceTrustAuditLines -CandidateWorkspaceRoot $WorkspaceRoot | Set-Content -LiteralPath $workspaceTrustAuditArtifactPath -Encoding UTF8
 
 $validationLines = @(
     "# Lisan Studio $ReleaseLabel Validation Log",
@@ -324,7 +331,7 @@ $validationLines = @(
     "- Signing status: $signingStatusPath",
     "- Checksums: $checksumsPath",
     "- Known issues: $knownIssuesPath",
-    "- Workspace trust audit: $workspaceTrustAuditPath",
+    "- Workspace trust audit: $workspaceTrustAuditArtifactPath",
     "- Screenshot: $screenshot",
     "",
     "## Manual QA Required",
