@@ -46,6 +46,19 @@ The expected installed executable is:
 %LOCALAPPDATA%\LisanStudio\LisanStudio.exe
 ```
 
+## Upgrading from pre-rename ArabicCodeStudioQt installations
+
+If you installed an early private-beta build that was labeled `ArabicCodeStudioQt` (May 2026 or earlier, before the product rename to Lisan Studio), that installation will NOT be removed automatically when you install Lisan Studio v0.1.1-beta or later. The two products use different Windows Installer UpgradeCodes, so MajorUpgrade does not apply across the rename.
+
+To clean up:
+
+1. Open **Settings → Apps → Installed apps** (or **Control Panel → Programs and Features**).
+2. Locate `ArabicCodeStudioQt` (DisplayName may also appear as `Arabic Code Studio Qt`).
+3. Click **Uninstall**.
+4. Then install `LisanStudio-0.1.1-beta.msi` normally.
+
+Leaving the legacy installation in place is harmless beyond cluttering Programs and Features — the two products use separate `%LOCALAPPDATA%` directories and registry keys so they coexist cleanly. But the legacy install is no longer maintained and will not receive any updates.
+
 ## Uninstall
 
 Use Windows Settings:
