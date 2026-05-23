@@ -46,6 +46,20 @@ The current gate builds the Qt app and runs:
 - `acs_project_runtime_tests`
 - `acs_main_window_tests`
 
+### MSI install + upgrade testing
+
+Runs on a self-hosted GitHub Actions runner inside the LisanStudio-QA Hyper-V
+VM. Trigger manually:
+
+```powershell
+gh workflow run msi-tests.yml -f scenario=install
+gh workflow run msi-tests.yml -f scenario=upgrade
+gh workflow run msi-tests.yml -f scenario=full
+```
+
+Workflow file: `.github/workflows/msi-tests.yml`. Evidence artifacts (MSI files,
+install logs, registry diffs) upload to the GHA run.
+
 ## Packaging
 
 ```powershell
