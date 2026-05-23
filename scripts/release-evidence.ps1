@@ -7,7 +7,9 @@ param(
     [string]$WindeployQtPath = "C:\msys64\ucrt64\bin\windeployqt6.exe",
     [string]$WixPath = "C:\Program Files\WiX Toolset v7.0\bin\wix.exe",
     [string]$QtLicenseRoot = "C:\msys64\ucrt64\share\licenses\qt6-base",
-    [string]$SourceMetadataPath
+    [string]$SourceMetadataPath,
+    [string]$WorkspaceRoot = "",
+    [switch]$TrustAuditOnly
 )
 
 $ErrorActionPreference = "Stop"
@@ -16,16 +18,18 @@ $repo = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 if (-not $SourceMetadataPath) {
     $SourceMetadataPath = Join-Path $repo ".codex\source-metadata.json"
 }
+if (-not $WorkspaceRoot) { $WorkspaceRoot = $repo }
 $releaseDir = Join-Path $repo "artifacts\release\$ReleaseLabel"
 $logsDir = Join-Path $releaseDir "logs"
 $screenshotsDir = Join-Path $releaseDir "screenshots"
+$workspaceTrustAuditPath = Join-Path $releaseDir 'workspace-trust-audit.md'
 $msiFileName = "LisanStudio-$ProductVersion-beta.msi"
 $msiPath = Join-Path (Join-Path $repo "artifacts") $msiFileName
 $signingStatusPath = Join-Path $repo "artifacts\SIGNING_STATUS.txt"
 $installRoot = Join-Path $env:LOCALAPPDATA "LisanStudio"
 $app = Join-Path $installRoot "LisanStudio.exe"
 
-New-Item -ItemType Directory -Force -Path $releaseDir, $logsDir, $screenshotsDir | Out-Null
+New-Item -ItemType Directory -Force -Path $releaseDir | Out-Null
 
 function Invoke-LoggedStep {
     param(
@@ -58,6 +62,42 @@ function Invoke-LoggedStep {
         throw
     }
 }
+
+function Get-WorkspaceTrustAuditLines {
+    param([string]$CandidateWorkspaceRoot)
+
+    $auditLines = New-Object System.Collections.Generic.List[string]
+    $auditLines.Add('## Workspace Trust Audit')
+    $auditLines.Add('')
+
+    if ([string]::IsNullOrWhiteSpace($CandidateWorkspaceRoot)) {
+        $auditLines.Add('No workspace trust events recorded.')
+        return @($auditLines)
+    }
+
+    $workspaceFullPath = [System.IO.Path]::GetFullPath($CandidateWorkspaceRoot)
+    $auditFilePath = Join-Path (Join-Path $workspaceFullPath '.lisan-workspace') 'trust-audit.jsonl'
+    if (-not (Test-Path -LiteralPath $auditFilePath)) {
+        $auditLines.Add('No workspace trust events recorded.')
+        return @($auditLines)
+    }
+
+    $eventLines = @(Get-Content -LiteralPath $auditFilePath -Encoding UTF8 | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    if ($eventLines.Count -eq 0) {
+        $auditLines.Add('No workspace trust events recorded.')
+        return @($auditLines)
+    }
+
+    $auditLines.AddRange([string[]]$eventLines)
+    return @($auditLines)
+}
+
+if ($TrustAuditOnly) {
+    Get-WorkspaceTrustAuditLines -CandidateWorkspaceRoot $WorkspaceRoot | Set-Content -LiteralPath $workspaceTrustAuditPath -Encoding UTF8
+    return
+}
+
+New-Item -ItemType Directory -Force -Path $logsDir, $screenshotsDir | Out-Null
 
 function Get-LisanInstalledProducts {
     $installer = New-Object -ComObject WindowsInstaller.Installer
@@ -251,6 +291,8 @@ if (-not $productLines) {
     $productLines = @("- None")
 }
 
+Get-WorkspaceTrustAuditLines -CandidateWorkspaceRoot $WorkspaceRoot | Set-Content -LiteralPath $workspaceTrustAuditPath -Encoding UTF8
+
 $validationLines = @(
     "# Lisan Studio $ReleaseLabel Validation Log",
     "",
@@ -282,6 +324,7 @@ $validationLines = @(
     "- Signing status: $signingStatusPath",
     "- Checksums: $checksumsPath",
     "- Known issues: $knownIssuesPath",
+    "- Workspace trust audit: $workspaceTrustAuditPath",
     "- Screenshot: $screenshot",
     "",
     "## Manual QA Required",
