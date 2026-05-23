@@ -24,6 +24,7 @@ if (-not (Test-Path $bash)) {
 & $bash -lc @"
 set -euo pipefail
 export PATH=/ucrt64/bin:/usr/bin:/c/Windows/System32:/c/Windows:/c/Windows/System32/Wbem:`$PATH
+export QT_QPA_PLATFORM=offscreen
 cd "$rootUnix"
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build build

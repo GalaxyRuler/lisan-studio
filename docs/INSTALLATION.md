@@ -255,23 +255,26 @@ that is explicitly approved for the current run.
 
 ## MSI Upgrade Smoke
 
-Upgrade validation is also MSI-mutating and belongs in `LisanStudio-QA`, not on
-active `WHITEDRAGON`. The project-owned scripts cover:
+Upgrade validation is also MSI-mutating and belongs in the self-hosted GitHub
+Actions runner inside `LisanStudio-QA`, not on active `WHITEDRAGON`. The
+workflow covers:
 
 - same-version private beta replace leaving exactly one Windows Apps uninstall
   entry;
 - older-version to replacement-version upgrade;
 - optional downgrade refusal that keeps the replacement install active.
 
-The scenario wrappers are:
+Trigger the MSI workflow manually:
 
 ```powershell
-.\qa\vm\Test-MsiSameVersionReplaceLeavesRegistryClean.ps1
-.\qa\vm\Test-MsiUpgradeReplacesEarlierVersion.ps1
+gh workflow run msi-tests.yml -f scenario=install
+gh workflow run msi-tests.yml -f scenario=upgrade
+gh workflow run msi-tests.yml -f scenario=full
 ```
 
-Both wrappers call `scripts\msi-upgrade-smoke.ps1` and require explicit
-mutation switches from the approved VM lane.
+The workflow lives at `.github\workflows\msi-tests.yml` and runs
+`scripts\msi-smoke.ps1` and `scripts\msi-upgrade-smoke.ps1` with per-step logs
+and evidence artifacts.
 
 ## Release Evidence
 
@@ -316,18 +319,19 @@ The project is integrated with the central Codex Homelab runner metadata:
 ```text
 .codex\homelab-runner.json
 qa\homelab\
-qa\vm\
 ```
 
-For MSI, GUI, installed-app, screenshot, or release-evidence validation, use the
-project VM route:
+For MSI install and upgrade validation, use the GitHub Actions workflow on the
+self-hosted runner inside:
 
 ```text
 LisanStudio-QA
 ```
 
-Do not run GUI automation, MSI install/uninstall, installed-app validation, or
-destructive validation on active `WHITEDRAGON`.
+Homelab remains responsible for runner VM provisioning and reset helpers; this
+repo owns the workflow YAML and MSI smoke scripts. Do not run GUI automation,
+MSI install/uninstall, installed-app validation, or destructive validation on
+active `WHITEDRAGON`.
 
 Safe local work includes:
 
@@ -340,7 +344,7 @@ Unsafe local work without explicit approval includes:
 
 - installing or uninstalling the MSI on active `WHITEDRAGON`
 - running GUI automation on active `WHITEDRAGON`
-- mutating Hyper-V outside the Homelab approval lane
+- mutating Hyper-V outside the Homelab runner lifecycle helpers
 - deleting VMs or runner artifacts
 
 ## Troubleshooting

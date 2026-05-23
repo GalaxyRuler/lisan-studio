@@ -62,7 +62,7 @@ The package currently declares a per-user WiX package, allows same-version major
 The same-version-replace wrapper calls the shared upgrade smoke script with the same MSI version on both sides:
 
 ```powershell
-# qa/vm/Test-MsiSameVersionReplaceLeavesRegistryClean.ps1:19-28
+# legacy same-version-replace wrapper excerpt
 & (Join-Path $PSScriptRoot "..\..\scripts\msi-upgrade-smoke.ps1") `
     -EarlierMsiPath $FirstMsiPath `
     -ReplacementMsiPath $ReplacementMsiPath `
@@ -99,7 +99,7 @@ The failed run summary confirms the same-version scenario failed before the repl
 {
   "name": "same-version-replace",
   "ok": false,
-  "scriptPath": "C:\\CodexRunner\\work\\artifacts-prompt13-smoke-20260519T165202\\arabic-code-studio-qt\\qa\\vm\\Test-MsiSameVersionReplaceLeavesRegistryClean.ps1",
+  "scriptPath": "legacy VM-lane same-version wrapper, removed after the GHA migration",
   "error": "C:\\CodexRunner\\work\\artifacts-prompt13-smoke-20260519T165202\\arabic-code-studio-qt\\scripts\\msi-upgrade-smoke.ps1 : The "
 }
 ```

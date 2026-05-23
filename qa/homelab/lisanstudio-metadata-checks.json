@@ -14,10 +14,6 @@
             {
                 "name": "metadata-files-present",
                 "run": "test -f .codex/homelab-runner.json && test -f CMakeLists.txt && test -d scripts && test -d tests && test -d qa"
-            },
-            {
-                "name": "project-owned-profiles-present",
-                "run": "test -f qa/homelab/lisanstudio-metadata-checks.json && test -f qa/vm/profiles/lisanstudio-msi-smoke.json"
             }
         ]
     },

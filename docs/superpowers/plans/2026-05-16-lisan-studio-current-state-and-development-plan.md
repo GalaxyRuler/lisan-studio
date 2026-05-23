@@ -112,7 +112,6 @@ Important QA folders:
 
 - `qa\tests\*.ps1` for static/package/release script guards.
 - `qa\homelab\lisanstudio-metadata-checks.json` for project-owned Homelab metadata checks.
-- `qa\vm\profiles\lisanstudio-msi-smoke.json` for the VM GUI/MSI smoke profile.
 
 Current beta validation docs say the Homelab MSI/GUI/release evidence lane passed inside `LisanStudio-QA`, active `WHITEDRAGON` was not used for GUI/MSI validation, and manual installed-app QA was completed.
 
