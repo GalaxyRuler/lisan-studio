@@ -162,6 +162,15 @@ qt_add_executable(acs_editor_torture_tests
 
 target_link_libraries(acs_editor_torture_tests PRIVATE acs_core Qt6::Test)
 
+qt_add_executable(acs_untitled_draft_recovery_tests
+    src/MainWindow.h
+    src/MainWindow.cpp
+    resources/resources.qrc
+    tests/TestUntitledDraftRecovery.cpp
+)
+
+target_link_libraries(acs_untitled_draft_recovery_tests PRIVATE acs_core Qt6::Test Qt6::Concurrent)
+
 add_test(NAME acs_editor_tests COMMAND acs_editor_tests)
 add_test(NAME acs_editor_tabs_controller_tests COMMAND acs_editor_tabs_controller_tests)
 add_test(NAME acs_project_tree_controller_tests COMMAND acs_project_tree_controller_tests)
@@ -171,3 +180,4 @@ add_test(NAME acs_project_runtime_tests COMMAND acs_project_runtime_tests)
 add_test(NAME acs_runtime_orchestrator_tests COMMAND acs_runtime_orchestrator_tests)
 add_test(NAME acs_main_window_tests COMMAND acs_main_window_tests)
 add_test(NAME acs_editor_torture_tests COMMAND acs_editor_torture_tests)
+add_test(NAME acs_untitled_draft_recovery_tests COMMAND acs_untitled_draft_recovery_tests)
