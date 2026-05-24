@@ -13,7 +13,6 @@
 #include <utility>
 
 namespace {
-constexpr int MaxScannedFiles = 500;
 constexpr qint64 MaxFileBytes = 1024 * 1024;
 
 bool hasIgnoredDirectoryPart(const QString &rootPath, const QString &filePath)
@@ -196,7 +195,8 @@ ProjectReplacePreview ProjectReplaceService::previewProject(
     const QString &rootPath,
     const QString &query,
     const QString &replacement,
-    int limit) const
+    int limit,
+    int maxScannedFiles) const
 {
     ProjectReplacePreview preview;
     if (query.trimmed().isEmpty() || limit <= 0) {
@@ -205,7 +205,7 @@ ProjectReplacePreview ProjectReplaceService::previewProject(
 
     int scannedFiles = 0;
     QDirIterator iterator(QDir(rootPath).absolutePath(), QDir::Files | QDir::NoSymLinks, QDirIterator::Subdirectories);
-    while (iterator.hasNext() && scannedFiles < MaxScannedFiles && preview.rows.size() < limit) {
+    while (iterator.hasNext() && scannedFiles < maxScannedFiles && preview.rows.size() < limit) {
         const QString path = iterator.next();
         if (!isScannableFile(rootPath, path)) {
             continue;
@@ -229,7 +229,7 @@ ProjectReplacePreview ProjectReplaceService::previewProject(
     }
     preview.scannedFiles = scannedFiles;
     preview.truncatedAtFileCap = preview.rows.size() < limit
-        && scannedFiles == MaxScannedFiles
+        && scannedFiles == maxScannedFiles
         && hasMoreScannableFile(iterator, rootPath);
     return preview;
 }

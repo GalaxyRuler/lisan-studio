@@ -11,7 +11,6 @@
 #include <utility>
 
 namespace {
-constexpr int MaxScannedFiles = 500;
 constexpr qint64 MaxFileBytes = 1024 * 1024;
 
 bool hasIgnoredDirectoryPart(const QString &rootPath, const QString &filePath)
@@ -45,12 +44,20 @@ bool hasMoreScannableFile(QDirIterator &iterator, const QString &rootPath)
 }
 }
 
-QVector<SearchResultRow> SearchService::search(const QString &rootPath, const QString &query, int limit) const
+QVector<SearchResultRow> SearchService::search(
+    const QString &rootPath,
+    const QString &query,
+    int limit,
+    int maxScannedFiles) const
 {
-    return searchWithMetadata(rootPath, query, limit).rows;
+    return searchWithMetadata(rootPath, query, limit, maxScannedFiles).rows;
 }
 
-SearchResults SearchService::searchWithMetadata(const QString &rootPath, const QString &query, int limit) const
+SearchResults SearchService::searchWithMetadata(
+    const QString &rootPath,
+    const QString &query,
+    int limit,
+    int maxScannedFiles) const
 {
     SearchResults result;
     if (query.trimmed().isEmpty() || limit <= 0) {
@@ -59,7 +66,7 @@ SearchResults SearchService::searchWithMetadata(const QString &rootPath, const Q
 
     int scannedFiles = 0;
     QDirIterator iterator(QDir(rootPath).absolutePath(), QDir::Files | QDir::NoSymLinks, QDirIterator::Subdirectories);
-    while (iterator.hasNext() && scannedFiles < MaxScannedFiles) {
+    while (iterator.hasNext() && scannedFiles < maxScannedFiles) {
         const QString path = iterator.next();
         if (!isScannableFile(rootPath, path)) {
             continue;
@@ -84,7 +91,7 @@ SearchResults SearchService::searchWithMetadata(const QString &rootPath, const Q
         }
     }
 
-    result.truncatedAtFileCap = scannedFiles == MaxScannedFiles && hasMoreScannableFile(iterator, rootPath);
+    result.truncatedAtFileCap = scannedFiles == maxScannedFiles && hasMoreScannableFile(iterator, rootPath);
     return result;
 }
 

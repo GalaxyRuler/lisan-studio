@@ -33,7 +33,7 @@ V1.5 is NOT:
 2. Document the SmartScreen experience explicitly in `KNOWN_ISSUES.md` and accept it for V1.5.
 Produce `docs/adr/0011-msi-code-signing.md` with the decision and reasoning.
 **Acceptance.** ADR committed. If signing is chosen, follow-on slice ships the signing pipeline.
-### Slice 6 — Search/replace 500-file cap raise (MSI release; v0.1.2-beta)
+### Slice 6 — Search/replace 500-file cap raise (MSI release; v0.1.2-beta) — landed <short-sha>
 **Change.** Raise `MaxScannedFiles` in `src/SearchService.cpp:14` and `src/ProjectReplaceService.cpp:16` from 500 to a higher fixed number (recommend: 5000), OR remove the cap entirely and rely on `MaxFileBytes` per-file plus the existing per-call `limit` parameter as the only bounds. The streaming-search option from the earlier roadmap draft is over-scoped for V1.5; defer to V2 if file counts exceed 5000 in practice.
 Add a regression test confirming a 1000-file project surfaces results from all 1000 files (or up to 5000 per the new cap).
 **Acceptance.** Existing tests pass. New regression test pins the new cap. The "results truncated" status notice still fires correctly when the new cap IS hit (test that case too with a 6000-file fixture if cap is 5000, or skip if cap is removed).

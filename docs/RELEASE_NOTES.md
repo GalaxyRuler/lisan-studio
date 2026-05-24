@@ -1,3 +1,7 @@
+# v0.1.2-beta (UNRELEASED)
+
+- Search/replace project-wide scan cap raised from 500 to 5000 files. The per-file 1 MB ceiling and the per-call result limit are unchanged. Truncation status-bar message now dynamically reports the active cap.
+
 # Lisan Studio 0.1.1 Beta Notes
 
 ## Fixed (data-safety regressions in 0.1.0-beta)

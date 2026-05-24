@@ -54,6 +54,8 @@ private:
 class ProjectReplaceService final
 {
 public:
+    static constexpr int MaxScannedFiles = 5'000;
+
     ProjectReplacePreview previewText(
         const QString &path,
         const QString &text,
@@ -65,7 +67,8 @@ public:
         const QString &rootPath,
         const QString &query,
         const QString &replacement,
-        int limit = 250) const;
+        int limit = 250,
+        int maxScannedFiles = ProjectReplaceService::MaxScannedFiles) const;
 
     static QVector<ProjectReplacePreviewRow> mergePreviewRows(
         const QVector<ProjectReplacePreviewRow> &priorityRows,

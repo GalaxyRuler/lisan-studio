@@ -301,15 +301,16 @@ void TestProjectSearchRuntime::searchServiceStopsBeforeHugeProjectTail()
     QVERIFY(temp.isValid());
     QDir root(temp.path());
 
-    for (int i = 0; i < 650; ++i) {
+    constexpr int maxScannedFiles = 10;
+    for (int i = 0; i < 12; ++i) {
         writeFile(
             root,
-            QStringLiteral("src/%1.apy").arg(i, 4, 10, QLatin1Char('0')),
-            i == 640 ? QStringLiteral("adult\n") : QStringLiteral("لا يوجد\n"));
+            QStringLiteral("src/%1.apy").arg(i, 2, 10, QLatin1Char('0')),
+            i == 11 ? QStringLiteral("adult\n") : QStringLiteral("لا يوجد\n"));
     }
 
     SearchService search;
-    const auto rows = search.search(root.absolutePath(), QStringLiteral("adult"));
+    const auto rows = search.search(root.absolutePath(), QStringLiteral("adult"), 250, maxScannedFiles);
 
     QVERIFY(rows.isEmpty());
 }
@@ -320,26 +321,30 @@ void TestProjectSearchRuntime::searchServiceClipsAtMaxScannedFilesWithStableOrde
     QVERIFY(temp.isValid());
     QDir root(temp.path());
 
-    for (int i = 0; i < 600; ++i) {
+    constexpr int maxScannedFiles = 10;
+    for (int i = 0; i < 12; ++i) {
         writeFile(
             root,
-            QStringLiteral("file-%1.apy").arg(i, 3, 10, QLatin1Char('0')),
+            QStringLiteral("file-%1.apy").arg(i, 2, 10, QLatin1Char('0')),
             QStringLiteral("needle\n"));
     }
 
     SearchService search;
     QElapsedTimer timer;
     timer.start();
-    const auto rows = search.search(root.absolutePath(), QStringLiteral("needle"), 1000);
+    const auto rows = search.search(root.absolutePath(), QStringLiteral("needle"), 1000, maxScannedFiles);
     const qint64 elapsedMs = timer.elapsed();
 
-    constexpr int expectedMaxScannedFiles = 500; // Mirrors MaxScannedFiles in src/SearchService.cpp.
-    QCOMPARE(rows.size(), expectedMaxScannedFiles);
+    QCOMPARE(rows.size(), maxScannedFiles);
     QVERIFY(!rows.isEmpty());
     QVERIFY2(elapsedMs <= 2000,
         qPrintable(QStringLiteral("search cap sweep exceeded 2000 ms budget: %1 ms").arg(elapsedMs)));
-    QCOMPARE(QFileInfo(rows.first().path).fileName(), QStringLiteral("file-000.apy"));
-    QCOMPARE(QFileInfo(rows.last().path).fileName(), QStringLiteral("file-499.apy"));
+    QCOMPARE(QFileInfo(rows.first().path).fileName(), QStringLiteral("file-00.apy"));
+    QCOMPARE(QFileInfo(rows.last().path).fileName(), QStringLiteral("file-09.apy"));
+
+    const SearchResults result = search.searchWithMetadata(root.absolutePath(), QStringLiteral("needle"), 1000, maxScannedFiles);
+    QCOMPARE(result.rows.size(), maxScannedFiles);
+    QVERIFY(result.truncatedAtFileCap);
 }
 
 void TestProjectSearchRuntime::searchServiceReportsTruncationWhenCapFires()
@@ -348,16 +353,18 @@ void TestProjectSearchRuntime::searchServiceReportsTruncationWhenCapFires()
     QVERIFY(temp.isValid());
     QDir root(temp.path());
 
-    for (int i = 0; i < 600; ++i) {
+    constexpr int maxScannedFiles = 10;
+    for (int i = 0; i < 12; ++i) {
         writeFile(
             root,
-            QStringLiteral("file-%1.apy").arg(i, 3, 10, QLatin1Char('0')),
+            QStringLiteral("file-%1.apy").arg(i, 2, 10, QLatin1Char('0')),
             QStringLiteral("needle\n"));
     }
 
     SearchService search;
-    const SearchResults result = search.searchWithMetadata(root.absolutePath(), QStringLiteral("needle"), 1000);
+    const SearchResults result = search.searchWithMetadata(root.absolutePath(), QStringLiteral("needle"), 1000, maxScannedFiles);
 
+    QCOMPARE(result.rows.size(), maxScannedFiles);
     QVERIFY(result.truncatedAtFileCap);
 }
 
@@ -1230,10 +1237,11 @@ void TestProjectSearchRuntime::projectReplaceServiceReportsTruncationWhenCapFire
     QVERIFY(temp.isValid());
     QDir root(temp.path());
 
-    for (int i = 0; i < 600; ++i) {
+    constexpr int maxScannedFiles = 10;
+    for (int i = 0; i < 12; ++i) {
         writeFile(
             root,
-            QStringLiteral("file-%1.apy").arg(i, 3, 10, QLatin1Char('0')),
+            QStringLiteral("file-%1.apy").arg(i, 2, 10, QLatin1Char('0')),
             QStringLiteral("needle\n"));
     }
 
@@ -1242,8 +1250,10 @@ void TestProjectSearchRuntime::projectReplaceServiceReportsTruncationWhenCapFire
         root.absolutePath(),
         QStringLiteral("needle"),
         QStringLiteral("replacement"),
-        1000);
+        1000,
+        maxScannedFiles);
 
+    QCOMPARE(preview.rows.size(), maxScannedFiles);
     QVERIFY(preview.truncatedAtFileCap);
 }
 
