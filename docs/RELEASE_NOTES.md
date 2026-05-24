@@ -1,4 +1,4 @@
-# v0.1.2-beta (UNRELEASED)
+# v0.1.2-beta (2026-05-24)
 
 - Search/replace project-wide scan cap raised from 500 to 5000 files. The per-file 1 MB ceiling and the per-call result limit are unchanged. Truncation status-bar message now dynamically reports the active cap.
 
