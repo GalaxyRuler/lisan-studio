@@ -33,15 +33,15 @@ V1.5 is NOT:
 2. Document the SmartScreen experience explicitly in `KNOWN_ISSUES.md` and accept it for V1.5.
 Produce `docs/adr/0011-msi-code-signing.md` with the decision and reasoning.
 **Acceptance.** ADR committed. If signing is chosen, follow-on slice ships the signing pipeline.
-### Slice 6 — Search/replace 500-file cap raise (MSI release; v0.1.2-beta) — landed cff51d2
+### Slice 6 — Search/replace 500-file cap raise (MSI release; v0.1.2-beta) — landed (see git log)
 **Change.** Raise `MaxScannedFiles` in `src/SearchService.cpp:14` and `src/ProjectReplaceService.cpp:16` from 500 to a higher fixed number (recommend: 5000), OR remove the cap entirely and rely on `MaxFileBytes` per-file plus the existing per-call `limit` parameter as the only bounds. The streaming-search option from the earlier roadmap draft is over-scoped for V1.5; defer to V2 if file counts exceed 5000 in practice.
 Add a regression test confirming a 1000-file project surfaces results from all 1000 files (or up to 5000 per the new cap).
 **Acceptance.** Existing tests pass. New regression test pins the new cap. The "results truncated" status notice still fires correctly when the new cap IS hit (test that case too with a 6000-file fixture if cap is 5000, or skip if cap is removed).
-### Slice 7 — Crash-recovery verification for dirty untitled buffers (likely investigation; possible fix slice) — landed 2334f0a
+### Slice 7 — Crash-recovery verification for dirty untitled buffers (likely investigation; possible fix slice) — landed (see git log)
 **Change.** V1 ships session restore + "persist untitled session drafts" (commit `d089406`). Verify what happens when the app is killed ungracefully with a dirty untitled buffer open (kill via Task Manager, force-shutdown, BSOD simulation). If the dirty untitled content survives the kill, document the invariant and add a test. If it doesn't, ship a fix: debounced auto-save of dirty buffers (titled and untitled) to `%LOCALAPPDATA%\LisanStudio\recovery\` on every contentsChanged with a 5-second debounce; on next launch, prompt the user to recover or discard.
 Decide as part of the investigation phase whether a fix is needed.
 **Acceptance.** Either: a test asserts dirty untitled buffer survives ungraceful exit (no fix needed); or a fix lands plus the test. Recovery directory location decided and documented.
-### Slice 8 — Performance baseline measurement (NOT MSI release; investigation)
+### Slice 8 — Performance baseline measurement (NOT MSI release; investigation) — landed (see git log)
 **Change.** Measure the current editor's real-world performance on a representative `.apy` workload:
 - Open a 10k-line, 50k-line, and 100k-line file. Wall-clock to first paint, to fully scrollable.
 - Cursor movement latency (key-down to caret-rendered).

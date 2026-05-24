@@ -4,6 +4,7 @@
 
 #include <QApplication>
 #include <QClipboard>
+#include <QDebug>
 #include <QElapsedTimer>
 #include <QFile>
 #include <QImage>
@@ -110,6 +111,10 @@ void TestEditorTorture::largeFileOpenUndoRedoAndFindReplaceStayWithinBudgets()
     openTimer.start();
     QString error;
     QVERIFY2(editor.openFile(path, &error), qPrintable(error));
+    qInfo().noquote() << QStringLiteral("PERF metric=%1 elapsed=%2 budget=%3")
+        .arg(QStringLiteral("large_file_open"))
+        .arg(openTimer.elapsed())
+        .arg(2000);
     QVERIFY2(openTimer.elapsed() <= 2000,
         qPrintable(QStringLiteral("large file open exceeded 2000 ms budget: %1 ms").arg(openTimer.elapsed())));
     QVERIFY(editor.blockCount() >= lineCount);
@@ -135,6 +140,10 @@ void TestEditorTorture::largeFileOpenUndoRedoAndFindReplaceStayWithinBudgets()
     const qint64 undoRedoElapsed = undoRedoTimer.elapsed();
     QCOMPARE(afterUndoDocumentCharacters, initialDocumentCharacters);
     QVERIFY(editor.toPlainText().endsWith(QStringLiteral(" // 199")));
+    qInfo().noquote() << QStringLiteral("PERF metric=%1 elapsed=%2 budget=%3")
+        .arg(QStringLiteral("undo_redo_storm_100k"))
+        .arg(undoRedoElapsed)
+        .arg(500);
     QVERIFY2(undoRedoElapsed <= 500,
         qPrintable(QStringLiteral("large file undo/redo storm exceeded 500 ms budget: %1 ms").arg(undoRedoElapsed)));
 
@@ -146,6 +155,10 @@ void TestEditorTorture::largeFileOpenUndoRedoAndFindReplaceStayWithinBudgets()
     QCOMPARE(editor.replaceAllFindMatches(QString::fromUtf8("بديل12")), expectedLargeFileReplacements);
     QCOMPARE(editor.findMatchCount(), 0);
     QCOMPARE(editor.findHighlightSelectionCountForTest(), 0);
+    qInfo().noquote() << QStringLiteral("PERF metric=%1 elapsed=%2 budget=%3")
+        .arg(QStringLiteral("find_replace_storm_100k"))
+        .arg(findReplaceTimer.elapsed())
+        .arg(1000);
     QVERIFY2(findReplaceTimer.elapsed() <= 1000,
         qPrintable(QStringLiteral("large file find/replace storm exceeded 1000 ms budget: %1 ms").arg(findReplaceTimer.elapsed())));
 }
@@ -187,6 +200,10 @@ void TestEditorTorture::longArabicLineMaintainsCursorScrollAndPaintSanity()
 
     const QImage image = renderEditor(editor);
     QVERIFY(hasPaintedPixel(image));
+    qInfo().noquote() << QStringLiteral("PERF metric=%1 elapsed=%2 budget=%3")
+        .arg(QStringLiteral("arabic_50k_line_render"))
+        .arg(timer.elapsed())
+        .arg(5000);
     QVERIFY2(timer.elapsed() <= 5000,
         qPrintable(QStringLiteral("50k Arabic line torture exceeded 5000 ms budget: %1 ms").arg(timer.elapsed())));
 }
@@ -250,6 +267,10 @@ void TestEditorTorture::undoRedoStormOfAlternatingEditsKeepsCursorSane()
         QVERIFY(editor.textCursor().position() <= editor.toPlainText().size());
     }
     QCOMPARE(editor.toPlainText(), expected);
+    qInfo().noquote() << QStringLiteral("PERF metric=%1 elapsed=%2 budget=%3")
+        .arg(QStringLiteral("alternating_undo_redo_storm"))
+        .arg(timer.elapsed())
+        .arg(500);
     QVERIFY2(timer.elapsed() <= 500,
         qPrintable(QStringLiteral("alternating undo/redo storm exceeded 500 ms budget: %1 ms").arg(timer.elapsed())));
 }
@@ -272,6 +293,10 @@ void TestEditorTorture::findReplaceStormDoesNotLeakVisibleSelections()
     QCOMPARE(editor.findMatchCount(), 0);
     QCOMPARE(editor.findHighlightSelectionCountForTest(), 0);
     QVERIFY(!editor.toPlainText().contains(QStringLiteral("needle")));
+    qInfo().noquote() << QStringLiteral("PERF metric=%1 elapsed=%2 budget=%3")
+        .arg(QStringLiteral("find_replace_storm_300"))
+        .arg(timer.elapsed())
+        .arg(1000);
     QVERIFY2(timer.elapsed() <= 1000,
         qPrintable(QStringLiteral("find/replace storm exceeded 1000 ms budget: %1 ms").arg(timer.elapsed())));
 }
@@ -357,6 +382,10 @@ void TestEditorTorture::indentationGuidePaintingHandlesTenThousandLineFile()
 
     const QImage image = renderEditor(editor);
     QVERIFY(hasPaintedPixel(image));
+    qInfo().noquote() << QStringLiteral("PERF metric=%1 elapsed=%2 budget=%3")
+        .arg(QStringLiteral("indent_guide_paint_10k"))
+        .arg(timer.elapsed())
+        .arg(5000);
     QVERIFY2(timer.elapsed() <= 5000,
         qPrintable(QStringLiteral("10k-line indentation-guide paint exceeded 5000 ms budget: %1 ms").arg(timer.elapsed())));
 }
