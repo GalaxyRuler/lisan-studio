@@ -1,3 +1,34 @@
+# v0.1.3-beta (2026-05-24)
+
+## Added
+
+- Multi-cursor editing in the editor surface. Hold Ctrl and click to add
+  a cursor at the click position. Ctrl+Alt+Up and Ctrl+Alt+Down add
+  cursors above/below the primary cursor at the same column. Ctrl+D
+  adds a cursor at the next exact match of the current selection.
+  Ctrl+Shift+L converts every find-match in the document into a cursor.
+  Esc collapses to a single cursor. Typing, Backspace, Delete, arrow
+  movement, and Return apply to all cursors atomically with a single
+  undo step.
+- Soft cap notice when 100 simultaneous cursors are active; hard cap at
+  1000 cursors to prevent runaway UI lock-ups from select-all-matches on
+  very large documents.
+- Five new commands in the command palette and Edit menu, all
+  rebindable via the shortcuts JSON: `cursor.addAbove`, `cursor.addBelow`,
+  `cursor.addAtNextMatch`, `cursor.selectAllMatches`,
+  `cursor.collapseToSingle`.
+
+## Known v0.1.3-beta limitations
+
+- IME composition is refused while secondary cursors are active. The
+  editor emits a status-bar notice when this happens. Press Esc to
+  collapse to a single cursor first, then use IME.
+- Column / rectangle selection is not yet supported. Deferred to a
+  future beta.
+- Undo/redo (Ctrl+Z, Ctrl+Y), Tab indent, and other complex editor
+  commands apply only to the primary cursor in this beta. Multi-cursor
+  extensions for these commands are planned.
+
 # v0.1.2-beta (2026-05-24)
 
 - Search/replace project-wide scan cap raised from 500 to 5000 files. The per-file 1 MB ceiling and the per-call result limit are unchanged. Truncation status-bar message now dynamically reports the active cap.

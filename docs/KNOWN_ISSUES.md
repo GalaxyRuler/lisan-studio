@@ -12,3 +12,18 @@
   with SmartScreen Block enforcement may refuse to launch the
   application outright — if you encounter that, file a beta-tester
   report so we can revisit ADR-0010.
+- Multi-cursor + IME limitation: when one or more secondary cursors are
+  active, Windows IME composition (used for some Arabic input methods
+  and East Asian languages) is refused by the editor. A status-bar
+  notice surfaces when this happens. Press Esc to collapse to a single
+  cursor before composing IME input. Multi-cursor + IME support is
+  deferred to V2.
+- Multi-cursor + column selection: rectangle / column selection via
+  Alt+drag is not yet implemented. The current multi-cursor support
+  covers add-at-position, add-above/below, add-at-next-match, and
+  select-all-matches. Column-selection is a separate planned slice.
+- Multi-cursor + complex editor commands: Ctrl+Z (undo), Ctrl+Y (redo),
+  Tab (indent), and other non-trivial editor commands currently apply
+  only to the primary cursor when secondaries are present. Multi-cursor
+  typing, Backspace, Delete, arrow movement, and Return ARE
+  multi-cursor-aware. Coverage will be extended in a future slice.
