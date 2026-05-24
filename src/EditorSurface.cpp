@@ -10,6 +10,7 @@
 #include <QTextBlock>
 #include <QTextOption>
 
+#include <algorithm>
 #include <memory>
 
 static bool isQuoteDelimiter(QChar ch)
@@ -139,6 +140,27 @@ static bool containsStrongRtlText(const QString &text)
     return false;
 }
 
+static QString returnIndentForCursor(const QTextCursor &cursor)
+{
+    const QTextBlock block = cursor.block();
+    const QString line = block.text();
+    const int cursorColumn = qBound(0, cursor.position() - block.position(), line.size());
+    const QString beforeCursor = line.left(cursorColumn);
+
+    QString indent;
+    for (const QChar ch : line) {
+        if (ch == QLatin1Char(' ') || ch == QLatin1Char('\t')) {
+            indent.append(ch);
+            continue;
+        }
+        break;
+    }
+    if (beforeCursor.trimmed().endsWith(QLatin1Char(':'))) {
+        indent.append(QStringLiteral("    "));
+    }
+    return indent;
+}
+
 class LineNumberArea final : public QWidget
 {
 public:
@@ -214,6 +236,7 @@ bool EditorSurface::openFile(const QString &path, QString *error)
 
     setPlainText(loaded.text);
     document()->setModified(false);
+    collapseToSinglePrimaryCursor();
     saveLineEnding = saveLineEndingForLoadedText(loaded);
     setCurrentFilePath(loaded.identity.path);
     return true;
@@ -223,6 +246,7 @@ void EditorSurface::resetForNewFile()
 {
     clear();
     document()->setModified(false);
+    collapseToSinglePrimaryCursor();
     saveLineEnding = DocumentLineEnding::None;
     setCurrentFilePath(QString());
     updateDocumentDirectionPolicy();
@@ -441,6 +465,223 @@ int EditorSurface::indentationGuideCountForLineForTest(const QString &line) cons
         }
     }
     return columns / 4;
+}
+
+int EditorSurface::totalCursorCount() const
+{
+    return 1 + secondaryCursors.size();
+}
+
+QVector<QTextCursor> EditorSurface::secondaryCursorsForTest() const
+{
+    return secondaryCursors;
+}
+
+bool EditorSurface::isPositionAlreadyCovered(int position) const
+{
+    if (textCursor().position() == position) {
+        return true;
+    }
+    for (const QTextCursor &cursor : secondaryCursors) {
+        if (cursor.position() == position) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool EditorSurface::addCursorAtPosition(int position)
+{
+    if (totalCursorCount() >= kHardCursorCap) {
+        return false;
+    }
+    position = qBound(0, position, document()->characterCount() - 1);
+    if (isPositionAlreadyCovered(position)) {
+        return false;
+    }
+
+    const int beforeCount = totalCursorCount();
+    QTextCursor cursor(document());
+    cursor.setPosition(position);
+    secondaryCursors.append(cursor);
+    const int afterCount = totalCursorCount();
+    if (beforeCount < kSoftCursorCap && afterCount >= kSoftCursorCap && !cursorSoftCapNotified) {
+        cursorSoftCapNotified = true;
+        emit cursorSoftCapReached(afterCount);
+    }
+    emit cursorCountChanged(afterCount);
+    viewport()->update();
+    return true;
+}
+
+bool EditorSurface::addCursorAbovePrimary()
+{
+    const QTextCursor primary = textCursor();
+    const QTextBlock block = primary.block();
+    const QTextBlock previous = block.previous();
+    if (!previous.isValid()) {
+        return false;
+    }
+
+    const int column = primary.position() - block.position();
+    const int targetColumn = qMin(column, previous.length() - 1);
+    return addCursorAtPosition(previous.position() + qMax(0, targetColumn));
+}
+
+bool EditorSurface::addCursorBelowPrimary()
+{
+    const QTextCursor primary = textCursor();
+    const QTextBlock block = primary.block();
+    const QTextBlock next = block.next();
+    if (!next.isValid()) {
+        return false;
+    }
+
+    const int column = primary.position() - block.position();
+    const int targetColumn = qMin(column, next.length() - 1);
+    return addCursorAtPosition(next.position() + qMax(0, targetColumn));
+}
+
+bool EditorSurface::addCursorAtNextMatch()
+{
+    const QTextCursor primary = textCursor();
+    if (!primary.hasSelection()) {
+        return false;
+    }
+
+    QString selectedText = primary.selectedText();
+    selectedText.replace(QChar::ParagraphSeparator, QLatin1Char('\n'));
+    if (selectedText.isEmpty()) {
+        return false;
+    }
+
+    const QString text = toPlainText();
+    const int selectionStart = primary.selectionStart();
+    const int selectionEnd = primary.selectionEnd();
+    int searchStart = selectionEnd;
+    bool wrapped = false;
+    while (true) {
+        const int matchStart = text.indexOf(selectedText, searchStart, Qt::CaseSensitive);
+        if (matchStart >= 0 && matchStart != selectionStart && !isPositionAlreadyCovered(matchStart)) {
+            if (!addCursorAtPosition(matchStart)) {
+                return false;
+            }
+            QTextCursor &secondary = secondaryCursors.last();
+            secondary.setPosition(matchStart + selectedText.size());
+            secondary.setPosition(matchStart, QTextCursor::KeepAnchor);
+            viewport()->update();
+            return true;
+        }
+
+        if (matchStart >= 0) {
+            searchStart = matchStart + qMax(1, selectedText.size());
+            continue;
+        }
+
+        if (wrapped) {
+            return false;
+        }
+        wrapped = true;
+        searchStart = 0;
+    }
+}
+
+int EditorSurface::selectAllFindMatchesAsCursors()
+{
+    if (activeFindQuery.isEmpty() || activeFindMatches.isEmpty()) {
+        return 0;
+    }
+
+    int added = 0;
+    const QTextCursor primary = textCursor();
+    for (const EditorFindMatch &match : activeFindMatches) {
+        if (totalCursorCount() >= kHardCursorCap) {
+            break;
+        }
+        const int start = match.start;
+        const int end = match.start + match.length;
+        const bool primaryCoversMatch = primary.hasSelection()
+            && primary.selectionStart() == start
+            && primary.selectionEnd() == end;
+        if (primaryCoversMatch) {
+            continue;
+        }
+        if (!addCursorAtPosition(start)) {
+            continue;
+        }
+
+        QTextCursor &secondary = secondaryCursors.last();
+        secondary.setPosition(end);
+        secondary.setPosition(start, QTextCursor::KeepAnchor);
+        ++added;
+    }
+    viewport()->update();
+    return added;
+}
+
+void EditorSurface::collapseToSinglePrimaryCursor()
+{
+    if (secondaryCursors.isEmpty()) {
+        return;
+    }
+    secondaryCursors.clear();
+    cursorSoftCapNotified = false;
+    emit cursorCountChanged(totalCursorCount());
+    viewport()->update();
+}
+
+QVector<QTextCursor> EditorSurface::allCursorsInDocumentOrderDescending() const
+{
+    QVector<QTextCursor> cursors = secondaryCursors;
+    cursors.append(textCursor());
+    std::sort(cursors.begin(), cursors.end(), [](const QTextCursor &left, const QTextCursor &right) {
+        return left.position() > right.position();
+    });
+    return cursors;
+}
+
+void EditorSurface::paintSecondaryCarets(QPainter *painter)
+{
+    if (!painter) {
+        return;
+    }
+
+    QColor selectionFill(QStringLiteral("#3A2F12"));
+    selectionFill.setAlpha(160);
+    painter->save();
+    for (const QTextCursor &cursor : secondaryCursors) {
+        if (cursor.hasSelection()) {
+            const int start = cursor.selectionStart();
+            const int end = cursor.selectionEnd();
+            QTextCursor lineCursor(document());
+            lineCursor.setPosition(start);
+            while (lineCursor.position() < end) {
+                const int lineStart = lineCursor.position();
+                const QTextBlock block = lineCursor.block();
+                const int lineEnd = qMin(end, block.position() + block.length() - 1);
+
+                QTextCursor startCursor(document());
+                startCursor.setPosition(lineStart);
+                QTextCursor endCursor(document());
+                endCursor.setPosition(lineEnd);
+                QRect highlightRect = cursorRect(startCursor);
+                const QRect endRect = cursorRect(endCursor);
+                highlightRect.setRight(qMax(highlightRect.right() + fontMetrics().horizontalAdvance(QLatin1Char(' ')), endRect.left()));
+                highlightRect.setHeight(fontMetrics().height());
+                painter->fillRect(highlightRect, selectionFill);
+
+                if (lineEnd >= end) {
+                    break;
+                }
+                lineCursor.setPosition(lineEnd + 1);
+            }
+        }
+
+        const QRect caretRect = cursorRect(cursor);
+        painter->setPen(palette().text().color());
+        painter->drawLine(caretRect.topLeft(), caretRect.bottomLeft());
+    }
+    painter->restore();
 }
 
 int EditorSurface::lineNumberAreaWidth() const
@@ -783,36 +1024,139 @@ void EditorSurface::contextMenuEvent(QContextMenuEvent *event)
     menu->exec(event->globalPos());
 }
 
+void EditorSurface::mousePressEvent(QMouseEvent *event)
+{
+    if (event->button() == Qt::LeftButton && event->modifiers() == Qt::ControlModifier) {
+        const QTextCursor cursor = cursorForPosition(event->pos());
+        addCursorAtPosition(cursor.position());
+        event->accept();
+        return;
+    }
+
+    QPlainTextEdit::mousePressEvent(event);
+}
+
 void EditorSurface::keyPressEvent(QKeyEvent *event)
 {
+    if (event->key() == Qt::Key_Escape && !secondaryCursors.isEmpty()) {
+        collapseToSinglePrimaryCursor();
+        event->accept();
+        return;
+    }
+
     const bool isReturn = event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter;
     const bool plainReturn = event->modifiers() == Qt::NoModifier || event->modifiers() == Qt::KeypadModifier;
-    if (!isReturn || !plainReturn) {
+    if (secondaryCursors.isEmpty()) {
+        if (!isReturn || !plainReturn) {
+            QPlainTextEdit::keyPressEvent(event);
+            return;
+        }
+
+        QTextCursor cursor = textCursor();
+        cursor.insertText(QLatin1Char('\n') + returnIndentForCursor(cursor));
+        setTextCursor(cursor);
+        event->accept();
+        return;
+    }
+
+    const Qt::KeyboardModifiers modifiers = event->modifiers();
+    const bool plainKey = modifiers == Qt::NoModifier || modifiers == Qt::KeypadModifier;
+    const bool printableModifiers = plainKey
+        || modifiers == Qt::ShiftModifier
+        || modifiers == (Qt::ShiftModifier | Qt::KeypadModifier);
+    const bool isBackspace = event->key() == Qt::Key_Backspace && plainKey;
+    const bool isDelete = event->key() == Qt::Key_Delete && plainKey;
+    const bool isArrow = plainKey
+        && (event->key() == Qt::Key_Left
+            || event->key() == Qt::Key_Right
+            || event->key() == Qt::Key_Up
+            || event->key() == Qt::Key_Down);
+    const bool isPrintableInsert = printableModifiers
+        && !event->text().isEmpty()
+        && event->text().at(0).category() != QChar::Other_Control
+        && !isReturn;
+    if (!isPrintableInsert && !isBackspace && !isDelete && !isArrow && !(isReturn && plainReturn)) {
+        // Slice-9 limitation: complex editor commands still apply only to the primary cursor.
         QPlainTextEdit::keyPressEvent(event);
         return;
     }
 
-    QTextCursor cursor = textCursor();
-    const QTextBlock block = cursor.block();
-    const QString line = block.text();
-    const int cursorColumn = qBound(0, cursor.position() - block.position(), line.size());
-    const QString beforeCursor = line.left(cursorColumn);
+    struct CursorEditItem
+    {
+        QTextCursor cursor;
+        int secondaryIndex = -1;
+        bool primary = false;
+    };
 
-    QString indent;
-    for (const QChar ch : line) {
-        if (ch == QLatin1Char(' ') || ch == QLatin1Char('\t')) {
-            indent.append(ch);
-            continue;
+    QVector<CursorEditItem> items;
+    items.reserve(totalCursorCount());
+    items.push_back({textCursor(), -1, true});
+    for (int i = 0; i < secondaryCursors.size(); ++i) {
+        items.push_back({secondaryCursors.at(i), i, false});
+    }
+    std::sort(items.begin(), items.end(), [](const CursorEditItem &left, const CursorEditItem &right) {
+        return left.cursor.position() > right.cursor.position();
+    });
+
+    QVector<QTextCursor> updatedSecondaries = secondaryCursors;
+    QTextCursor updatedPrimary = textCursor();
+    QTextCursor editBlockCursor = textCursor();
+    editBlockCursor.beginEditBlock();
+    for (CursorEditItem &item : items) {
+        QTextCursor cursor = item.cursor;
+        if (isPrintableInsert) {
+            cursor.insertText(event->text());
+        } else if (isBackspace) {
+            if (cursor.hasSelection()) {
+                cursor.removeSelectedText();
+            } else {
+                cursor.deletePreviousChar();
+            }
+        } else if (isDelete) {
+            if (cursor.hasSelection()) {
+                cursor.removeSelectedText();
+            } else {
+                cursor.deleteChar();
+            }
+        } else if (isReturn && plainReturn) {
+            cursor.insertText(QLatin1Char('\n') + returnIndentForCursor(cursor));
+        } else if (isArrow) {
+            QTextCursor::MoveOperation operation = QTextCursor::NoMove;
+            if (event->key() == Qt::Key_Left) {
+                operation = QTextCursor::Left;
+            } else if (event->key() == Qt::Key_Right) {
+                operation = QTextCursor::Right;
+            } else if (event->key() == Qt::Key_Up) {
+                operation = QTextCursor::Up;
+            } else if (event->key() == Qt::Key_Down) {
+                operation = QTextCursor::Down;
+            }
+            cursor.clearSelection();
+            cursor.movePosition(operation);
         }
-        break;
-    }
-    if (beforeCursor.trimmed().endsWith(QLatin1Char(':'))) {
-        indent.append(QStringLiteral("    "));
-    }
 
-    cursor.insertText(QLatin1Char('\n') + indent);
-    setTextCursor(cursor);
+        if (item.primary) {
+            updatedPrimary = cursor;
+        } else if (item.secondaryIndex >= 0 && item.secondaryIndex < updatedSecondaries.size()) {
+            updatedSecondaries[item.secondaryIndex] = cursor;
+        }
+    }
+    editBlockCursor.endEditBlock();
+
+    secondaryCursors = updatedSecondaries;
+    setTextCursor(updatedPrimary);
+    viewport()->update();
     event->accept();
+}
+
+void EditorSurface::inputMethodEvent(QInputMethodEvent *event)
+{
+    if (!secondaryCursors.isEmpty()) {
+        emit multiCursorImeRejected();
+        event->ignore();
+        return;
+    }
+    QPlainTextEdit::inputMethodEvent(event);
 }
 
 void EditorSurface::paintEvent(QPaintEvent *event)
@@ -820,6 +1164,9 @@ void EditorSurface::paintEvent(QPaintEvent *event)
     QPlainTextEdit::paintEvent(event);
 
     QPainter guidePainter(viewport());
+    if (!secondaryCursors.isEmpty()) {
+        paintSecondaryCarets(&guidePainter);
+    }
     paintIndentationGuides(&guidePainter);
 
     if (!toPlainText().isEmpty() || emptyPlaceholderText.isEmpty()) {

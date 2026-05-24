@@ -5,7 +5,9 @@
 #include "EditorFindService.h"
 
 #include <QContextMenuEvent>
+#include <QInputMethodEvent>
 #include <QMenu>
+#include <QMouseEvent>
 #include <QPlainTextEdit>
 #include <QVector>
 
@@ -50,6 +52,16 @@ public:
     bool indentationGuidesEnabled() const;
     void setIndentationGuidesEnabled(bool enabled);
     int indentationGuideCountForLineForTest(const QString &line) const;
+    static constexpr int kSoftCursorCap = 100;
+    static constexpr int kHardCursorCap = 1000;
+    int totalCursorCount() const;
+    QVector<QTextCursor> secondaryCursorsForTest() const;
+    bool addCursorAtPosition(int position);
+    bool addCursorAbovePrimary();
+    bool addCursorBelowPrimary();
+    bool addCursorAtNextMatch();
+    int selectAllFindMatchesAsCursors();
+    void collapseToSinglePrimaryCursor();
     int lineNumberAreaWidth() const;
     void lineNumberAreaPaintEvent(QPaintEvent *event);
     QMenu *createEditorContextMenu(QWidget *parent = nullptr);
@@ -57,6 +69,9 @@ public:
 signals:
     void filePathChanged(const QString &path);
     void dirtyStateChanged(bool dirty);
+    void cursorSoftCapReached(int totalCursors);
+    void cursorCountChanged(int totalCursors);
+    void multiCursorImeRejected();
 
 private:
     QString filePath;
@@ -68,9 +83,11 @@ private:
     int bracketMatchSelectionCount = 0;
     bool trimTrailingWhitespace = false;
     bool showIndentationGuides = true;
+    bool cursorSoftCapNotified = false;
     DocumentLineEnding saveLineEnding = DocumentLineEnding::None;
     ApyHighlighter *highlighter = nullptr;
     LineNumberArea *lineNumberArea = nullptr;
+    QVector<QTextCursor> secondaryCursors;
 
     static QString unicodeName(QChar ch);
     void setCurrentFilePath(const QString &path);
@@ -79,11 +96,16 @@ private:
     void updateEditorExtraSelections();
     QVector<int> matchingDelimiterPositions() const;
     void paintIndentationGuides(QPainter *painter);
+    void paintSecondaryCarets(QPainter *painter);
+    QVector<QTextCursor> allCursorsInDocumentOrderDescending() const;
+    bool isPositionAlreadyCovered(int position) const;
     bool selectFindMatch(int index);
     void updateLineNumberAreaWidth(int blockCount);
     void updateLineNumberArea(const QRect &rect, int dy);
     void contextMenuEvent(QContextMenuEvent *event) override;
+    void mousePressEvent(QMouseEvent *event) override;
     void keyPressEvent(QKeyEvent *event) override;
+    void inputMethodEvent(QInputMethodEvent *event) override;
     void paintEvent(QPaintEvent *event) override;
     void resizeEvent(QResizeEvent *event) override;
 };

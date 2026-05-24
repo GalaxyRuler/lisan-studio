@@ -95,6 +95,11 @@ private slots:
     void openProblemResult(QListWidgetItem *item);
     void openSettings();
     void pollOpenDocumentChanges();
+    void addCursorAboveAction();
+    void addCursorBelowAction();
+    void addCursorAtNextMatchAction();
+    void selectAllCursorMatchesAction();
+    void collapseToSingleCursorAction();
 
 private:
     EditorSurface *editor = nullptr;
@@ -133,6 +138,7 @@ private:
     QAction *cancelRunAction = nullptr;
     QTimer *documentChangePollTimer = nullptr;
     QFutureWatcher<SearchResults> *activeSearchWatcher = nullptr;
+    bool multiCursorSoftCapNoticeShown = false;
     QVector<ProjectReplacePreviewRow> currentProjectReplacePreviewRows;
     SettingsStore settings;
     std::function<RuntimeDiagnostics(int)> runtimeDiagnosticsProvider;

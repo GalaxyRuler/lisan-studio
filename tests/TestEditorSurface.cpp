@@ -42,6 +42,12 @@ private slots:
     void lineNumberAreaScalesAndStaysVisibleForLongFiles();
     void lineNumbersStayOnRightEdgeForArabicEditing();
     void emptyEditorPlaceholderPaintsFromRight();
+    void addCursorAtPositionRespectsHardCapAndReturnsFalse();
+    void addCursorAtPositionDedupesAgainstPrimaryAndSecondaries();
+    void addCursorAboveAndBelowPreserveColumn();
+    void collapseToSinglePrimaryCursorClearsAllSecondaries();
+    void typingWithMultipleCursorsInsertsAtAllPositions();
+    void selectAllFindMatchesAsCursorsConvertsFindHighlights();
 };
 
 static QString tortureText()
@@ -680,6 +686,104 @@ void TestEditorSurface::emptyEditorPlaceholderPaintsFromRight()
             .arg(background.red())
             .arg(background.green())
             .arg(background.blue())));
+}
+
+void TestEditorSurface::addCursorAtPositionRespectsHardCapAndReturnsFalse()
+{
+    EditorSurface editor;
+    editor.setPlainText(QStringLiteral("x").repeated(2000));
+
+    for (int position = 1; position < EditorSurface::kHardCursorCap; ++position) {
+        QVERIFY(editor.addCursorAtPosition(position));
+    }
+
+    QCOMPARE(editor.totalCursorCount(), EditorSurface::kHardCursorCap);
+    QVERIFY(!editor.addCursorAtPosition(EditorSurface::kHardCursorCap));
+}
+
+void TestEditorSurface::addCursorAtPositionDedupesAgainstPrimaryAndSecondaries()
+{
+    EditorSurface editor;
+    editor.setPlainText(QStringLiteral("0123456789012345678901234567890123456789"));
+    QTextCursor cursor = editor.textCursor();
+    cursor.setPosition(10);
+    editor.setTextCursor(cursor);
+
+    QVERIFY(editor.addCursorAtPosition(20));
+    QVERIFY(!editor.addCursorAtPosition(10));
+    QVERIFY(!editor.addCursorAtPosition(20));
+    QVERIFY(editor.addCursorAtPosition(30));
+    QCOMPARE(editor.totalCursorCount(), 3);
+}
+
+void TestEditorSurface::addCursorAboveAndBelowPreserveColumn()
+{
+    EditorSurface editor;
+    editor.setPlainText(QStringLiteral("zero\none1\ntwo2\nthree\nfour\n"));
+
+    QTextCursor cursor(editor.document()->findBlockByNumber(2));
+    cursor.setPosition(cursor.block().position() + 3);
+    editor.setTextCursor(cursor);
+
+    QVERIFY(editor.addCursorAbovePrimary());
+    QVERIFY(editor.addCursorBelowPrimary());
+
+    const QVector<QTextCursor> secondaries = editor.secondaryCursorsForTest();
+    QCOMPARE(secondaries.size(), 2);
+    QCOMPARE(secondaries.at(0).blockNumber(), 1);
+    QCOMPARE(secondaries.at(0).position() - secondaries.at(0).block().position(), 3);
+    QVERIFY(!secondaries.at(0).hasSelection());
+    QCOMPARE(secondaries.at(1).blockNumber(), 3);
+    QCOMPARE(secondaries.at(1).position() - secondaries.at(1).block().position(), 3);
+    QVERIFY(!secondaries.at(1).hasSelection());
+}
+
+void TestEditorSurface::collapseToSinglePrimaryCursorClearsAllSecondaries()
+{
+    EditorSurface editor;
+    editor.setPlainText(QStringLiteral("abcdef"));
+    QVERIFY(editor.addCursorAtPosition(1));
+    QVERIFY(editor.addCursorAtPosition(2));
+    QVERIFY(editor.addCursorAtPosition(3));
+
+    editor.collapseToSinglePrimaryCursor();
+
+    QCOMPARE(editor.totalCursorCount(), 1);
+    QVERIFY(editor.secondaryCursorsForTest().isEmpty());
+}
+
+void TestEditorSurface::typingWithMultipleCursorsInsertsAtAllPositions()
+{
+    EditorSurface editor;
+    editor.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&editor));
+    const QString original = QStringLiteral("line one\nline two\nline three\n");
+    editor.setPlainText(original);
+
+    QTextCursor cursor(editor.document()->findBlockByNumber(0));
+    cursor.movePosition(QTextCursor::EndOfBlock);
+    editor.setTextCursor(cursor);
+    const QTextBlock lineTwo = editor.document()->findBlockByNumber(1);
+    const QTextBlock lineThree = editor.document()->findBlockByNumber(2);
+    QVERIFY(editor.addCursorAtPosition(lineTwo.position() + lineTwo.length() - 1));
+    QVERIFY(editor.addCursorAtPosition(lineThree.position() + lineThree.length() - 1));
+
+    QTest::keyClicks(&editor, QStringLiteral("X"));
+
+    QCOMPARE(editor.toPlainText(), QStringLiteral("line oneX\nline twoX\nline threeX\n"));
+    editor.undo();
+    QCOMPARE(editor.toPlainText(), original);
+}
+
+void TestEditorSurface::selectAllFindMatchesAsCursorsConvertsFindHighlights()
+{
+    EditorSurface editor;
+    editor.setPlainText(QStringLiteral("alpha alpha alpha\nbeta\nalpha\n"));
+
+    QCOMPARE(editor.setFindQuery(QStringLiteral("alpha")), 4);
+    QCOMPARE(editor.findMatchCount(), 4);
+    QCOMPARE(editor.selectAllFindMatchesAsCursors(), 3);
+    QCOMPARE(editor.totalCursorCount(), 4);
 }
 
 QTEST_MAIN(TestEditorSurface)

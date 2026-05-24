@@ -640,6 +640,12 @@ void MainWindow::buildUi()
         }
     });
     connect(addTextOnlyMenuAction(editMenu, QString::fromUtf8("بحث واستبدال"), QKeySequence::Find, QStringLiteral("find-in-file")), &QAction::triggered, this, &MainWindow::openInFileFind);
+    connect(addTextOnlyMenuAction(editMenu, QString::fromUtf8("إضافة مؤشر أعلى"), QKeySequence(QStringLiteral("Ctrl+Alt+Up")), QStringLiteral("cursor.addAbove")), &QAction::triggered, this, &MainWindow::addCursorAboveAction);
+    connect(addTextOnlyMenuAction(editMenu, QString::fromUtf8("إضافة مؤشر أسفل"), QKeySequence(QStringLiteral("Ctrl+Alt+Down")), QStringLiteral("cursor.addBelow")), &QAction::triggered, this, &MainWindow::addCursorBelowAction);
+    connect(addTextOnlyMenuAction(editMenu, QString::fromUtf8("إضافة مؤشر عند المطابقة التالية"), QKeySequence(QStringLiteral("Ctrl+D")), QStringLiteral("cursor.addAtNextMatch")), &QAction::triggered, this, &MainWindow::addCursorAtNextMatchAction);
+    connect(addTextOnlyMenuAction(editMenu, QString::fromUtf8("تحديد كل المطابقات"), QKeySequence(QStringLiteral("Ctrl+Shift+L")), QStringLiteral("cursor.selectAllMatches")), &QAction::triggered, this, &MainWindow::selectAllCursorMatchesAction);
+    // Esc is handled directly by EditorSurface so the app-level action does not steal normal editor cancellation.
+    connect(addTextOnlyMenuAction(editMenu, QString::fromUtf8("الرجوع إلى مؤشر واحد"), QKeySequence(), QStringLiteral("cursor.collapseToSingle")), &QAction::triggered, this, &MainWindow::collapseToSingleCursorAction);
     connect(addTextOnlyMenuAction(editMenu, QString::fromUtf8("إدراج اطبع"), QKeySequence(), QStringLiteral("snippet.insertPrint")), &QAction::triggered, this, &MainWindow::insertPrintSnippet);
     commandPaletteAction->setIconVisibleInMenu(false);
     connect(addTextOnlyMenuAction(viewMenu, QString::fromUtf8("لوحة الأوامر"), QKeySequence(), QStringLiteral("command-palette")), &QAction::triggered, this, &MainWindow::openCommandPalette);
@@ -829,6 +835,27 @@ void MainWindow::buildUi()
     editorTabsController->applyWorkspaceSettings(workspaceSettings);
     connect(editorTabsController.get(), &EditorTabsController::currentEditorChanged, this, [this](EditorSurface *surface) {
         editor = surface;
+        if (surface && !surface->property("multiCursorSignalsConnected").toBool()) {
+            surface->setProperty("multiCursorSignalsConnected", true);
+            connect(surface, &EditorSurface::cursorSoftCapReached, this, [this](int totalCursors) {
+                if (multiCursorSoftCapNoticeShown) {
+                    return;
+                }
+                multiCursorSoftCapNoticeShown = true;
+                setStatus(QString::fromUtf8("تم تجاوز %1 مؤشر — قد يتأثر الأداء").arg(totalCursors));
+            });
+            connect(surface, &EditorSurface::cursorCountChanged, this, [this](int totalCursors) {
+                if (totalCursors < EditorSurface::kSoftCursorCap) {
+                    multiCursorSoftCapNoticeShown = false;
+                }
+            });
+            connect(surface, &EditorSurface::multiCursorImeRejected, this, [this]() {
+                setStatus(QString::fromUtf8("تعذر إدخال IME مع مؤشرات متعددة"));
+            });
+        }
+        if (!surface || surface->totalCursorCount() < EditorSurface::kSoftCursorCap) {
+            multiCursorSoftCapNoticeShown = false;
+        }
         refreshCurrentEditorUi(true);
     });
     connect(editorTabsController.get(), &EditorTabsController::pathChanged, this, [this](DocumentId, const QString &) {
@@ -1325,6 +1352,46 @@ void MainWindow::registerWorkbenchCommands()
         [this]() { openInFileFind(); },
         [this]() { return editor != nullptr; });
     registerCommand(
+        QStringLiteral("cursor.addAbove"),
+        QString::fromUtf8("إضافة مؤشر أعلى"),
+        QString::fromUtf8("تحرير"),
+        QKeySequence(QStringLiteral("Ctrl+Alt+Up")),
+        QString::fromUtf8("مؤشر متعدد أعلى multi cursor above"),
+        [this]() { addCursorAboveAction(); },
+        [this]() { return editor != nullptr; });
+    registerCommand(
+        QStringLiteral("cursor.addBelow"),
+        QString::fromUtf8("إضافة مؤشر أسفل"),
+        QString::fromUtf8("تحرير"),
+        QKeySequence(QStringLiteral("Ctrl+Alt+Down")),
+        QString::fromUtf8("مؤشر متعدد أسفل multi cursor below"),
+        [this]() { addCursorBelowAction(); },
+        [this]() { return editor != nullptr; });
+    registerCommand(
+        QStringLiteral("cursor.addAtNextMatch"),
+        QString::fromUtf8("إضافة مؤشر عند المطابقة التالية"),
+        QString::fromUtf8("تحرير"),
+        QKeySequence(QStringLiteral("Ctrl+D")),
+        QString::fromUtf8("مؤشر متعدد المطابقة التالية next match"),
+        [this]() { addCursorAtNextMatchAction(); },
+        [this]() { return editor != nullptr; });
+    registerCommand(
+        QStringLiteral("cursor.selectAllMatches"),
+        QString::fromUtf8("تحديد كل المطابقات"),
+        QString::fromUtf8("تحرير"),
+        QKeySequence(QStringLiteral("Ctrl+Shift+L")),
+        QString::fromUtf8("مؤشر متعدد كل المطابقات select all matches"),
+        [this]() { selectAllCursorMatchesAction(); },
+        [this]() { return editor != nullptr; });
+    registerCommand(
+        QStringLiteral("cursor.collapseToSingle"),
+        QString::fromUtf8("الرجوع إلى مؤشر واحد"),
+        QString::fromUtf8("تحرير"),
+        QKeySequence(),
+        QString::fromUtf8("مؤشر واحد إلغاء المؤشرات المتعددة collapse cursors"),
+        [this]() { collapseToSingleCursorAction(); },
+        [this]() { return editor != nullptr && editor->totalCursorCount() > 1; });
+    registerCommand(
         QStringLiteral("snippet.insertPrint"),
         QString::fromUtf8("إدراج اطبع"),
         QString::fromUtf8("تحرير"),
@@ -1584,6 +1651,42 @@ void MainWindow::registerWorkbenchCommands()
 void MainWindow::insertPrintSnippet()
 {
     insertSnippetById(QStringLiteral("apy.print"));
+}
+
+void MainWindow::addCursorAboveAction()
+{
+    if (editor) {
+        editor->addCursorAbovePrimary();
+    }
+}
+
+void MainWindow::addCursorBelowAction()
+{
+    if (editor) {
+        editor->addCursorBelowPrimary();
+    }
+}
+
+void MainWindow::addCursorAtNextMatchAction()
+{
+    if (editor) {
+        editor->addCursorAtNextMatch();
+    }
+}
+
+void MainWindow::selectAllCursorMatchesAction()
+{
+    if (editor) {
+        editor->selectAllFindMatchesAsCursors();
+    }
+}
+
+void MainWindow::collapseToSingleCursorAction()
+{
+    if (editor) {
+        editor->collapseToSinglePrimaryCursor();
+    }
+    multiCursorSoftCapNoticeShown = false;
 }
 
 void MainWindow::toggleVisibleWhitespace()

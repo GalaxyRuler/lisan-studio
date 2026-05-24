@@ -875,6 +875,11 @@ void TestMainWindow::commandPaletteExposesRegisteredWorkbenchCommands()
     commandIds.sort();
     const QStringList expectedIds = {
         QStringLiteral("command-palette"),
+        QStringLiteral("cursor.addAbove"),
+        QStringLiteral("cursor.addAtNextMatch"),
+        QStringLiteral("cursor.addBelow"),
+        QStringLiteral("cursor.collapseToSingle"),
+        QStringLiteral("cursor.selectAllMatches"),
         QStringLiteral("document.closeWithPrompt"),
         QStringLiteral("document.revert"),
         QStringLiteral("document.save"),
@@ -1019,6 +1024,11 @@ void TestMainWindow::coreCommandSurfacesDeclareRegisteredCommandIds()
 
     const QStringList expectedSurfaceIds = {
         QStringLiteral("command-palette"),
+        QStringLiteral("cursor.addAbove"),
+        QStringLiteral("cursor.addAtNextMatch"),
+        QStringLiteral("cursor.addBelow"),
+        QStringLiteral("cursor.collapseToSingle"),
+        QStringLiteral("cursor.selectAllMatches"),
         QStringLiteral("editor.toggleTrimTrailingWhitespace"),
         QStringLiteral("editor.toggleVisibleWhitespace"),
         QStringLiteral("find-in-file"),

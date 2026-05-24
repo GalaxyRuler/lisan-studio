@@ -21,7 +21,7 @@ private slots:
     void hiddenBidiReplacementDoesNotCreateInvisibleControls();
     void largeFileOpenUndoRedoAndFindReplaceStayWithinBudgets();
     void longArabicLineMaintainsCursorScrollAndPaintSanity();
-    // V1.5: multi-cursor overlay torture is deferred until multi-cursor/column-selection scope is accepted.
+    void multiCursorTypingStormOnHundredCursorsStaysWithinBudget();
     void pasteFromRtlMixedSourceDoesNotInsertHiddenBidiControls();
     void undoRedoStormOfAlternatingEditsKeepsCursorSane();
     void findReplaceStormDoesNotLeakVisibleSelections();
@@ -206,6 +206,53 @@ void TestEditorTorture::longArabicLineMaintainsCursorScrollAndPaintSanity()
         .arg(5000);
     QVERIFY2(timer.elapsed() <= 5000,
         qPrintable(QStringLiteral("50k Arabic line torture exceeded 5000 ms budget: %1 ms").arg(timer.elapsed())));
+}
+
+void TestEditorTorture::multiCursorTypingStormOnHundredCursorsStaysWithinBudget()
+{
+    QStringList lines;
+    for (int i = 0; i < 200; ++i) {
+        lines.append(QStringLiteral("line %1").arg(i, 3, 10, QLatin1Char('0')));
+    }
+
+    EditorSurface editor;
+    editor.resize(960, 420);
+    editor.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&editor));
+    editor.setPlainText(lines.join(QLatin1Char('\n')) + QLatin1Char('\n'));
+
+    QTextCursor primary(editor.document()->findBlockByNumber(0));
+    editor.setTextCursor(primary);
+    for (int line = 1; line < 100; ++line) {
+        const QTextBlock block = editor.document()->findBlockByNumber(line);
+        QVERIFY(block.isValid());
+        QVERIFY(editor.addCursorAtPosition(block.position()));
+    }
+    QCOMPARE(editor.totalCursorCount(), 100);
+
+    const QString typed = QStringLiteral("x").repeated(50);
+    QElapsedTimer typingTimer;
+    typingTimer.start();
+    QTest::keyClicks(&editor, typed);
+    const qint64 typingElapsed = typingTimer.elapsed();
+    qInfo().noquote() << QStringLiteral("PERF metric=%1 elapsed=%2 budget=%3")
+        .arg(QStringLiteral("multi_cursor_typing_100_storm"))
+        .arg(typingElapsed)
+        .arg(2000);
+    QVERIFY2(typingElapsed <= 2000,
+        qPrintable(QStringLiteral("100-cursor typing storm exceeded 2000 ms budget: %1 ms").arg(typingElapsed)));
+
+    QElapsedTimer paintTimer;
+    paintTimer.start();
+    const QImage image = renderEditor(editor);
+    const qint64 paintElapsed = paintTimer.elapsed();
+    QVERIFY(hasPaintedPixel(image));
+    qInfo().noquote() << QStringLiteral("PERF metric=%1 elapsed=%2 budget=%3")
+        .arg(QStringLiteral("multi_cursor_paint_100"))
+        .arg(paintElapsed)
+        .arg(500);
+    QVERIFY2(paintElapsed <= 500,
+        qPrintable(QStringLiteral("100-cursor paint exceeded 500 ms budget: %1 ms").arg(paintElapsed)));
 }
 
 void TestEditorTorture::pasteFromRtlMixedSourceDoesNotInsertHiddenBidiControls()

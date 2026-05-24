@@ -49,27 +49,10 @@ Decide as part of the investigation phase whether a fix is needed.
 - Memory footprint at idle and under torture.
 Produce `docs/performance-baseline-2026.md` with the numbers. This data informs whether multi-cursor's performance budget is realistic and where the editor is fast/slow today.
 **Acceptance.** Baseline document committed. No code change. Numbers are reproducible (script committed alongside the doc, or instructions on how to reproduce).
-### Slice 9 — Multi-cursor and column selection (MSI release; v0.1.x-beta)
-**This is the V1.5 keystone.** Architecturally largest. Has a hard exit ramp.
-**Step 0 (gate, FIRST):** implement the deferred `multiCursorOverlayTorture` test in `tests/TestEditorTorture.cpp` (the deferral comment is at line 23). The test creates 10 active QTextCursor decorations on a 100k-line mixed-direction file, performs 200 inserts spread across the cursors, and asserts:
-- Wall-clock for the 200 inserts ≤1 second.
-- Memory footprint doesn't grow by more than 100MB during the test.
-- Cursor positions remain logically correct after each insert.
-If Step 0 fails or shows >50ms per 10-cursor operation, **abort the slice and move multi-cursor to V2 alongside the LSP/semantic-highlighting work**. The "switch editor widget" fallback from the earlier roadmap draft is not a V1.5 option — it's a multi-month rewrite that invalidates the V1 controller decompositions. The only V1.5 fallbacks are: ship column-select-only (no add-cursor), or defer the whole feature.
-**Step 1+ (if Step 0 passes):** Implement multi-cursor.
-1. `MultiCursorModel` owning a primary `QTextCursor` plus a list of secondaries. Owned by `EditorSurface`.
-2. Key bindings: `Alt+Click` add cursor, `Alt+Shift+Click` column-select between cursors, `Esc` collapse to primary, `Ctrl+D` add next match, `Ctrl+Shift+L` add cursors at all find matches.
-3. Column-select mode: `Alt+Shift+drag` produces a rectangular selection rendered as cursors-per-line at the same column.
-4. Type/paste/delete operations splice through all cursors in order with a single undo group.
-5. Find/replace highlights extend to all cursors' selections.
-6. Visible-whitespace, indent-guide, line-number-area painters get a sanity pass with multiple visible cursors.
-7. If MainWindow.cpp grows during the slice (the new code probably lives on EditorSurface), state the before/after line counts. The slice budget for MainWindow.cpp growth is +0; everything goes on EditorSurface or a new MultiCursorController.
-**Acceptance.**
-- `multiCursorOverlayTorture` passes with the budgets above.
-- All existing torture tests still pass.
-- A real Arabic mixed-direction multi-cursor test (cursors at logical positions in mixed RTL/LTR text) passes.
-- `Ctrl+D` add-next-match integrates with the existing `EditorFindService`.
-- The deferral comment at `tests/TestEditorTorture.cpp:23` is removed and replaced with the real test.
+### Slice 9 — Multi-cursor primary+secondary (V1.5 keystone; NOT MSI release) — landed (see git log)
+**Change.** Add multi-cursor editing in EditorSurface: Ctrl+Click adds cursor, Ctrl+Alt+Up/Down adds cursor above/below, Ctrl+D adds cursor at next match, Ctrl+Shift+L selects all find matches as cursors, Esc collapses. Typing applies to all cursors atomically with single-undo invariant. Soft cap 100 with status-bar notice, hard cap 1000.
+Column / box selection deferred to slice 10. IME multi-cursor deferred to V2.
+**Acceptance.** Six new acs_editor_tests cases pass. Activated torture slot (multi-cursor typing storm with 100 cursors) stays within 2000 ms typing budget and 500 ms paint budget. Existing torture budgets all unchanged.
 ## Cross-cutting policy
 - **Slice ordering rationale.** Time-bounded (Slice 1) and tiny docs items (Slices 2-4) first because they ship in days. Investigation slices (5, 7, 8) before the keystone because they produce data the keystone needs. Multi-cursor last because it's the biggest risk; landing it last means V1.5 has shipped something even if multi-cursor falls.
 - **Per-slice release cadence.** Each MSI-touching slice cuts a new `v0.1.x-beta` release. Docs/CI-only slices land via push without a release. Cumulative V1.5 release count is ~3 MSI releases (Slice 6, possibly Slice 7, Slice 9).
