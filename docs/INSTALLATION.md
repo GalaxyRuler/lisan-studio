@@ -46,6 +46,30 @@ The expected installed executable is:
 %LOCALAPPDATA%\LisanStudio\LisanStudio.exe
 ```
 
+## First-Launch SmartScreen Warning
+
+Lisan Studio betas are unsigned — see
+[ADR-0010](adr/0010-msi-code-signing.md) for the decision to defer code
+signing through the V1.5 milestone. On first launch of the installed
+application, Windows may display a SmartScreen dialog with the heading
+"Windows protected your PC" and the message "Microsoft Defender
+SmartScreen prevented an unrecognized app from starting."
+
+To proceed:
+
+1. Click **More info**.
+2. Click **Run anyway**.
+
+This dialog appears once per fresh install on consumer Windows machines.
+Subsequent launches of the same install do not show the warning.
+
+If you are testing on a managed Windows machine where SmartScreen is
+configured to **Block** (typical of enterprise-managed devices with
+Defender SmartScreen Block enforcement, AppLocker, or Windows Defender
+Application Control), this dialog may be suppressed and the app blocked
+outright. In that case, please file a beta-tester report — this is one
+of the revisit triggers documented in ADR-0010.
+
 ## Upgrading from pre-rename ArabicCodeStudioQt installations
 
 If you installed an early private-beta build that was labeled `ArabicCodeStudioQt` (May 2026 or earlier, before the product rename to Lisan Studio), that installation will NOT be removed automatically when you install Lisan Studio v0.1.1-beta or later. The two products use different Windows Installer UpgradeCodes, so MajorUpgrade does not apply across the rename.

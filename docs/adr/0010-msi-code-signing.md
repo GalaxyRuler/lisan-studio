@@ -46,7 +46,7 @@ Re-evaluate this decision when ANY of the following becomes true:
 
 The "Known issues" section of each release's user-facing notes must mention the SmartScreen warning explicitly, with the exact click-path: "When Windows shows 'Microsoft Defender SmartScreen prevented an unrecognized app from starting', click 'More info', then click 'Run anyway'."
 
-(This documentation update is NOT part of this ADR slice — file a follow-up to update docs/INSTALLATION.md and the next release's KNOWN_ISSUES.md content. Track as backlog: "ADR-0010 followup: SmartScreen click-path in user-facing docs".)
+Follow-up landed (see git log): docs/INSTALLATION.md gained a "First-Launch SmartScreen Warning" section and docs/KNOWN_ISSUES.md gained a SmartScreen bullet describing the same click-path. Both reference this ADR.
 
 ## Consequences
 
