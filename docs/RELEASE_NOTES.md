@@ -1,3 +1,44 @@
+# v0.2.0-beta (2026-05-26)
+
+V1.5 milestone-close release. The V1.5 roadmap is archived at
+`docs/ROADMAP-V1.5-archive.md`; V2 planning continues in
+`docs/ROADMAP-V2.md`.
+
+## Added
+
+- Column / rectangle selection via Alt+drag. Hold Alt and left-drag in
+  the editor to generate one cursor per line in the rectangle, each
+  with a selection (or zero-width cursor when columns coincide)
+  spanning the rectangle's column range. Reuses all of v0.1.3-beta's
+  multi-cursor machinery — atomic edit blocks, soft/hard caps, Esc
+  collapse — so typing, Backspace, Delete, arrow movement, and Return
+  apply across the generated cursors just like Ctrl+Click or Ctrl+D
+  cursors.
+
+## V1.5 milestone summary (informational)
+
+V1.5 shipped across two cumulative release tracks during May 2026:
+
+- **v0.1.2-beta** (2026-05-24): search/replace project-scan cap raised
+  from 500 to 5000 files; release-evidence trust-audit instrumentation;
+  perf baseline established; SmartScreen click-path documented;
+  ADR-0010 defers MSI code signing.
+- **v0.1.3-beta** (2026-05-24): multi-cursor primary+secondary editing
+  keystone (Ctrl+Click, Ctrl+Alt+Up/Down, Ctrl+D, Ctrl+Shift+L, Esc,
+  soft cap 100 / hard cap 1000, single-undo invariant).
+- **v0.2.0-beta** (2026-05-26, this release): Alt+drag column selection
+  closes the V1.5 multi-cursor keystone; milestone closed.
+
+## Known v0.2.0-beta limitations
+
+- Alt+drag column selection has no live preview rectangle during the
+  drag. The generated cursors appear on mouse release. Live preview
+  is deferred to V2.
+- Alt+drag column selection operates on logical lines only. If the
+  editor is showing soft-wrapped lines, the drag rectangle treats
+  each logical line as a single row rather than each wrapped visual
+  row. Soft-wrap-as-visual-row column selection is deferred to V2.
+
 # v0.1.3-beta (2026-05-24)
 
 ## Added
