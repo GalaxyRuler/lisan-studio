@@ -53,6 +53,9 @@ Produce `docs/performance-baseline-2026.md` with the numbers. This data informs 
 **Change.** Add multi-cursor editing in EditorSurface: Ctrl+Click adds cursor, Ctrl+Alt+Up/Down adds cursor above/below, Ctrl+D adds cursor at next match, Ctrl+Shift+L selects all find matches as cursors, Esc collapses. Typing applies to all cursors atomically with single-undo invariant. Soft cap 100 with status-bar notice, hard cap 1000.
 Column / box selection deferred to slice 10. IME multi-cursor deferred to V2.
 **Acceptance.** Six new acs_editor_tests cases pass. Activated torture slot (multi-cursor typing storm with 100 cursors) stays within 2000 ms typing budget and 500 ms paint budget. Existing torture budgets all unchanged.
+### Slice 10 — Column / rectangle selection via Alt+drag — landed (see git log)
+**Change.** Add Alt+drag column selection in EditorSurface. The drag generates N secondary cursors — one per line in the rectangle — reusing the slice-9 multi-cursor machinery. Supports zero-width column drags (same column on multiple lines) and length-clamping for short lines. Hard cap from slice 9 applies.
+**Acceptance.** 5 new acs_editor_tests cases pass. New torture-suite slot `multiCursorColumnSelectionFiftyLinesStaysWithinBudget` stays within 500 ms generation + 200 ms paint budgets.
 ## Cross-cutting policy
 - **Slice ordering rationale.** Time-bounded (Slice 1) and tiny docs items (Slices 2-4) first because they ship in days. Investigation slices (5, 7, 8) before the keystone because they produce data the keystone needs. Multi-cursor last because it's the biggest risk; landing it last means V1.5 has shipped something even if multi-cursor falls.
 - **Per-slice release cadence.** Each MSI-touching slice cuts a new `v0.1.x-beta` release. Docs/CI-only slices land via push without a release. Cumulative V1.5 release count is ~3 MSI releases (Slice 6, possibly Slice 7, Slice 9).

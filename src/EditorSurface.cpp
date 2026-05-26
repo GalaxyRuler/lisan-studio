@@ -619,6 +619,65 @@ int EditorSurface::selectAllFindMatchesAsCursors()
     return added;
 }
 
+int EditorSurface::generateColumnSelectionBetween(const QTextCursor &anchor, const QTextCursor &release)
+{
+    if (totalCursorCount() >= kHardCursorCap) {
+        return 0;
+    }
+
+    const int anchorBlock = anchor.blockNumber();
+    const int releaseBlock = release.blockNumber();
+    const int anchorCol = qMax(0, anchor.position() - anchor.block().position());
+    const int releaseCol = qMax(0, release.position() - release.block().position());
+    const int startBlock = qMin(anchorBlock, releaseBlock);
+    const int endBlock = qMax(anchorBlock, releaseBlock);
+    const int leftCol = qMin(anchorCol, releaseCol);
+    const int rightCol = qMax(anchorCol, releaseCol);
+
+    int added = 0;
+    for (int blockIndex = startBlock; blockIndex <= endBlock; ++blockIndex) {
+        if (totalCursorCount() >= kHardCursorCap) {
+            break;
+        }
+
+        const QTextBlock block = document()->findBlockByNumber(blockIndex);
+        if (!block.isValid()) {
+            continue;
+        }
+
+        const int lineLen = qMax(0, block.length() - 1);
+        const int clampedLeft = qMin(leftCol, lineLen);
+        const int clampedRight = qMin(rightCol, lineLen);
+        const int leftPosition = block.position() + clampedLeft;
+        const int rightPosition = block.position() + clampedRight;
+        const bool usePrimary = blockIndex == startBlock && secondaryCursors.isEmpty();
+
+        QTextCursor columnCursor(document());
+        columnCursor.setPosition(leftPosition);
+        if (clampedLeft != clampedRight) {
+            columnCursor.setPosition(rightPosition, QTextCursor::KeepAnchor);
+        }
+
+        if (usePrimary) {
+            setTextCursor(columnCursor);
+            continue;
+        }
+
+        if (!addCursorAtPosition(clampedLeft == clampedRight ? leftPosition : rightPosition)) {
+            continue;
+        }
+        QTextCursor &secondary = secondaryCursors.last();
+        secondary.setPosition(leftPosition);
+        if (clampedLeft != clampedRight) {
+            secondary.setPosition(rightPosition, QTextCursor::KeepAnchor);
+        }
+        ++added;
+    }
+
+    viewport()->update();
+    return added;
+}
+
 void EditorSurface::collapseToSinglePrimaryCursor()
 {
     if (secondaryCursors.isEmpty()) {
@@ -1026,6 +1085,13 @@ void EditorSurface::contextMenuEvent(QContextMenuEvent *event)
 
 void EditorSurface::mousePressEvent(QMouseEvent *event)
 {
+    if (event->button() == Qt::LeftButton && event->modifiers() == Qt::AltModifier) {
+        inAltColumnDrag = true;
+        altColumnDragAnchor = cursorForPosition(event->pos());
+        event->accept();
+        return;
+    }
+
     if (event->button() == Qt::LeftButton && event->modifiers() == Qt::ControlModifier) {
         const QTextCursor cursor = cursorForPosition(event->pos());
         addCursorAtPosition(cursor.position());
@@ -1034,6 +1100,19 @@ void EditorSurface::mousePressEvent(QMouseEvent *event)
     }
 
     QPlainTextEdit::mousePressEvent(event);
+}
+
+void EditorSurface::mouseReleaseEvent(QMouseEvent *event)
+{
+    if (inAltColumnDrag) {
+        const QTextCursor releaseCursor = cursorForPosition(event->pos());
+        generateColumnSelectionBetween(altColumnDragAnchor, releaseCursor);
+        inAltColumnDrag = false;
+        event->accept();
+        return;
+    }
+
+    QPlainTextEdit::mouseReleaseEvent(event);
 }
 
 void EditorSurface::keyPressEvent(QKeyEvent *event)

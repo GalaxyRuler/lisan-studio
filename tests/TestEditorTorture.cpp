@@ -22,6 +22,7 @@ private slots:
     void largeFileOpenUndoRedoAndFindReplaceStayWithinBudgets();
     void longArabicLineMaintainsCursorScrollAndPaintSanity();
     void multiCursorTypingStormOnHundredCursorsStaysWithinBudget();
+    void multiCursorColumnSelectionFiftyLinesStaysWithinBudget();
     void pasteFromRtlMixedSourceDoesNotInsertHiddenBidiControls();
     void undoRedoStormOfAlternatingEditsKeepsCursorSane();
     void findReplaceStormDoesNotLeakVisibleSelections();
@@ -253,6 +254,48 @@ void TestEditorTorture::multiCursorTypingStormOnHundredCursorsStaysWithinBudget(
         .arg(500);
     QVERIFY2(paintElapsed <= 500,
         qPrintable(QStringLiteral("100-cursor paint exceeded 500 ms budget: %1 ms").arg(paintElapsed)));
+}
+
+void TestEditorTorture::multiCursorColumnSelectionFiftyLinesStaysWithinBudget()
+{
+    QStringList lines;
+    for (int i = 0; i < 100; ++i) {
+        lines.append(QStringLiteral("x").repeated(80));
+    }
+
+    EditorSurface editor;
+    editor.resize(960, 420);
+    editor.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&editor));
+    editor.setPlainText(lines.join(QLatin1Char('\n')) + QLatin1Char('\n'));
+
+    QTextCursor anchor(editor.document()->findBlockByNumber(0));
+    anchor.setPosition(anchor.block().position() + 4);
+    QTextCursor release(editor.document()->findBlockByNumber(49));
+    release.setPosition(release.block().position() + 44);
+
+    QElapsedTimer generationTimer;
+    generationTimer.start();
+    QCOMPARE(editor.generateColumnSelectionBetween(anchor, release), 49);
+    const qint64 generationElapsed = generationTimer.elapsed();
+    qInfo().noquote() << QStringLiteral("PERF metric=%1 elapsed=%2 budget=%3")
+        .arg(QStringLiteral("column_select_50_lines"))
+        .arg(generationElapsed)
+        .arg(500);
+    QVERIFY2(generationElapsed <= 500,
+        qPrintable(QStringLiteral("50-line column selection exceeded 500 ms budget: %1 ms").arg(generationElapsed)));
+
+    QElapsedTimer paintTimer;
+    paintTimer.start();
+    const QImage image = renderEditor(editor);
+    const qint64 paintElapsed = paintTimer.elapsed();
+    QVERIFY(hasPaintedPixel(image));
+    qInfo().noquote() << QStringLiteral("PERF metric=%1 elapsed=%2 budget=%3")
+        .arg(QStringLiteral("column_select_50_paint"))
+        .arg(paintElapsed)
+        .arg(200);
+    QVERIFY2(paintElapsed <= 200,
+        qPrintable(QStringLiteral("50-line column selection paint exceeded 200 ms budget: %1 ms").arg(paintElapsed)));
 }
 
 void TestEditorTorture::pasteFromRtlMixedSourceDoesNotInsertHiddenBidiControls()

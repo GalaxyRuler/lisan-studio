@@ -5,6 +5,7 @@
 
 #include <QMenu>
 
+#include <algorithm>
 #include <memory>
 
 class TestEditorSurface : public QObject
@@ -48,6 +49,11 @@ private slots:
     void collapseToSinglePrimaryCursorClearsAllSecondaries();
     void typingWithMultipleCursorsInsertsAtAllPositions();
     void selectAllFindMatchesAsCursorsConvertsFindHighlights();
+    void altColumnDragGeneratesOneCursorPerLineInRectangle();
+    void altColumnDragWithZeroWidthColumnsGeneratesZeroWidthCursors();
+    void altColumnDragRespectsLineLengthClamping();
+    void altColumnDragRespectsHardCursorCap();
+    void altLeftMousePressThenReleaseInvokesColumnGeneration();
 };
 
 static QString tortureText()
@@ -688,6 +694,26 @@ void TestEditorSurface::emptyEditorPlaceholderPaintsFromRight()
             .arg(background.blue())));
 }
 
+static QTextCursor cursorAtLineColumn(EditorSurface &editor, int line, int column)
+{
+    QTextBlock block = editor.document()->findBlockByNumber(line);
+    Q_ASSERT(block.isValid());
+    QTextCursor cursor(block);
+    cursor.setPosition(block.position() + qMin(column, block.length() - 1));
+    return cursor;
+}
+
+static QVector<QTextCursor> allTestCursors(const EditorSurface &editor)
+{
+    QVector<QTextCursor> cursors;
+    cursors.append(editor.textCursor());
+    cursors += editor.secondaryCursorsForTest();
+    std::sort(cursors.begin(), cursors.end(), [](const QTextCursor &left, const QTextCursor &right) {
+        return left.blockNumber() < right.blockNumber();
+    });
+    return cursors;
+}
+
 void TestEditorSurface::addCursorAtPositionRespectsHardCapAndReturnsFalse()
 {
     EditorSurface editor;
@@ -784,6 +810,109 @@ void TestEditorSurface::selectAllFindMatchesAsCursorsConvertsFindHighlights()
     QCOMPARE(editor.findMatchCount(), 4);
     QCOMPARE(editor.selectAllFindMatchesAsCursors(), 3);
     QCOMPARE(editor.totalCursorCount(), 4);
+}
+
+void TestEditorSurface::altColumnDragGeneratesOneCursorPerLineInRectangle()
+{
+    EditorSurface editor;
+    editor.setPlainText(QStringLiteral("0123456789\n0123456789\n0123456789\n0123456789\n0123456789\n0123456789\n"));
+
+    QCOMPARE(editor.generateColumnSelectionBetween(cursorAtLineColumn(editor, 1, 2), cursorAtLineColumn(editor, 4, 6)), 3);
+    QCOMPARE(editor.totalCursorCount(), 4);
+
+    const QVector<QTextCursor> cursors = allTestCursors(editor);
+    QCOMPARE(cursors.size(), 4);
+    for (int i = 0; i < cursors.size(); ++i) {
+        QCOMPARE(cursors.at(i).blockNumber(), i + 1);
+        QCOMPARE(cursors.at(i).selectionStart() - cursors.at(i).block().position(), 2);
+        QCOMPARE(cursors.at(i).selectionEnd() - cursors.at(i).block().position(), 6);
+        QCOMPARE(cursors.at(i).selectedText(), QStringLiteral("2345"));
+    }
+}
+
+void TestEditorSurface::altColumnDragWithZeroWidthColumnsGeneratesZeroWidthCursors()
+{
+    EditorSurface editor;
+    editor.setPlainText(QStringLiteral("0123456789\n0123456789\n0123456789\n0123456789\n0123456789\n0123456789\n"));
+
+    QCOMPARE(editor.generateColumnSelectionBetween(cursorAtLineColumn(editor, 1, 3), cursorAtLineColumn(editor, 4, 3)), 3);
+    QCOMPARE(editor.totalCursorCount(), 4);
+
+    const QVector<QTextCursor> cursors = allTestCursors(editor);
+    QCOMPARE(cursors.size(), 4);
+    for (int i = 0; i < cursors.size(); ++i) {
+        QCOMPARE(cursors.at(i).blockNumber(), i + 1);
+        QCOMPARE(cursors.at(i).anchor(), cursors.at(i).position());
+        QCOMPARE(cursors.at(i).position() - cursors.at(i).block().position(), 3);
+    }
+}
+
+void TestEditorSurface::altColumnDragRespectsLineLengthClamping()
+{
+    EditorSurface editor;
+    editor.setPlainText(QStringLiteral("abc\n0123456789\n"));
+
+    QCOMPARE(editor.generateColumnSelectionBetween(cursorAtLineColumn(editor, 0, 0), cursorAtLineColumn(editor, 1, 8)), 1);
+    QCOMPARE(editor.totalCursorCount(), 2);
+
+    const QVector<QTextCursor> cursors = allTestCursors(editor);
+    QCOMPARE(cursors.size(), 2);
+    QCOMPARE(cursors.at(0).blockNumber(), 0);
+    QCOMPARE(cursors.at(0).selectionStart() - cursors.at(0).block().position(), 0);
+    QCOMPARE(cursors.at(0).selectionEnd() - cursors.at(0).block().position(), 3);
+    QCOMPARE(cursors.at(0).selectedText(), QStringLiteral("abc"));
+    QCOMPARE(cursors.at(1).blockNumber(), 1);
+    QCOMPARE(cursors.at(1).selectionStart() - cursors.at(1).block().position(), 0);
+    QCOMPARE(cursors.at(1).selectionEnd() - cursors.at(1).block().position(), 8);
+    QCOMPARE(cursors.at(1).selectedText(), QStringLiteral("01234567"));
+}
+
+void TestEditorSurface::altColumnDragRespectsHardCursorCap()
+{
+    QStringList lines;
+    for (int i = 0; i < 1500; ++i) {
+        lines.append(QStringLiteral("0123456789"));
+    }
+
+    EditorSurface editor;
+    editor.setPlainText(lines.join(QLatin1Char('\n')) + QLatin1Char('\n'));
+
+    const int added = editor.generateColumnSelectionBetween(cursorAtLineColumn(editor, 0, 0), cursorAtLineColumn(editor, 1499, 2));
+    QVERIFY(added <= EditorSurface::kHardCursorCap - 1);
+    QCOMPARE(added, EditorSurface::kHardCursorCap - 1);
+    QVERIFY(editor.totalCursorCount() <= EditorSurface::kHardCursorCap);
+}
+
+void TestEditorSurface::altLeftMousePressThenReleaseInvokesColumnGeneration()
+{
+    EditorSurface mouseEditor;
+    mouseEditor.resize(640, 360);
+    mouseEditor.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&mouseEditor));
+    mouseEditor.setPlainText(QStringLiteral("0123456789\n0123456789\n0123456789\n0123456789\n"));
+
+    QTextCursor anchor = cursorAtLineColumn(mouseEditor, 0, 2);
+    QTextCursor release = cursorAtLineColumn(mouseEditor, 2, 5);
+    const QPoint anchorPoint = mouseEditor.cursorRect(anchor).center();
+    const QPoint releasePoint = mouseEditor.cursorRect(release).center();
+    QTest::mousePress(mouseEditor.viewport(), Qt::LeftButton, Qt::AltModifier, anchorPoint);
+    QTest::mouseRelease(mouseEditor.viewport(), Qt::LeftButton, Qt::AltModifier, releasePoint);
+
+    EditorSurface directEditor;
+    directEditor.setPlainText(QStringLiteral("0123456789\n0123456789\n0123456789\n0123456789\n"));
+    directEditor.generateColumnSelectionBetween(cursorAtLineColumn(directEditor, 0, 2), cursorAtLineColumn(directEditor, 2, 5));
+
+    QCOMPARE(mouseEditor.totalCursorCount(), directEditor.totalCursorCount());
+    const QVector<QTextCursor> mouseCursors = allTestCursors(mouseEditor);
+    const QVector<QTextCursor> directCursors = allTestCursors(directEditor);
+    QCOMPARE(mouseCursors.size(), directCursors.size());
+    for (int i = 0; i < mouseCursors.size(); ++i) {
+        QCOMPARE(mouseCursors.at(i).blockNumber(), directCursors.at(i).blockNumber());
+        QCOMPARE(mouseCursors.at(i).selectionStart() - mouseCursors.at(i).block().position(),
+            directCursors.at(i).selectionStart() - directCursors.at(i).block().position());
+        QCOMPARE(mouseCursors.at(i).selectionEnd() - mouseCursors.at(i).block().position(),
+            directCursors.at(i).selectionEnd() - directCursors.at(i).block().position());
+    }
 }
 
 QTEST_MAIN(TestEditorSurface)

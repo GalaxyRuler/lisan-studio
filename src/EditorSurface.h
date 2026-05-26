@@ -61,6 +61,7 @@ public:
     bool addCursorBelowPrimary();
     bool addCursorAtNextMatch();
     int selectAllFindMatchesAsCursors();
+    int generateColumnSelectionBetween(const QTextCursor &anchor, const QTextCursor &release);
     void collapseToSinglePrimaryCursor();
     int lineNumberAreaWidth() const;
     void lineNumberAreaPaintEvent(QPaintEvent *event);
@@ -84,10 +85,12 @@ private:
     bool trimTrailingWhitespace = false;
     bool showIndentationGuides = true;
     bool cursorSoftCapNotified = false;
+    bool inAltColumnDrag = false;
     DocumentLineEnding saveLineEnding = DocumentLineEnding::None;
     ApyHighlighter *highlighter = nullptr;
     LineNumberArea *lineNumberArea = nullptr;
     QVector<QTextCursor> secondaryCursors;
+    QTextCursor altColumnDragAnchor;
 
     static QString unicodeName(QChar ch);
     void setCurrentFilePath(const QString &path);
@@ -104,6 +107,7 @@ private:
     void updateLineNumberArea(const QRect &rect, int dy);
     void contextMenuEvent(QContextMenuEvent *event) override;
     void mousePressEvent(QMouseEvent *event) override;
+    void mouseReleaseEvent(QMouseEvent *event) override;
     void keyPressEvent(QKeyEvent *event) override;
     void inputMethodEvent(QInputMethodEvent *event) override;
     void paintEvent(QPaintEvent *event) override;
