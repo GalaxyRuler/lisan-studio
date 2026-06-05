@@ -733,6 +733,7 @@ void MainWindow::buildUi()
     });
     connect(addTextOnlyMenuAction(editMenu, QString::fromUtf8("إيجاد المراجع"), QKeySequence(QStringLiteral("Shift+F12")), QStringLiteral("lsp.findReferences")), &QAction::triggered, this, &MainWindow::requestLanguageServerReferences);
     connect(addTextOnlyMenuAction(editMenu, QString::fromUtf8("إعادة تسمية الرمز"), QKeySequence(QStringLiteral("F2")), QStringLiteral("lsp.renameSymbol")), &QAction::triggered, this, &MainWindow::requestLanguageServerRename);
+    connect(addTextOnlyMenuAction(editMenu, QString::fromUtf8("انتقال إلى رمز في المشروع"), QKeySequence(QStringLiteral("Ctrl+T")), QStringLiteral("lsp.workspaceSymbol")), &QAction::triggered, this, &MainWindow::requestLanguageServerWorkspaceSymbols);
     // Esc is handled directly by EditorSurface so the app-level action does not steal normal editor cancellation.
     connect(addTextOnlyMenuAction(editMenu, QString::fromUtf8("الرجوع إلى مؤشر واحد"), QKeySequence(), QStringLiteral("cursor.collapseToSingle")), &QAction::triggered, this, &MainWindow::collapseToSingleCursorAction);
     connect(addTextOnlyMenuAction(editMenu, QString::fromUtf8("إدراج اطبع"), QKeySequence(), QStringLiteral("snippet.insertPrint")), &QAction::triggered, this, &MainWindow::insertPrintSnippet);
@@ -1049,6 +1050,16 @@ void MainWindow::buildUi()
     connect(referencesPanel, &QListWidget::itemActivated, this, &MainWindow::openReferenceResult);
     connect(referencesPanel, &QListWidget::itemDoubleClicked, this, &MainWindow::openReferenceResult);
 
+    outlinePanel = new QListWidget(bottomPanelTabs);
+    outlinePanel->setObjectName(QStringLiteral("outlinePanel"));
+    outlinePanel->setLayoutDirection(Qt::RightToLeft);
+    outlinePanel->setWordWrap(true);
+    outlinePanel->setUniformItemSizes(false);
+    outlinePanel->setToolTip(QString::fromUtf8("مخطط رموز الملف من خادم اللغة. اضغط Enter أو انقر مرتين للفتح."));
+    connect(outlinePanel, &QListWidget::itemClicked, this, &MainWindow::openOutlineResult);
+    connect(outlinePanel, &QListWidget::itemActivated, this, &MainWindow::openOutlineResult);
+    connect(outlinePanel, &QListWidget::itemDoubleClicked, this, &MainWindow::openOutlineResult);
+
     auto *arabicDebugPanel = new ArabicPlaceholderPlainTextEdit(bottomPanelTabs);
     debugPanel = arabicDebugPanel;
     debugPanel->setObjectName(QStringLiteral("debugPanel"));
@@ -1061,6 +1072,7 @@ void MainWindow::buildUi()
     bottomPanelTabs->addTab(problemsPanel, QString::fromUtf8("المشاكل"));
     bottomPanelTabs->addTab(searchResultsPanel, QString::fromUtf8("نتائج البحث"));
     bottomPanelTabs->addTab(referencesPanel, QString::fromUtf8("المراجع"));
+    bottomPanelTabs->addTab(outlinePanel, QString::fromUtf8("المخطط"));
     bottomPanelTabs->addTab(debugPanel, QString::fromUtf8("التصحيح"));
     bottomPanels = std::make_unique<BottomPanelController>(
         bottomPanelTabs,
@@ -1069,6 +1081,7 @@ void MainWindow::buildUi()
         problemsPanel,
         searchResultsPanel,
         referencesPanel,
+        outlinePanel,
         debugPanel);
 
     outputDock = new QDockWidget(QString::fromUtf8("اللوحة السفلية"), this);
@@ -1547,6 +1560,14 @@ void MainWindow::registerWorkbenchCommands()
         QKeySequence(QStringLiteral("F2")),
         QString::fromUtf8("إعادة تسمية refactor rename symbol language server"),
         [this]() { requestLanguageServerRename(); },
+        [this]() { return editor != nullptr; });
+    registerCommand(
+        QStringLiteral("lsp.workspaceSymbol"),
+        QString::fromUtf8("انتقال إلى رمز في المشروع"),
+        QString::fromUtf8("تحرير"),
+        QKeySequence(QStringLiteral("Ctrl+T")),
+        QString::fromUtf8("رمز مشروع workspace symbol language server"),
+        [this]() { requestLanguageServerWorkspaceSymbols(); },
         [this]() { return editor != nullptr; });
     registerCommand(
         QStringLiteral("snippet.insertPrint"),
@@ -2470,6 +2491,107 @@ void MainWindow::renderReferences(const QVector<LspLocation> &locations)
     showReferencesPanel();
 }
 
+void MainWindow::renderOutline(const QVector<LspSymbol> &symbols)
+{
+    outlinePanel->clear();
+    for (const LspSymbol &symbol : symbols) {
+        auto *item = new QListWidgetItem(outlinePanel);
+        item->setData(Qt::UserRole, symbol.uri);
+        item->setData(Qt::UserRole + 1, symbol.line + 1);
+        item->setData(Qt::UserRole + 2, symbol.character + 1);
+        item->setToolTip(QString::fromUtf8("%1\n%2:%3")
+            .arg(symbol.name)
+            .arg(symbol.line + 1)
+            .arg(symbol.character + 1));
+        item->setText(symbol.detail.isEmpty()
+                ? symbol.name
+                : QStringLiteral("%1 - %2").arg(symbol.name, symbol.detail));
+
+        auto *rowWidget = new QWidget(outlinePanel);
+        rowWidget->setObjectName(QStringLiteral("outlineResultRow"));
+        rowWidget->setLayoutDirection(Qt::RightToLeft);
+        rowWidget->setMinimumHeight(64);
+        auto *rowLayout = new QVBoxLayout(rowWidget);
+        rowLayout->setContentsMargins(16, 12, 16, 12);
+        rowLayout->setSpacing(4);
+
+        auto *nameLabel = new QLabel(symbol.name, rowWidget);
+        nameLabel->setObjectName(QStringLiteral("outlineResultNameLabel"));
+        nameLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        nameLabel->setLayoutDirection(Qt::RightToLeft);
+        nameLabel->setStyleSheet(QStringLiteral("color: #E8ECF2; font-weight: 600;"));
+
+        const QString detailText = symbol.detail.isEmpty()
+            ? QString::fromUtf8("السطر %1، العمود %2").arg(symbol.line + 1).arg(symbol.character + 1)
+            : QString::fromUtf8("%1 - السطر %2، العمود %3").arg(symbol.detail).arg(symbol.line + 1).arg(symbol.character + 1);
+        auto *detailLabel = new QLabel(detailText, rowWidget);
+        detailLabel->setObjectName(QStringLiteral("outlineResultDetailLabel"));
+        detailLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        detailLabel->setLayoutDirection(Qt::RightToLeft);
+        detailLabel->setStyleSheet(QStringLiteral("color: #AEC6FF;"));
+
+        rowLayout->addWidget(nameLabel);
+        rowLayout->addWidget(detailLabel);
+        item->setSizeHint(QSize(rowWidget->sizeHint().width(), 64));
+        outlinePanel->setItemWidget(item, rowWidget);
+    }
+    showOutlinePanel();
+}
+
+void MainWindow::openWorkspaceSymbolPicker(const QVector<LspSymbol> &symbols)
+{
+    if (symbols.isEmpty()) {
+        setStatus(QString::fromUtf8("لا توجد رموز مطابقة"));
+        return;
+    }
+
+    QDialog dialog(this);
+    dialog.setObjectName(QStringLiteral("workspaceSymbolDialog"));
+    dialog.setWindowTitle(QString::fromUtf8("انتقال إلى رمز في المشروع"));
+    dialog.setLayoutDirection(Qt::RightToLeft);
+
+    auto *layout = new QVBoxLayout(&dialog);
+    layout->setContentsMargins(16, 16, 16, 16);
+    layout->setSpacing(12);
+
+    auto *results = new QListWidget(&dialog);
+    results->setObjectName(QStringLiteral("workspaceSymbolResults"));
+    results->setLayoutDirection(Qt::RightToLeft);
+    results->setWordWrap(true);
+    results->setUniformItemSizes(false);
+    for (const LspSymbol &symbol : symbols) {
+        const QString path = QUrl(symbol.uri).toLocalFile();
+        auto *item = new QListWidgetItem(results);
+        item->setData(Qt::UserRole, symbol.uri);
+        item->setData(Qt::UserRole + 1, symbol.line + 1);
+        item->setData(Qt::UserRole + 2, symbol.character + 1);
+        item->setText(QString::fromUtf8("%1 - %2:%3")
+            .arg(symbol.name)
+            .arg(path.isEmpty() ? symbol.uri : QFileInfo(path).fileName())
+            .arg(symbol.line + 1));
+        item->setToolTip(QString::fromUtf8("%1\n%2:%3")
+            .arg(QDir::toNativeSeparators(path.isEmpty() ? symbol.uri : path))
+            .arg(symbol.line + 1)
+            .arg(symbol.character + 1));
+    }
+    results->setCurrentRow(0);
+    layout->addWidget(results);
+
+    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+    buttons->button(QDialogButtonBox::Ok)->setText(QString::fromUtf8("فتح"));
+    buttons->button(QDialogButtonBox::Cancel)->setText(QString::fromUtf8("إلغاء"));
+    layout->addWidget(buttons);
+
+    connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    connect(results, &QListWidget::itemActivated, &dialog, &QDialog::accept);
+    connect(results, &QListWidget::itemDoubleClicked, &dialog, &QDialog::accept);
+
+    if (dialog.exec() == QDialog::Accepted && results->currentItem()) {
+        openReferenceResult(results->currentItem());
+    }
+}
+
 void MainWindow::renderRenamePreview(const LspWorkspaceEdit &edit)
 {
     referencesPanel->clear();
@@ -2860,6 +2982,11 @@ void MainWindow::openReferenceResult(QListWidgetItem *item)
         openEditorFile(path);
     }
     goToEditorLocation(line, column);
+}
+
+void MainWindow::openOutlineResult(QListWidgetItem *item)
+{
+    openReferenceResult(item);
 }
 
 void MainWindow::clearEditorsForDeletedPath(const QString &path)
@@ -3448,11 +3575,14 @@ void MainWindow::syncCurrentEditorToLanguageServer(bool reopenDocument)
         lspDocumentVersion = 1;
         lspDocumentOpen = true;
         lspClient.openDocument(lspDocumentUri, QStringLiteral("apy"), lspDocumentVersion, editor->toPlainText());
+        requestLanguageServerSemanticTokens();
+        requestLanguageServerDocumentSymbols();
         return;
     }
 
     ++lspDocumentVersion;
     lspClient.changeDocument(lspDocumentUri, lspDocumentVersion, editor->toPlainText());
+    requestLanguageServerSemanticTokens();
 }
 
 void MainWindow::notifyLanguageServerOfSave()
@@ -3621,6 +3751,82 @@ void MainWindow::requestLanguageServerRename()
     }
 }
 
+void MainWindow::requestLanguageServerSemanticTokens()
+{
+    if (!editor) {
+        return;
+    }
+    if (!lspClient.isRunning() || !lspDocumentOpen || !lspClient.initializeResult().semanticTokensProvider) {
+        editor->setSemanticTokens({});
+        return;
+    }
+
+    QString error;
+    const QVector<LspSemanticToken> lspTokens = lspClient.requestSemanticTokens(lspDocumentUri, 500, &error);
+    if (!error.isEmpty()) {
+        return;
+    }
+
+    QVector<EditorSemanticToken> editorTokens;
+    editorTokens.reserve(lspTokens.size());
+    for (const LspSemanticToken &token : lspTokens) {
+        editorTokens.append({token.line, token.startCharacter, token.length, token.tokenType});
+    }
+    editor->setSemanticTokens(editorTokens);
+}
+
+void MainWindow::requestLanguageServerDocumentSymbols()
+{
+    if (!editor) {
+        return;
+    }
+    if (!lspClient.isRunning() || !lspDocumentOpen || !lspClient.initializeResult().documentSymbolProvider) {
+        if (outlinePanel) {
+            outlinePanel->clear();
+        }
+        return;
+    }
+
+    QString error;
+    const QVector<LspSymbol> symbols = lspClient.requestDocumentSymbols(lspDocumentUri, 500, &error);
+    if (error.isEmpty()) {
+        renderOutline(symbols);
+    }
+}
+
+void MainWindow::requestLanguageServerWorkspaceSymbols()
+{
+    if (!editor) {
+        return;
+    }
+
+    syncCurrentEditorToLanguageServer(false);
+    if (!lspClient.isRunning() || !lspClient.initializeResult().workspaceSymbolProvider) {
+        setStatus(QString::fromUtf8("خادم اللغة غير جاهز لرموز المشروع"));
+        return;
+    }
+
+    bool accepted = false;
+    const QString query = QInputDialog::getText(
+        this,
+        QString::fromUtf8("انتقال إلى رمز في المشروع"),
+        QString::fromUtf8("اسم الرمز:"),
+        QLineEdit::Normal,
+        QString(),
+        &accepted);
+    if (!accepted) {
+        return;
+    }
+
+    QString error;
+    const QVector<LspSymbol> symbols = lspClient.requestWorkspaceSymbols(query.trimmed(), 1000, &error);
+    if (!error.isEmpty()) {
+        setStatus(error);
+        return;
+    }
+    openWorkspaceSymbolPicker(symbols);
+}
+
 void MainWindow::updateStatusIndicators()
 {
     if (!statusEncodingLabel || !statusLineEndingLabel || !statusIndentationLabel || !statusLanguageModeLabel || !statusRuntimeLabel || !statusGitLabel) {
@@ -3700,6 +3906,18 @@ void MainWindow::showReferencesPanel()
     }
     if (bottomPanels) {
         bottomPanels->showReferencesPanel();
+    }
+    outputDock->raise();
+    resizeDocks({outputDock}, {190}, Qt::Vertical);
+}
+
+void MainWindow::showOutlinePanel()
+{
+    if (!outputDock->isVisible()) {
+        outputDock->show();
+    }
+    if (bottomPanels) {
+        bottomPanels->showOutlinePanel();
     }
     outputDock->raise();
     resizeDocks({outputDock}, {190}, Qt::Vertical);

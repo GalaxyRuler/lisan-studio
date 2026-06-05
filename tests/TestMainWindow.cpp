@@ -103,6 +103,8 @@ private slots:
     void projectSearchShowsClickableResultRows();
     void projectSearchFindsCurrentUnsavedEditorImmediately();
     void referencesPanelPopulatesAndOpensLocations();
+    void outlinePanelRendersDocumentSymbolsAndOpensLocations();
+    void workspaceSymbolPickerNavigatesSelectedSymbol();
     void renameWorkspaceEditAppliesAcrossFilesAndShowsPreview();
     void renameWorkspaceEditRollsBackWhenAnyEditIsInvalid();
     void overlappingFindInProjectReleasesPriorSearchWatcher();
@@ -705,13 +707,14 @@ void TestMainWindow::exposesPremiumFutureBottomPanelTabs()
     auto *tabs = window.findChild<QTabWidget *>(QStringLiteral("bottomPanelTabs"));
     QVERIFY(tabs != nullptr);
     QCOMPARE(tabs->layoutDirection(), Qt::RightToLeft);
-    QCOMPARE(tabs->count(), 6);
+    QCOMPARE(tabs->count(), 7);
     QCOMPARE(tabs->tabText(0), QString::fromUtf8("الطرفية"));
     QCOMPARE(tabs->tabText(1), QString::fromUtf8("الإخراج"));
     QCOMPARE(tabs->tabText(2), QString::fromUtf8("المشاكل"));
     QCOMPARE(tabs->tabText(3), QString::fromUtf8("نتائج البحث"));
     QCOMPARE(tabs->tabText(4), QString::fromUtf8("المراجع"));
-    QCOMPARE(tabs->tabText(5), QString::fromUtf8("التصحيح"));
+    QCOMPARE(tabs->tabText(5), QString::fromUtf8("المخطط"));
+    QCOMPARE(tabs->tabText(6), QString::fromUtf8("التصحيح"));
 }
 
 void TestMainWindow::enforcesRtlDirectionAcrossShellContainers()
@@ -895,6 +898,7 @@ void TestMainWindow::commandPaletteExposesRegisteredWorkbenchCommands()
         QStringLiteral("lsp.findReferences"),
         QStringLiteral("lsp.goToDefinition"),
         QStringLiteral("lsp.renameSymbol"),
+        QStringLiteral("lsp.workspaceSymbol"),
         QStringLiteral("run.formatCurrentFile"),
         QStringLiteral("run.lintCurrentFile"),
         QStringLiteral("file.new"),
@@ -1044,6 +1048,7 @@ void TestMainWindow::coreCommandSurfacesDeclareRegisteredCommandIds()
         QStringLiteral("lsp.findReferences"),
         QStringLiteral("lsp.goToDefinition"),
         QStringLiteral("lsp.renameSymbol"),
+        QStringLiteral("lsp.workspaceSymbol"),
         QStringLiteral("run.formatCurrentFile"),
         QStringLiteral("run.lintCurrentFile"),
         QStringLiteral("file.new"),
@@ -2267,6 +2272,83 @@ void TestMainWindow::referencesPanelPopulatesAndOpensLocations()
     auto *editor = window.findChild<EditorSurface *>(QStringLiteral("editorSurface"));
     QVERIFY(editor != nullptr);
     QCOMPARE(editor->textCursor().blockNumber(), 2);
+}
+
+void TestMainWindow::outlinePanelRendersDocumentSymbolsAndOpensLocations()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    QDir root(temp.path());
+    const QString filePath = writeFile(
+        root,
+        QStringLiteral("src/main.apy"),
+        QString::fromUtf8("دالة اجمع(س):\n    ارجع س\n\nاطبع(اجمع(١))\n"));
+
+    MainWindow window;
+    window.resize(1000, 700);
+    QVERIFY(window.openPath(root.absolutePath()));
+
+    QVector<LspSymbol> symbols;
+    symbols.append({QString::fromUtf8("اجمع"), QStringLiteral("function"), QUrl::fromLocalFile(filePath).toString(), 0, 5, 12});
+    window.renderOutlineForTest(symbols);
+
+    auto *panel = window.findChild<QListWidget *>(QStringLiteral("outlinePanel"));
+    QVERIFY(panel != nullptr);
+    QCOMPARE(panel->layoutDirection(), Qt::RightToLeft);
+    QCOMPARE(panel->count(), 1);
+    QCOMPARE(panel->item(0)->data(Qt::UserRole).toString(), QUrl::fromLocalFile(filePath).toString());
+    QCOMPARE(panel->item(0)->data(Qt::UserRole + 1).toInt(), 1);
+    QCOMPARE(panel->item(0)->data(Qt::UserRole + 2).toInt(), 6);
+    QVERIFY(panel->item(0)->text().contains(QString::fromUtf8("اجمع")));
+
+    auto *tabs = window.findChild<QTabWidget *>(QStringLiteral("bottomPanelTabs"));
+    QVERIFY(tabs != nullptr);
+    QCOMPARE(tabs->currentWidget(), panel);
+
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    panel->setFocus();
+    panel->setCurrentRow(0);
+    QTest::keyClick(panel, Qt::Key_Return);
+
+    QCOMPARE(QDir::toNativeSeparators(window.currentEditorPath()), QDir::toNativeSeparators(filePath));
+    auto *editor = window.findChild<EditorSurface *>(QStringLiteral("editorSurface"));
+    QVERIFY(editor != nullptr);
+    QCOMPARE(editor->textCursor().blockNumber(), 0);
+}
+
+void TestMainWindow::workspaceSymbolPickerNavigatesSelectedSymbol()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    QDir root(temp.path());
+    const QString firstPath = writeFile(root, QStringLiteral("src/main.apy"), QString::fromUtf8("دالة رئيسية():\n    ارجع ١\n"));
+    const QString secondPath = writeFile(root, QStringLiteral("src/lib.apy"), QString::fromUtf8("دالة اجمع(س):\n    ارجع س\n"));
+
+    MainWindow window;
+    window.resize(1000, 700);
+    QVERIFY(window.openPath(root.absolutePath()));
+
+    QVector<LspSymbol> symbols;
+    symbols.append({QString::fromUtf8("رئيسية"), QStringLiteral("function"), QUrl::fromLocalFile(firstPath).toString(), 0, 5, 12});
+    symbols.append({QString::fromUtf8("اجمع"), QStringLiteral("function"), QUrl::fromLocalFile(secondPath).toString(), 0, 5, 12});
+
+    QTimer::singleShot(0, [&]() {
+        auto *dialog = window.findChild<QDialog *>(QStringLiteral("workspaceSymbolDialog"));
+        QVERIFY(dialog != nullptr);
+        auto *results = dialog->findChild<QListWidget *>(QStringLiteral("workspaceSymbolResults"));
+        QVERIFY(results != nullptr);
+        QCOMPARE(results->count(), 2);
+        results->setCurrentRow(1);
+        dialog->accept();
+    });
+
+    window.openWorkspaceSymbolPickerForTest(symbols);
+
+    QCOMPARE(QDir::toNativeSeparators(window.currentEditorPath()), QDir::toNativeSeparators(secondPath));
+    auto *editor = window.findChild<EditorSurface *>(QStringLiteral("editorSurface"));
+    QVERIFY(editor != nullptr);
+    QCOMPARE(editor->textCursor().blockNumber(), 0);
 }
 
 void TestMainWindow::renameWorkspaceEditAppliesAcrossFilesAndShowsPreview()

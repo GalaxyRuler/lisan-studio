@@ -176,6 +176,99 @@ LspWorkspaceEdit workspaceEditFromObject(const QJsonObject &object)
     });
     return workspaceEdit;
 }
+
+QJsonObject selectionRangeObject(const QJsonObject &object)
+{
+    QJsonObject range = object.value(QStringLiteral("selectionRange")).toObject();
+    if (range.isEmpty()) {
+        range = object.value(QStringLiteral("range")).toObject();
+    }
+    return range;
+}
+
+LspSymbol symbolFromDocumentSymbolObject(const QJsonObject &object, const QString &uri)
+{
+    LspSymbol symbol;
+    symbol.name = object.value(QStringLiteral("name")).toString();
+    symbol.detail = object.value(QStringLiteral("detail")).toString();
+    symbol.kind = object.value(QStringLiteral("kind")).toInt();
+    symbol.uri = uri;
+    const QJsonObject start = selectionRangeObject(object).value(QStringLiteral("start")).toObject();
+    symbol.line = start.value(QStringLiteral("line")).toInt();
+    symbol.character = start.value(QStringLiteral("character")).toInt();
+    return symbol;
+}
+
+LspSymbol symbolFromInformationObject(const QJsonObject &object)
+{
+    LspSymbol symbol;
+    symbol.name = object.value(QStringLiteral("name")).toString();
+    symbol.detail = object.value(QStringLiteral("containerName")).toString();
+    symbol.kind = object.value(QStringLiteral("kind")).toInt();
+    const QJsonObject location = object.value(QStringLiteral("location")).toObject();
+    symbol.uri = location.value(QStringLiteral("uri")).toString();
+    const QJsonObject start = location.value(QStringLiteral("range")).toObject().value(QStringLiteral("start")).toObject();
+    symbol.line = start.value(QStringLiteral("line")).toInt();
+    symbol.character = start.value(QStringLiteral("character")).toInt();
+    return symbol;
+}
+
+void appendDocumentSymbols(QVector<LspSymbol> *symbols, const QJsonArray &array, const QString &uri)
+{
+    if (!symbols) {
+        return;
+    }
+    for (const QJsonValue &value : array) {
+        if (!value.isObject()) {
+            continue;
+        }
+        const QJsonObject object = value.toObject();
+        if (object.contains(QStringLiteral("location"))) {
+            const LspSymbol symbol = symbolFromInformationObject(object);
+            if (!symbol.name.isEmpty() && !symbol.uri.isEmpty()) {
+                symbols->append(symbol);
+            }
+            continue;
+        }
+
+        const LspSymbol symbol = symbolFromDocumentSymbolObject(object, uri);
+        if (!symbol.name.isEmpty()) {
+            symbols->append(symbol);
+        }
+        appendDocumentSymbols(symbols, object.value(QStringLiteral("children")).toArray(), uri);
+    }
+}
+
+QVector<LspSemanticToken> semanticTokensFromResult(const QJsonObject &result, const QStringList &tokenTypes)
+{
+    const QJsonArray data = result.value(QStringLiteral("data")).toArray();
+    QVector<LspSemanticToken> tokens;
+    tokens.reserve(data.size() / 5);
+
+    int line = 0;
+    int startCharacter = 0;
+    for (int i = 0; i + 4 < data.size(); i += 5) {
+        const int deltaLine = data.at(i).toInt();
+        const int deltaStart = data.at(i + 1).toInt();
+        const int length = data.at(i + 2).toInt();
+        const int tokenTypeIndex = data.at(i + 3).toInt();
+
+        line += deltaLine;
+        startCharacter = deltaLine == 0 ? startCharacter + deltaStart : deltaStart;
+
+        LspSemanticToken token;
+        token.line = line;
+        token.startCharacter = startCharacter;
+        token.length = length;
+        token.tokenType = tokenTypeIndex >= 0 && tokenTypeIndex < tokenTypes.size()
+            ? tokenTypes.at(tokenTypeIndex)
+            : QString::number(tokenTypeIndex);
+        if (token.length > 0) {
+            tokens.append(token);
+        }
+    }
+    return tokens;
+}
 }
 
 LspClient::LspClient(QObject *parent)
@@ -472,6 +565,99 @@ LspWorkspaceEdit LspClient::requestRename(const QString &uri, int line, int char
     return workspaceEditFromObject(response.value(QStringLiteral("result")).toObject());
 }
 
+QVector<LspSemanticToken> LspClient::requestSemanticTokens(const QString &uri, int timeoutMs, QString *error)
+{
+    if (error) {
+        error->clear();
+    }
+    if (process.state() == QProcess::NotRunning) {
+        if (error) {
+            *error = QStringLiteral("LSP server is not running.");
+        }
+        return {};
+    }
+
+    QJsonObject params;
+    params.insert(QStringLiteral("textDocument"), textDocumentIdentifier(uri));
+
+    const int requestId = sendRequest(QStringLiteral("textDocument/semanticTokens/full"), params);
+    QJsonObject response;
+    if (!waitForResponse(requestId, &response, timeoutMs, error)) {
+        return {};
+    }
+    if (response.contains(QStringLiteral("error"))) {
+        if (error) {
+            *error = response.value(QStringLiteral("error")).toObject().value(QStringLiteral("message")).toString();
+        }
+        return {};
+    }
+    return semanticTokensFromResult(response.value(QStringLiteral("result")).toObject(), lastInitializeResult.semanticTokenTypes);
+}
+
+QVector<LspSymbol> LspClient::requestDocumentSymbols(const QString &uri, int timeoutMs, QString *error)
+{
+    if (error) {
+        error->clear();
+    }
+    if (process.state() == QProcess::NotRunning) {
+        if (error) {
+            *error = QStringLiteral("LSP server is not running.");
+        }
+        return {};
+    }
+
+    QJsonObject params;
+    params.insert(QStringLiteral("textDocument"), textDocumentIdentifier(uri));
+
+    const int requestId = sendRequest(QStringLiteral("textDocument/documentSymbol"), params);
+    QJsonObject response;
+    if (!waitForResponse(requestId, &response, timeoutMs, error)) {
+        return {};
+    }
+    if (response.contains(QStringLiteral("error"))) {
+        if (error) {
+            *error = response.value(QStringLiteral("error")).toObject().value(QStringLiteral("message")).toString();
+        }
+        return {};
+    }
+
+    QVector<LspSymbol> symbols;
+    appendDocumentSymbols(&symbols, response.value(QStringLiteral("result")).toArray(), uri);
+    return symbols;
+}
+
+QVector<LspSymbol> LspClient::requestWorkspaceSymbols(const QString &query, int timeoutMs, QString *error)
+{
+    if (error) {
+        error->clear();
+    }
+    if (process.state() == QProcess::NotRunning) {
+        if (error) {
+            *error = QStringLiteral("LSP server is not running.");
+        }
+        return {};
+    }
+
+    QJsonObject params;
+    params.insert(QStringLiteral("query"), query);
+
+    const int requestId = sendRequest(QStringLiteral("workspace/symbol"), params);
+    QJsonObject response;
+    if (!waitForResponse(requestId, &response, timeoutMs, error)) {
+        return {};
+    }
+    if (response.contains(QStringLiteral("error"))) {
+        if (error) {
+            *error = response.value(QStringLiteral("error")).toObject().value(QStringLiteral("message")).toString();
+        }
+        return {};
+    }
+
+    QVector<LspSymbol> symbols;
+    appendDocumentSymbols(&symbols, response.value(QStringLiteral("result")).toArray(), QString());
+    return symbols;
+}
+
 void LspClient::shutdown(int timeoutMs)
 {
     if (process.state() == QProcess::NotRunning) {
@@ -631,6 +817,20 @@ void LspClient::applyInitializeResult(const QJsonObject &result)
     parsed.textDocumentSave = parseBooleanProvider(textDocumentSync.value(QStringLiteral("save")));
     parsed.hoverProvider = parseBooleanProvider(capabilities.value(QStringLiteral("hoverProvider")));
     parsed.completionProvider = parseBooleanProvider(capabilities.value(QStringLiteral("completionProvider")));
+    parsed.documentSymbolProvider = parseBooleanProvider(capabilities.value(QStringLiteral("documentSymbolProvider")));
+    parsed.workspaceSymbolProvider = parseBooleanProvider(capabilities.value(QStringLiteral("workspaceSymbolProvider")));
+
+    const QJsonValue semanticTokensProvider = capabilities.value(QStringLiteral("semanticTokensProvider"));
+    parsed.semanticTokensProvider = parseBooleanProvider(semanticTokensProvider);
+    const QJsonArray tokenTypes = semanticTokensProvider.toObject()
+        .value(QStringLiteral("legend")).toObject()
+        .value(QStringLiteral("tokenTypes")).toArray();
+    for (const QJsonValue &value : tokenTypes) {
+        const QString tokenType = value.toString();
+        if (!tokenType.isEmpty()) {
+            parsed.semanticTokenTypes.append(tokenType);
+        }
+    }
 
     lastInitializeResult = parsed;
 }

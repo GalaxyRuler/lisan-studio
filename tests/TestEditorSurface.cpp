@@ -58,6 +58,7 @@ private slots:
     void completionRequestSignalReportsCursorPosition();
     void completionPopupDisplaysItemsAndAcceptsSelection();
     void hoverTooltipSurfaceStoresMarkdown();
+    void semanticTokensLayerOnTopOfApyHighlighter();
     void ctrlClickRequestsDefinitionAtIdentifier();
     void selectAllFindMatchesAsCursorsConvertsFindHighlights();
     void altColumnDragGeneratesOneCursorPerLineInRectangle();
@@ -1066,6 +1067,24 @@ void TestEditorSurface::hoverTooltipSurfaceStoresMarkdown()
     editor.showHoverMarkdown(QStringLiteral("**اطبع** -> `print(value)`"), QPoint(8, 8));
 
     QCOMPARE(editor.visibleHoverTextForTest(), QStringLiteral("**اطبع** -> `print(value)`"));
+}
+
+void TestEditorSurface::semanticTokensLayerOnTopOfApyHighlighter()
+{
+    EditorSurface editor;
+    editor.setPlainText(QString::fromUtf8("دالة اجمع(س):\n    ارجع س\n"));
+    editor.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&editor));
+
+    QVector<EditorSemanticToken> tokens;
+    tokens.append({0, 5, 4, QStringLiteral("function")});
+    tokens.append({1, 9, 1, QStringLiteral("variable")});
+    editor.setSemanticTokens(tokens);
+
+    QCOMPARE(editor.semanticTokenSelectionCountForTest(), 2);
+
+    editor.setSemanticTokens({});
+    QCOMPARE(editor.semanticTokenSelectionCountForTest(), 0);
 }
 
 void TestEditorSurface::ctrlClickRequestsDefinitionAtIdentifier()

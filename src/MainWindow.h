@@ -95,6 +95,7 @@ private slots:
     void openSearchResult(QListWidgetItem *item);
     void openProblemResult(QListWidgetItem *item);
     void openReferenceResult(QListWidgetItem *item);
+    void openOutlineResult(QListWidgetItem *item);
     void openSettings();
     void pollOpenDocumentChanges();
     void addCursorAboveAction();
@@ -123,6 +124,7 @@ private:
     QListWidget *problemsPanel = nullptr;
     QListWidget *searchResultsPanel = nullptr;
     QListWidget *referencesPanel = nullptr;
+    QListWidget *outlinePanel = nullptr;
     QPlainTextEdit *debugPanel = nullptr;
     QTabWidget *bottomPanelTabs = nullptr;
     QDockWidget *outputDock = nullptr;
@@ -183,6 +185,9 @@ private:
     void requestLanguageServerDefinition(int line, int character);
     void requestLanguageServerReferences();
     void requestLanguageServerRename();
+    void requestLanguageServerSemanticTokens();
+    void requestLanguageServerDocumentSymbols();
+    void requestLanguageServerWorkspaceSymbols();
     void updateBreadcrumbBar();
     void updateStatusIndicators();
     // Test-only snapshot for verifying MainWindow's registry integration.
@@ -195,11 +200,16 @@ private:
     void showProblemsPanel();
     void showSearchResultsPanel();
     void showReferencesPanel();
+    void showOutlinePanel();
     QVector<SearchResultRow> currentEditorSearchResults(const QString &query) const;
     QVector<ProjectReplacePreviewRow> currentEditorReplacePreviewRows(const QString &query, const QString &replacement) const;
     void renderSearchResults(const QVector<SearchResultRow> &rows);
     void renderReferences(const QVector<LspLocation> &locations);
     void renderReferencesForTest(const QVector<LspLocation> &locations) { renderReferences(locations); }
+    void renderOutline(const QVector<LspSymbol> &symbols);
+    void renderOutlineForTest(const QVector<LspSymbol> &symbols) { renderOutline(symbols); }
+    void openWorkspaceSymbolPicker(const QVector<LspSymbol> &symbols);
+    void openWorkspaceSymbolPickerForTest(const QVector<LspSymbol> &symbols) { openWorkspaceSymbolPicker(symbols); }
     void renderRenamePreview(const LspWorkspaceEdit &edit);
     bool applyWorkspaceEdit(const LspWorkspaceEdit &edit, QString *error = nullptr);
     void renderProjectReplacePreview(const QVector<ProjectReplacePreviewRow> &rows);

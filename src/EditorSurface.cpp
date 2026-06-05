@@ -182,6 +182,26 @@ static QString returnIndentForCursor(const QTextCursor &cursor)
     return indent;
 }
 
+static QColor semanticTokenColor(const QString &tokenType)
+{
+    if (tokenType == QStringLiteral("function") || tokenType == QStringLiteral("method")) {
+        return QColor(QStringLiteral("#7BDFF2"));
+    }
+    if (tokenType == QStringLiteral("class") || tokenType == QStringLiteral("type") || tokenType == QStringLiteral("interface")) {
+        return QColor(QStringLiteral("#B8E986"));
+    }
+    if (tokenType == QStringLiteral("keyword")) {
+        return QColor(QStringLiteral("#F6D365"));
+    }
+    if (tokenType == QStringLiteral("string")) {
+        return QColor(QStringLiteral("#F5A97F"));
+    }
+    if (tokenType == QStringLiteral("number")) {
+        return QColor(QStringLiteral("#C792EA"));
+    }
+    return QColor(QStringLiteral("#AEC6FF"));
+}
+
 static void indentBlockByOneLevel(QTextDocument *document, int blockNumber)
 {
     const QTextBlock block = document->findBlockByNumber(blockNumber);
@@ -925,6 +945,12 @@ void EditorSurface::showHoverMarkdown(const QString &markdown, const QPoint &vie
     QToolTip::showText(viewport()->mapToGlobal(viewportPosition), markdown, viewport());
 }
 
+void EditorSurface::setSemanticTokens(const QVector<EditorSemanticToken> &tokens)
+{
+    semanticTokens = tokens;
+    updateEditorExtraSelections();
+}
+
 bool EditorSurface::isCompletionPopupVisibleForTest() const
 {
     return completionPopup && completionPopup->isVisible();
@@ -945,6 +971,11 @@ QStringList EditorSurface::completionLabelsForTest() const
 QString EditorSurface::visibleHoverTextForTest() const
 {
     return lastHoverMarkdown;
+}
+
+int EditorSurface::semanticTokenSelectionCountForTest() const
+{
+    return semanticTokenSelectionCount;
 }
 
 void EditorSurface::lineNumberAreaPaintEvent(QPaintEvent *event)
@@ -1049,6 +1080,7 @@ void EditorSurface::updateEditorExtraSelections()
 
     findHighlightSelectionCount = selections.size();
     bracketMatchSelectionCount = 0;
+    semanticTokenSelectionCount = 0;
     const QVector<int> delimiterPositions = matchingDelimiterPositions();
     for (const int position : delimiterPositions) {
         QTextCursor cursor(document());
@@ -1061,6 +1093,32 @@ void EditorSurface::updateEditorExtraSelections()
         selection.format.setForeground(QColor(QStringLiteral("#FFFFFF")));
         selections.push_back(selection);
         ++bracketMatchSelectionCount;
+    }
+
+    for (const EditorSemanticToken &token : semanticTokens) {
+        const QTextBlock block = document()->findBlockByNumber(token.line);
+        if (!block.isValid() || token.startCharacter < 0 || token.length <= 0) {
+            continue;
+        }
+        const QString line = block.text();
+        if (token.startCharacter >= line.size()) {
+            continue;
+        }
+
+        QTextCursor cursor(block);
+        const int start = block.position() + token.startCharacter;
+        const int end = qMin(start + token.length, block.position() + line.size());
+        cursor.setPosition(start);
+        cursor.setPosition(end, QTextCursor::KeepAnchor);
+
+        QTextEdit::ExtraSelection selection;
+        selection.cursor = cursor;
+        selection.format.setForeground(semanticTokenColor(token.tokenType));
+        if (token.tokenType == QStringLiteral("function") || token.tokenType == QStringLiteral("method")) {
+            selection.format.setFontWeight(QFont::DemiBold);
+        }
+        selections.push_back(selection);
+        ++semanticTokenSelectionCount;
     }
 
     setExtraSelections(selections);

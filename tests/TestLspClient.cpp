@@ -24,6 +24,9 @@ private slots:
     void definitionRequestParsesLocation();
     void referencesRequestParsesLocations();
     void renameRequestParsesWorkspaceEdit();
+    void semanticTokensRequestDecodesDeltaEncodedTokens();
+    void documentSymbolRequestParsesNestedSymbols();
+    void workspaceSymbolRequestParsesLocations();
 };
 
 namespace {
@@ -86,6 +89,15 @@ while running:
                     "textDocumentSync": {"openClose": True, "change": 1, "save": True},
                     "hoverProvider": True,
                     "completionProvider": {"resolveProvider": False, "triggerCharacters": []},
+                    "renameProvider": True,
+                    "definitionProvider": True,
+                    "referencesProvider": True,
+                    "documentSymbolProvider": True,
+                    "workspaceSymbolProvider": True,
+                    "semanticTokensProvider": {
+                        "legend": {"tokenTypes": ["variable", "function", "class"], "tokenModifiers": []},
+                        "full": True,
+                    },
                 },
             },
         })
@@ -161,6 +173,49 @@ while running:
                     ],
                 },
             },
+        })
+    elif method == "textDocument/semanticTokens/full":
+        write_message({
+            "jsonrpc": "2.0",
+            "id": message["id"],
+            "result": {"data": [0, 0, 3, 0, 0, 1, 4, 5, 1, 0]},
+        })
+    elif method == "textDocument/documentSymbol":
+        write_message({
+            "jsonrpc": "2.0",
+            "id": message["id"],
+            "result": [
+                {
+                    "name": "حاسبة",
+                    "detail": "class",
+                    "kind": 5,
+                    "range": {"start": {"line": 0, "character": 0}, "end": {"line": 8, "character": 0}},
+                    "selectionRange": {"start": {"line": 0, "character": 6}, "end": {"line": 0, "character": 12}},
+                    "children": [
+                        {
+                            "name": "اجمع",
+                            "kind": 12,
+                            "range": {"start": {"line": 2, "character": 4}, "end": {"line": 4, "character": 0}},
+                            "selectionRange": {"start": {"line": 2, "character": 8}, "end": {"line": 2, "character": 12}},
+                        }
+                    ],
+                }
+            ],
+        })
+    elif method == "workspace/symbol":
+        write_message({
+            "jsonrpc": "2.0",
+            "id": message["id"],
+            "result": [
+                {
+                    "name": "اجمع",
+                    "kind": 12,
+                    "location": {
+                        "uri": "file:///workspace/lib.apy",
+                        "range": {"start": {"line": 2, "character": 8}, "end": {"line": 2, "character": 12}},
+                    },
+                }
+            ],
         })
     elif method == "exit":
         running = False
@@ -238,6 +293,10 @@ void TestLspClient::initializeHandshakeReadsServerMetadataAndSendsInitialized()
     QVERIFY(result.textDocumentSave);
     QVERIFY(result.hoverProvider);
     QVERIFY(result.completionProvider);
+    QVERIFY(result.semanticTokensProvider);
+    QVERIFY(result.documentSymbolProvider);
+    QVERIFY(result.workspaceSymbolProvider);
+    QCOMPARE(result.semanticTokenTypes, QStringList({QStringLiteral("variable"), QStringLiteral("function"), QStringLiteral("class")}));
 
     QVERIFY(waitForMethodCount(logPath, 2));
     const QVector<QJsonObject> messages = readLogMessages(logPath);
@@ -461,6 +520,96 @@ void TestLspClient::renameRequestParsesWorkspaceEdit()
     const QVector<QJsonObject> messages = readLogMessages(logPath);
     QCOMPARE(messages.at(2).value(QStringLiteral("method")).toString(), QStringLiteral("textDocument/rename"));
     QCOMPARE(messages.at(2).value(QStringLiteral("params")).toObject().value(QStringLiteral("newName")).toString(), QString::fromUtf8("قيمة"));
+}
+
+void TestLspClient::semanticTokensRequestDecodesDeltaEncodedTokens()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString logPath = dir.filePath(QStringLiteral("lsp-log.jsonl"));
+    const QString scriptPath = writeMockServer(dir);
+    QVERIFY(!scriptPath.isEmpty());
+
+    LspClient client;
+    client.setServerCommand(mockServerCommand(scriptPath, logPath));
+
+    QString error;
+    QVERIFY2(client.startAndInitialize(QStringLiteral("file:///workspace"), 5000, &error), qPrintable(error));
+
+    const QVector<LspSemanticToken> tokens = client.requestSemanticTokens(QStringLiteral("file:///workspace/main.apy"), 5000, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error));
+    QCOMPARE(tokens.size(), 2);
+    QCOMPARE(tokens.at(0).line, 0);
+    QCOMPARE(tokens.at(0).startCharacter, 0);
+    QCOMPARE(tokens.at(0).length, 3);
+    QCOMPARE(tokens.at(0).tokenType, QStringLiteral("variable"));
+    QCOMPARE(tokens.at(1).line, 1);
+    QCOMPARE(tokens.at(1).startCharacter, 4);
+    QCOMPARE(tokens.at(1).length, 5);
+    QCOMPARE(tokens.at(1).tokenType, QStringLiteral("function"));
+
+    QVERIFY(waitForMethodCount(logPath, 3));
+    const QVector<QJsonObject> messages = readLogMessages(logPath);
+    QCOMPARE(messages.at(2).value(QStringLiteral("method")).toString(), QStringLiteral("textDocument/semanticTokens/full"));
+}
+
+void TestLspClient::documentSymbolRequestParsesNestedSymbols()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString logPath = dir.filePath(QStringLiteral("lsp-log.jsonl"));
+    const QString scriptPath = writeMockServer(dir);
+    QVERIFY(!scriptPath.isEmpty());
+
+    LspClient client;
+    client.setServerCommand(mockServerCommand(scriptPath, logPath));
+
+    QString error;
+    QVERIFY2(client.startAndInitialize(QStringLiteral("file:///workspace"), 5000, &error), qPrintable(error));
+
+    const QVector<LspSymbol> symbols = client.requestDocumentSymbols(QStringLiteral("file:///workspace/main.apy"), 5000, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error));
+    QCOMPARE(symbols.size(), 2);
+    QCOMPARE(symbols.at(0).name, QString::fromUtf8("حاسبة"));
+    QCOMPARE(symbols.at(0).detail, QStringLiteral("class"));
+    QCOMPARE(symbols.at(0).uri, QStringLiteral("file:///workspace/main.apy"));
+    QCOMPARE(symbols.at(0).line, 0);
+    QCOMPARE(symbols.at(0).character, 6);
+    QCOMPARE(symbols.at(1).name, QString::fromUtf8("اجمع"));
+    QCOMPARE(symbols.at(1).line, 2);
+    QCOMPARE(symbols.at(1).character, 8);
+
+    QVERIFY(waitForMethodCount(logPath, 3));
+    const QVector<QJsonObject> messages = readLogMessages(logPath);
+    QCOMPARE(messages.at(2).value(QStringLiteral("method")).toString(), QStringLiteral("textDocument/documentSymbol"));
+}
+
+void TestLspClient::workspaceSymbolRequestParsesLocations()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString logPath = dir.filePath(QStringLiteral("lsp-log.jsonl"));
+    const QString scriptPath = writeMockServer(dir);
+    QVERIFY(!scriptPath.isEmpty());
+
+    LspClient client;
+    client.setServerCommand(mockServerCommand(scriptPath, logPath));
+
+    QString error;
+    QVERIFY2(client.startAndInitialize(QStringLiteral("file:///workspace"), 5000, &error), qPrintable(error));
+
+    const QVector<LspSymbol> symbols = client.requestWorkspaceSymbols(QString::fromUtf8("اج"), 5000, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error));
+    QCOMPARE(symbols.size(), 1);
+    QCOMPARE(symbols.first().name, QString::fromUtf8("اجمع"));
+    QCOMPARE(symbols.first().uri, QStringLiteral("file:///workspace/lib.apy"));
+    QCOMPARE(symbols.first().line, 2);
+    QCOMPARE(symbols.first().character, 8);
+
+    QVERIFY(waitForMethodCount(logPath, 3));
+    const QVector<QJsonObject> messages = readLogMessages(logPath);
+    QCOMPARE(messages.at(2).value(QStringLiteral("method")).toString(), QStringLiteral("workspace/symbol"));
+    QCOMPARE(messages.at(2).value(QStringLiteral("params")).toObject().value(QStringLiteral("query")).toString(), QString::fromUtf8("اج"));
 }
 
 QTEST_MAIN(TestLspClient)

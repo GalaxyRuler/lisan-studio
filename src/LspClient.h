@@ -27,6 +27,10 @@ struct LspInitializeResult
     bool textDocumentSave = false;
     bool hoverProvider = false;
     bool completionProvider = false;
+    bool semanticTokensProvider = false;
+    bool documentSymbolProvider = false;
+    bool workspaceSymbolProvider = false;
+    QStringList semanticTokenTypes;
 };
 
 struct LspCompletionItem
@@ -65,6 +69,24 @@ struct LspWorkspaceEdit
     QVector<LspTextEdit> edits;
 };
 
+struct LspSemanticToken
+{
+    int line = 0;
+    int startCharacter = 0;
+    int length = 0;
+    QString tokenType;
+};
+
+struct LspSymbol
+{
+    QString name;
+    QString detail;
+    QString uri;
+    int line = 0;
+    int character = 0;
+    int kind = 0;
+};
+
 class LspClient final : public QObject
 {
     Q_OBJECT
@@ -89,6 +111,9 @@ public:
     QVector<LspLocation> requestDefinition(const QString &uri, int line, int character, int timeoutMs = 5000, QString *error = nullptr);
     QVector<LspLocation> requestReferences(const QString &uri, int line, int character, bool includeDeclaration = true, int timeoutMs = 5000, QString *error = nullptr);
     LspWorkspaceEdit requestRename(const QString &uri, int line, int character, const QString &newName, int timeoutMs = 5000, QString *error = nullptr);
+    QVector<LspSemanticToken> requestSemanticTokens(const QString &uri, int timeoutMs = 5000, QString *error = nullptr);
+    QVector<LspSymbol> requestDocumentSymbols(const QString &uri, int timeoutMs = 5000, QString *error = nullptr);
+    QVector<LspSymbol> requestWorkspaceSymbols(const QString &query, int timeoutMs = 5000, QString *error = nullptr);
     void shutdown(int timeoutMs = 2000);
 
 private:

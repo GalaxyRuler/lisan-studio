@@ -30,6 +30,14 @@ struct EditorCompletionItem
     QString insertText;
 };
 
+struct EditorSemanticToken
+{
+    int line = 0;
+    int startCharacter = 0;
+    int length = 0;
+    QString tokenType;
+};
+
 class EditorSurface final : public QPlainTextEdit
 {
     Q_OBJECT
@@ -78,9 +86,11 @@ public:
     QMenu *createEditorContextMenu(QWidget *parent = nullptr);
     void showCompletionItems(const QVector<EditorCompletionItem> &items);
     void showHoverMarkdown(const QString &markdown, const QPoint &viewportPosition);
+    void setSemanticTokens(const QVector<EditorSemanticToken> &tokens);
     bool isCompletionPopupVisibleForTest() const;
     QStringList completionLabelsForTest() const;
     QString visibleHoverTextForTest() const;
+    int semanticTokenSelectionCountForTest() const;
 
 signals:
     void filePathChanged(const QString &path);
@@ -110,9 +120,11 @@ private:
     QTimer completionRequestTimer;
     QTimer hoverRequestTimer;
     QVector<QTextCursor> secondaryCursors;
+    QVector<EditorSemanticToken> semanticTokens;
     QTextCursor altColumnDragAnchor;
     QPoint pendingHoverViewportPosition;
     QString lastHoverMarkdown;
+    int semanticTokenSelectionCount = 0;
 
     static QString unicodeName(QChar ch);
     void setCurrentFilePath(const QString &path);
