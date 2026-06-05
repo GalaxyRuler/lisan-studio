@@ -7,6 +7,7 @@ struct WorkspaceSettings
     bool trusted = false;
     bool trimTrailingWhitespaceOnSave = false;
     QString defaultRunWorkingDirectory;
+    QString terminalProfileId;
 };
 
 class WorkspaceSettingsStore final

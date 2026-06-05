@@ -52,5 +52,5 @@ Follow-up landed (see git log): docs/INSTALLATION.md gained a "First-Launch Smar
 
 - Beta testers continue to see SmartScreen on first install. Acceptable for the audience.
 - Release evidence bundles continue to record AuthenticodeStatus=NotSigned. Reviewers should not flag this as a defect; it's intentional per this ADR.
-- When signing is adopted, scripts/package.ps1's signing step plus a CI key-storage decision become a single follow-up slice (estimate: 2-3 commits).
+- `scripts/package.ps1` has an optional Authenticode signing hook. It signs only when `-SigningCertificateThumbprint` or `LISAN_SIGNING_CERT_THUMBPRINT` is provided, using `signtool.exe`, SHA-256 file digesting, and RFC3161 timestamping. The CI key-storage decision is still pending; the workflow maps only secret/variable references and does not store certificate material in the repo.
 - The existing `Policy: Public distribution requires a valid Authenticode signature` line in SIGNING_STATUS.txt remains accurate aspirationally; the present "private beta" qualifier in the file content is what applies through V1.5.

@@ -10,6 +10,9 @@ on:
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+  LISAN_SIGNING_CERT_THUMBPRINT: ${{ secrets.LISAN_SIGNING_CERT_THUMBPRINT }}
+  LISAN_SIGNTOOL_PATH: ${{ vars.LISAN_SIGNTOOL_PATH }}
+  LISAN_TIMESTAMP_URL: ${{ vars.LISAN_TIMESTAMP_URL }}
 
 jobs:
   msi-install:
@@ -18,6 +21,8 @@ jobs:
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - name: Checkout apython runtime dependency
         uses: actions/checkout@v4
@@ -28,7 +33,7 @@ jobs:
           path: apython-src
           token: ${{ secrets.APYTHON_CHECKOUT_TOKEN || github.token }}
 
-      - name: Ensure setuptools available
+      - name: Ensure Python packaging and debugger dependencies
         shell: powershell
         run: |
           $missing = @()
@@ -38,6 +43,26 @@ jobs:
           if ($LASTEXITCODE -ne 0) { $missing += 'wheel' }
           if ($missing.Count -gt 0) {
             python -m pip install --quiet --disable-pip-version-check --prefer-binary @missing
+          }
+          $runtimePython = "C:\Users\codexqa\AppData\Local\Programs\Python\Python313\python.exe"
+          $debugpyVersion = '1.8.20'
+          $needDebugpy = $true
+          $previousErrorActionPreference = $ErrorActionPreference
+          try {
+            $ErrorActionPreference = 'Continue'
+            $v = & $runtimePython -c "import debugpy, sys; sys.stdout.write(debugpy.__version__)" 2>$null
+            if ($LASTEXITCODE -eq 0 -and $v -eq $debugpyVersion) { $needDebugpy = $false }
+          } catch {
+            $needDebugpy = $true
+          } finally {
+            $ErrorActionPreference = $previousErrorActionPreference
+          }
+          if ($needDebugpy) {
+            & $runtimePython -m pip install --quiet --disable-pip-version-check --prefer-binary debugpy==$debugpyVersion
+            $v = & $runtimePython -c "import debugpy, sys; sys.stdout.write(debugpy.__version__)" 2>$null
+            if ($LASTEXITCODE -ne 0 -or $v -ne $debugpyVersion) {
+              throw "debugpy $debugpyVersion installation failed for bundled runtime python"
+            }
           }
 
       - name: Prepare apython runtime metadata
@@ -54,7 +79,7 @@ jobs:
         run: |
           .\scripts\build.ps1
           .\scripts\package.ps1 `
-            -ProductVersion 0.2.0 `
+            -ProductVersion 0.5.0 `
             -BuildId $env:GITHUB_SHA `
             -ApythonRoot "${{ github.workspace }}\apython-src" `
             -PythonRoot "C:\Users\codexqa\AppData\Local\Programs\Python\Python313"
@@ -62,7 +87,7 @@ jobs:
       - name: Install MSI and assert HKLM uninstall state
         shell: powershell
         run: |
-          $msiPath = Join-Path $PWD 'artifacts\LisanStudio-0.2.0-beta.msi'
+          $msiPath = Join-Path $PWD 'artifacts\LisanStudio-0.5.0-beta.msi'
           .\scripts\msi-smoke.ps1 -MsiPath $msiPath
 
       - name: Upload evidence
@@ -71,7 +96,7 @@ jobs:
         with:
           name: msi-install-evidence-${{ github.run_id }}
           path: |
-            artifacts/LisanStudio-0.2.0-beta.msi
+            artifacts/LisanStudio-0.5.0-beta.msi
             artifacts/SIGNING_STATUS.txt
             artifacts/msi-smoke/**
 
@@ -81,6 +106,8 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - name: Checkout apython runtime dependency
         uses: actions/checkout@v4
@@ -91,7 +118,7 @@ jobs:
           path: apython-src
           token: ${{ secrets.APYTHON_CHECKOUT_TOKEN || github.token }}
 
-      - name: Ensure setuptools available
+      - name: Ensure Python packaging and debugger dependencies
         shell: powershell
         run: |
           $missing = @()
@@ -101,6 +128,26 @@ jobs:
           if ($LASTEXITCODE -ne 0) { $missing += 'wheel' }
           if ($missing.Count -gt 0) {
             python -m pip install --quiet --disable-pip-version-check --prefer-binary @missing
+          }
+          $runtimePython = "C:\Users\codexqa\AppData\Local\Programs\Python\Python313\python.exe"
+          $debugpyVersion = '1.8.20'
+          $needDebugpy = $true
+          $previousErrorActionPreference = $ErrorActionPreference
+          try {
+            $ErrorActionPreference = 'Continue'
+            $v = & $runtimePython -c "import debugpy, sys; sys.stdout.write(debugpy.__version__)" 2>$null
+            if ($LASTEXITCODE -eq 0 -and $v -eq $debugpyVersion) { $needDebugpy = $false }
+          } catch {
+            $needDebugpy = $true
+          } finally {
+            $ErrorActionPreference = $previousErrorActionPreference
+          }
+          if ($needDebugpy) {
+            & $runtimePython -m pip install --quiet --disable-pip-version-check --prefer-binary debugpy==$debugpyVersion
+            $v = & $runtimePython -c "import debugpy, sys; sys.stdout.write(debugpy.__version__)" 2>$null
+            if ($LASTEXITCODE -ne 0 -or $v -ne $debugpyVersion) {
+              throw "debugpy $debugpyVersion installation failed for bundled runtime python"
+            }
           }
 
       - name: Prepare apython runtime metadata
@@ -129,7 +176,7 @@ jobs:
         run: |
           .\scripts\build.ps1
           .\scripts\package.ps1 `
-            -ProductVersion 0.2.0 `
+            -ProductVersion 0.5.0 `
             -BuildId $env:GITHUB_SHA `
             -ApythonRoot "${{ github.workspace }}\apython-src" `
             -PythonRoot "C:\Users\codexqa\AppData\Local\Programs\Python\Python313"
@@ -138,12 +185,12 @@ jobs:
         shell: powershell
         run: |
           $earlierMsiPath = Join-Path $env:GITHUB_WORKSPACE 'msi-fixtures\LisanStudio-0.1.0-beta.msi'
-          $replacementMsiPath = Join-Path $PWD 'artifacts\LisanStudio-0.2.0-beta.msi'
+          $replacementMsiPath = Join-Path $PWD 'artifacts\LisanStudio-0.5.0-beta.msi'
           .\scripts\msi-upgrade-smoke.ps1 `
             -EarlierMsiPath $earlierMsiPath `
             -ReplacementMsiPath $replacementMsiPath `
             -ExpectedEarlierVersion 0.1.0 `
-            -ExpectedReplacementVersion 0.2.0 `
+            -ExpectedReplacementVersion 0.5.0 `
             -AllowMutation `
             -IUnderstandThisRunsMsiUpgrade
 
@@ -154,6 +201,6 @@ jobs:
           name: msi-upgrade-evidence-${{ github.run_id }}
           path: |
             msi-fixtures/LisanStudio-0.1.0-beta.msi
-            artifacts/LisanStudio-0.2.0-beta.msi
+            artifacts/LisanStudio-0.5.0-beta.msi
             artifacts/SIGNING_STATUS.txt
             artifacts/msi-upgrade-smoke/**

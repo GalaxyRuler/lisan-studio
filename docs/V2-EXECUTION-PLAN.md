@@ -92,57 +92,59 @@ This is the source of truth for "where are we in V2." Update on every state tran
 
 | Slice | Title | Depends on | Status | Commit | Release | Notes |
 |---|---|---|---|---|---|---|
-| V2-A1 | Multi-cursor Ctrl+Z/Y dispatch | V1.5 slice 9 | □ | — | — | — |
-| V2-A2 | Multi-cursor Tab indent dispatch | V2-A1 | □ | — | — | — |
-| V2-A3 | Multi-cursor IME composition | V2-A1, V2-A2 | □ | — | — | Hardest of phase A; risk-noted in roadmap |
-| — | **v0.2.1-beta cut** (phase A close) | V2-A3 | □ | — | — | Release-cut slice; see release-cut protocol |
+| V2-A1 | Multi-cursor Ctrl+Z/Y dispatch | V1.5 slice 9 | ◕ | e2addc1 | — | Landed with V2-A2 in one Codex implementation commit |
+| V2-A2 | Multi-cursor Tab indent dispatch | V2-A1 | ◕ | e2addc1 | — | Landed with V2-A1 in one Codex implementation commit |
+| V2-A3 | Multi-cursor IME composition | V2-A1, V2-A2 | ◕ | b2edec9 | — | Committed IME text dispatch landed; live preedit preview remains documented limitation |
+| — | **v0.2.1-beta cut** (phase A close) | V2-A3 | ◕ | d7328f1 | — | In-repo release prep landed; push/GHA/tag/publish still pending |
 
 ### Phase B — Editor polish foundations
 
 | Slice | Title | Depends on | Status | Commit | Release | Notes |
 |---|---|---|---|---|---|---|
-| V2-B1 | Incremental autosave for untitled drafts | none | □ | — | — | V1.5 slice 7 audit surfaced this gap |
-| V2-B2 | MainWindow truncation-test seam | none | □ | — | — | Drops fixture 5001 → 20 files |
-| V2-B3 | Command-id style ADR + migration | none | □ | — | — | Locks dotted camelCase repo-wide |
-| — | **v0.2.2-beta cut** (phase B close) | V2-B1..3 | □ | — | — | Release-cut slice |
+| V2-B1 | Incremental autosave for untitled drafts | none | ◕ | da8fd43 | — | Dirty untitled drafts autosave every 5s and interrupted sessions prompt recovery |
+| V2-B2 | MainWindow truncation-test seam | none | ◕ | 790f832 | — | Search truncation fixture now uses a 20-file cap seam |
+| V2-B3 | Command-id style ADR + migration | none | ◕ | e9715ac | — | ADR-0015 landed; command IDs now use dotted camelCase with shortcut JSON migration |
+| — | **v0.2.2-beta cut** (phase B close) | V2-B1..3 | ◕ | 5d89795 | — | In-repo release prep landed; push/GHA/tag/publish still pending |
 
 ### Phase C — LSP foundation
 
 | Slice | Title | Depends on | Status | Commit | Release | Notes |
 |---|---|---|---|---|---|---|
-| V2-C0 | ADR-0011 + ADR-0012 | none | □ | — | — | Docs-only; gates all of phase C |
-| V2-C1 | Apython translation-shim LSP server | V2-C0 | □ | — | — | Lives in `lughat-althuban` repo |
-| V2-C2 | LSP client integration in EditorSurface | V2-C0, V2-C1 | □ | — | — | First git submodule (lsp-framework) |
-| V2-C3 | Completion + hover | V2-C2 | □ | — | — | First user-visible LSP feature |
-| — | **v0.3.0-beta cut** (phase C close) | V2-C3 | □ | — | — | First V2 minor release |
+| V2-C0 | ADR-0011 + ADR-0012 | none | ◕ | 374f558 | — | ADR-0011 LSP transport and ADR-0012 apython backend accepted |
+| V2-C1 | Apython translation-shim LSP server | V2-C0 | ◕ | lughat-althuban:6f1e4de | — | `lughat-althuban-lsp` entrypoint and stdio LSP contract landed in apython worktree |
+| V2-C2 | LSP client integration in EditorSurface | V2-C0, V2-C1 | ◕ | ec0c044 | — | lsp-framework submodule + Qt LspClient landed; validate.ps1 now passes 11/11 |
+| V2-C3 | Completion + hover | V2-C2 | ◕ | d16e9c3 | — | Completion popup + hover tooltip UI binding landed; validate.ps1 passes 11/11 |
+| — | **v0.3.0-beta cut** (phase C close) | V2-C3 | ◕ | 9dbc414 | — | In-repo release prep landed; MSI artifact built locally; push/GHA/tag/publish/signing still pending |
 
 ### Phase D — LSP advanced
 
 | Slice | Title | Depends on | Status | Commit | Release | Notes |
 |---|---|---|---|---|---|---|
-| V2-D1 | Go-to-definition + find-references | V2-C3 | □ | — | — | New ReferencesPanel widget |
-| V2-D2 | Rename refactor | V2-D1 | □ | — | — | F2; synergy with V1.5 multi-cursor |
-| V2-D3 | Semantic highlighting + outline + workspace symbols | V2-D2 | □ | — | — | Layers on top of ApyHighlighter |
-| — | **v0.3.2-beta cut** (phase D close) | V2-D3 | □ | — | — | Release-cut slice |
+| V2-D1 | Go-to-definition + find-references | V2-C3 | ◕ | 91d488b | — | LSP definition/references requests, Ctrl+Click/F12 navigation, and References panel landed; validate.ps1 passes 11/11 |
+| V2-D2 | Rename refactor | V2-D1 | ◕ | 89b2f38 | — | F2 rename, LSP workspace-edit parsing, multi-file preview, and validated rollback path landed; validate.ps1 passes 11/11 |
+| V2-D3 | Semantic highlighting + outline + workspace symbols | V2-D2 | ◕ | 30874a9 | — | Semantic token overlay, document outline panel, Ctrl+T workspace-symbol picker, and tests landed; validate.ps1 passes 11/11 |
+| — | **v0.3.2-beta cut** (phase D close) | V2-D3 | ◕ | 5cde635 | v0.3.2-beta | In-repo release prep landed; MSI artifact built locally (`DB5E395793CE474F55F9DFEEAC501ADB51380D68ED793C387D8BFDBACD1C46B7`); signing/GHA/tag/publish/manual QA still pending |
 
 ### Phase E — Debugger
 
 | Slice | Title | Depends on | Status | Commit | Release | Notes |
 |---|---|---|---|---|---|---|
-| V2-E0 | ADR-0013 | none | □ | — | — | Docs-only |
-| V2-E1 | DAP client transport + initialize + launch | V2-E0, V2-C2 | □ | — | — | Reuse LSP's JSON-RPC primitives |
-| V2-E2 | Breakpoints + step + continue | V2-E1 | □ | — | — | New DebugController; F5/F10/F11 |
-| V2-E3 | Locals + watch + call stack | V2-E2 | □ | — | — | New Variables panel in BottomPanelController |
-| — | **v0.4.0-beta cut** + **v0.4.1-beta cut** | V2-E2 / V2-E3 | □ | — | — | Two release-cuts: E2 cuts 0.4.0, E3 cuts 0.4.1 |
+| V2-E0 | ADR-0013 | none | ◕ | 99c49da | — | debugpy + Lisan-owned Qt DAP client accepted |
+| V2-E1 | DAP client transport + initialize + launch | V2-E0, V2-C2 | ◕ | c628664 | — | Shared Content-Length JSON framing extracted; DapClient initialize/launch round-trip tests landed; validate.ps1 passes 12/12 |
+| V2-E2 | Breakpoints + step + continue | V2-E1 | ◕ | fc0fcdd | — | Editor breakpoints, F5/F10/F11 run control, live debugpy adapter launch, staged-runtime debugpy copy/import check, and staged DAP smoke passed; validate.ps1 passes 12/12 |
+| V2-E3 | Locals + watch + call stack | V2-E2 | ◕ | 6b778eb | v0.4.1-beta | Debug inspector tabs for variables/watch/call stack; DapClient stackTrace/scopes/variables/evaluate; validate.ps1 passes 12/12; staged debugpy inspection smoke passed |
+| — | **v0.4.0-beta cut** + **v0.4.1-beta cut** | V2-E2 / V2-E3 | ◕ / ◕ | aed2764 / 5556e4f | v0.4.0-beta / v0.4.1-beta | E2/E3 release prep landed. Local MSI artifacts built: 0.4.0 `27D6991A4B161F56C96749B1C9CDDCC3579D4324BF04F19FC237CA8464CAC0A5` (69,165,576 bytes), 0.4.1 `C9EFEE7FF6FD1F42DC060C54820D479D01F087983DB71C8CE3D0BCB6E8C18EFB` (69,202,440 bytes); signing/GHA/tag/publish/manual QA still pending |
 
 ### Phase F — Terminal
 
 | Slice | Title | Depends on | Status | Commit | Release | Notes |
 |---|---|---|---|---|---|---|
-| V2-F0 | ADR-0014 | none | □ | — | — | Docs-only |
-| V2-F1 | Windows ConPTY backend | V2-F0 | □ | — | — | `src/ConPtyBackend.{h,cpp}`; new ctest binary |
-| V2-F2 | QTermWidget integration + multi-shell picker | V2-F1 | □ | — | — | Second submodule (qtermwidget); closes V2 |
-| — | **v0.5.0-beta cut** (V2 milestone close) | V2-F2 | □ | — | — | Final V2 release; archive ROADMAP-V2 |
+| V2-F0 | ADR-0014 | none | ◕ | b4b2eab | — | Lisan-owned terminal backend + UI accepted; raw ConPTY/QTermWidget deferred until Windows input/rendering proof is safe |
+| V2-F1 | Windows terminal backend | V2-F0 | ◕ | 990c9b2 | — | `TerminalBackend` process-backed shell execution landed; cmd spawn/write/read/exit tests pass; validate.ps1 passes 13/13 |
+| V2-F2 | Terminal UI integration + multi-shell picker | V2-F1 | ◕ | 32065fd | v0.5.0-beta | Terminal tab now has shell picker, command input, stop control, persisted profile, trusted execution path, and UI command-input test coverage |
+| — | **v0.5.0-beta cut** (V2 milestone close) | V2-F2 | ◕ | 969bfdb / b206fe2 | v0.5.0-beta | Release prep and optional signing hook landed. Current local MSI artifact built from `b206fe2`: `982F6A12D8BACC24402163BC177A0FD6CEA0737740ACBF83ACFA22EC2E9AB298` (69,198,344 bytes), `NotSigned`; GHA/tag/publish/manual installed-app QA still pending |
+
+Public-release gate status is tracked in [PUBLIC_RELEASE_READINESS.md](PUBLIC_RELEASE_READINESS.md). As of 2026-06-05, branch `codex/v2-public-use` is pushed and draft PR #9 is open; replacement full MSI workflow run `27009103229` is queued at head `4c608f8` because the `lisanstudio-qa` self-hosted runner is offline.
 
 ## Sample Codex prompt template (V2-A1 worked example)
 

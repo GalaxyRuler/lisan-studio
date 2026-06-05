@@ -1,3 +1,237 @@
+# v0.5.0-beta (2026-06-05)
+
+Phase F V2 close: integrated terminal execution.
+
+## Added
+
+- A trust-gated integrated terminal tab with shell picker, command input,
+  stop control, and LTR transcript rendering for command output.
+- Project-local terminal profile persistence in `.lisan-workspace/settings.json`.
+- Windows terminal profiles for PowerShell and cmd, with WSL Bash shown when
+  `wsl.exe` is available.
+- `TerminalBackend` process execution with stdin writes, merged output reads,
+  and process-exit signals.
+- Terminal backend and MainWindow coverage for cmd spawn/write/read/exit,
+  trust blocking, selected-shell persistence, and command input from the UI.
+
+## Changed
+
+- ADR-0014 now records the validated V2 terminal path: process-backed terminal
+  execution first, with raw ConPTY/QTermWidget deferred until their Windows
+  input and rendering behavior can be proven safely.
+- GitHub MSI workflows now package `LisanStudio-0.5.0-beta.msi`.
+
+## Known v0.5.0-beta limitations
+
+- The terminal surface is intentionally text-backed. Rich ANSI rendering,
+  deeper terminal emulation, and a proven ConPTY/QTermWidget replacement remain
+  future upgrade paths.
+- Manual installed-app QA, GitHub Actions MSI runs, tag creation, release
+  publication, and Authenticode signing remain operator-owned public
+  distribution gates after this in-repo release prep.
+
+# v0.4.1-beta (2026-06-05)
+
+Phase E V2 close: debugger inspection panels for paused programs.
+
+## Added
+
+- Debug inspector tabs inside the Debug bottom panel: log, variables, watch,
+  and call stack.
+- Local variable retrieval through DAP `stackTrace`, `scopes`, and
+  `variables` requests when debugpy stops at a breakpoint.
+- Watch expressions backed by DAP `evaluate` in the active stack frame.
+- Call-stack rendering with frame source path and line metadata; selecting a
+  frame navigates the editor to the matching source location.
+
+## Changed
+
+- The DAP client now parses stack frames, scopes, variables, and evaluate
+  responses in addition to launch and run-control requests.
+- GitHub MSI workflows now package `LisanStudio-0.4.1-beta.msi`.
+
+## Known v0.4.1-beta limitations
+
+- The debugger inspector focuses on the active stopped thread and top frame;
+  richer multi-thread and nested variable expansion can follow in a later
+  debugger polish slice.
+- The integrated terminal is still pending Phase F.
+- Manual installed-app QA, GitHub Actions MSI runs, tag creation, release
+  publication, and Authenticode signing remain operator-owned public
+  distribution gates after this in-repo release prep.
+
+# v0.4.0-beta (2026-06-05)
+
+Phase E V2 release: debugger launch, breakpoints, and run control.
+
+## Added
+
+- Line-number gutter breakpoints for editor buffers, with click-to-toggle
+  behavior and persistent visual markers while the file is open.
+- Debug command bindings: Continue/Start Debugging on F5, Step Over on F10,
+  Step Into on F11, and Step Out on Shift+F11.
+- A live `debugpy.adapter` launch path from the bundled runtime. The debugger
+  launches `arabicpython.cli` as a module, sends current editor breakpoints,
+  completes DAP configuration, and tracks stopped/continued/terminated events
+  in the Debug bottom panel.
+- DAP client support for debugpy's `initialized` event sequence, async launch
+  completion, module launches, breakpoints, configurationDone, continue, next,
+  stepIn, and stepOut.
+- MSI packaging now stages `debugpy 1.8.20` into the bundled Python runtime
+  and import-checks both `debugpy` and `debugpy.adapter`.
+
+## Changed
+
+- Run Current File moved to Ctrl+F5 so F5 can start or continue a debug
+  session. Rerun Last Runtime Action moved to Ctrl+Shift+F5.
+- GitHub MSI workflows now prepare the pinned debugpy dependency before
+  packaging `LisanStudio-0.4.0-beta.msi`.
+- `acs_dap_client_tests` now models debugpy's launch handshake, including the
+  `initialized` event before launch response.
+
+## Known v0.4.0-beta limitations
+
+- Locals, watch expressions, and call-stack frame switching are deferred to
+  V2-E3 / `v0.4.1-beta`.
+- Breakpoints are tracked for the active editor buffer; a richer multi-file
+  DebugController surface is deferred to later debugger polish.
+- Manual installed-app QA, GitHub Actions MSI runs, tag creation, release
+  publication, and Authenticode signing remain operator-owned public
+  distribution gates after this in-repo release prep.
+
+# v0.3.2-beta (2026-06-05)
+
+Phase D V2 release: advanced LSP navigation and refactor surfaces.
+
+## Added
+
+- Go-to-definition via F12 and Ctrl+Click, backed by
+  `textDocument/definition`.
+- Find references via Shift+F12, rendered in the bottom-panel references
+  list with click/Enter navigation.
+- Rename symbol via F2, backed by `textDocument/rename` workspace edits.
+  Multi-file preview, dirty-open-file refusal, invalid-range validation,
+  and rollback-on-write-failure are covered by tests.
+- Semantic token overlay from `textDocument/semanticTokens/full` layered
+  over the existing ApyHighlighter fallback. LSP tokens win where the
+  server provides ranges.
+- Document outline from `textDocument/documentSymbol`, rendered in a new
+  bottom-panel outline tab.
+- Workspace symbol picker via Ctrl+T, backed by `workspace/symbol`.
+
+## Changed
+
+- The bottom-panel controller now includes a stable `outline` panel id for
+  workbench-session restore.
+- `acs_lsp_client_tests`, `acs_editor_tests`,
+  `acs_project_runtime_tests`, and `acs_main_window_tests` cover the new
+  D1-D3 LSP surfaces.
+- MSI workflow product-version and artifact paths now target
+  `LisanStudio-0.3.2-beta.msi`.
+
+## Known v0.3.2-beta limitations
+
+- Advanced LSP features remain dependent on the bundled apython LSP runtime
+  advertising the matching capabilities.
+- Workspace-symbol query uses a modal query + result picker; richer
+  incremental filtering can follow in a later UI polish slice.
+- Manual installed-app QA, GitHub Actions MSI runs, tag creation, release
+  publication, and Authenticode signing remain operator-owned public
+  distribution gates after this in-repo release prep.
+
+# v0.3.0-beta (2026-06-05)
+
+Phase C V2 release: first user-visible LSP foundation for Arabic-first
+editing.
+
+## Added
+
+- Lisan Studio now starts and synchronizes a Qt-side LSP client for `.apy`
+  documents through the bundled `lughat-althuban-lsp` runtime path.
+- The editor can request `textDocument/completion` and show a debounced
+  completion popup. Accepting a completion replaces the current identifier
+  prefix instead of duplicating the typed text.
+- The editor can request `textDocument/hover` on identifier dwell and surface
+  the returned markdown in a tooltip.
+- `acs_lsp_client_tests` covers initialize, document sync, completion parsing,
+  hover parsing, and local round-trip budget checks.
+
+## Changed
+
+- The repository now vendors `lsp-framework` as the first submodule under
+  `third_party/lsp-framework`; fresh checkouts must initialize submodules.
+- GitHub MSI test checkout steps use recursive submodule checkout so the LSP
+  transport is present in CI.
+
+## Known v0.3.0-beta limitations
+
+- Completion and hover depend on the bundled apython LSP runtime being present
+  and initializable. If the runtime is missing, LSP UI features stay silent.
+- Completion insertion uses the current identifier prefix plus `insertText`.
+  LSP `textEdit` replacement ranges are not yet consumed.
+- Manual installed-app QA, GitHub Actions MSI runs, tag creation, and release
+  publication remain operator-owned steps after this in-repo release prep.
+
+# v0.2.2-beta (2026-06-05)
+
+Phase B V2 release: workbench recovery, search truncation visibility,
+and command ID stability.
+
+## Added
+
+- Dirty untitled buffers are autosaved while editing and can be recovered
+  after a non-orderly shutdown. Graceful shutdown clears the recovery
+  sentinel.
+- Project search now reports when a scan hits the configured file cap, so
+  users can tell the difference between complete and truncated results.
+- Command IDs now use dotted camelCase consistently across registered
+  workbench commands, command surfaces, shortcuts, and tests.
+
+## Changed
+
+- Legacy shortcut JSON using V1 hyphenated command IDs is migrated during
+  import, preserving user bindings and exporting canonical IDs afterward.
+- ADR-0015 documents the public command ID convention for future extension,
+  LSP, debugger, terminal, and refactor commands.
+
+## Known v0.2.2-beta limitations
+
+- Draft recovery currently prompts only when the previous session left the
+  workbench sentinel uncleared and saved draft payloads exist.
+- The search truncation cap is surfaced in status text, but there is not yet
+  a full search-index progress UI.
+- Push, CI, tag creation, and release publication remain operator-owned
+  steps after this in-repo release prep.
+
+# v0.2.1-beta (2026-06-05)
+
+Phase A V2 release: multi-cursor editing now covers the deferred
+undo/redo, indentation, and committed IME text paths.
+
+## Added
+
+- Ctrl+Z and Ctrl+Y are pinned by regression tests for multi-cursor
+  edits. A single undo removes text inserted at all cursors, and a
+  single redo restores it.
+- Tab indents every active cursor line by one four-space level.
+  Shift+Tab dedents every active cursor line by one level. Each
+  operation is one undo step.
+- Committed IME text, including Arabic composition commits, inserts at
+  the primary cursor and every secondary cursor in one undoable edit.
+
+## Known v0.2.1-beta limitations
+
+- Live IME preedit text is accepted but is not painted as a separate
+  preview at every secondary caret. The committed text is dispatched to
+  all cursors when the composition is finalized.
+- Alt+drag column selection still has no live preview rectangle during
+  drag and still operates on logical lines rather than soft-wrapped
+  visual rows.
+- Other non-trivial editor commands outside Ctrl+Z, Ctrl+Y, Tab,
+  Shift+Tab, Return, Backspace, Delete, arrow movement, typing, and
+  committed IME text may still apply only to the primary cursor while
+  secondaries are active.
+
 # v0.2.0-beta (2026-05-26)
 
 V1.5 milestone-close release. The V1.5 roadmap is archived at

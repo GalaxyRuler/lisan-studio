@@ -34,6 +34,7 @@
 #include <QToolBar>
 #include <QToolButton>
 #include <QTextCursor>
+#include <QUrl>
 
 class TestMainWindow : public QObject
 {
@@ -56,6 +57,8 @@ private slots:
     void usesSingleRtlTopCommandBarWithMenuButtons();
     void exposesLisanLogoAssetInShell();
     void exposesPremiumFutureBottomPanelTabs();
+    void debugInspectorPanelsExistInsideDebugTab();
+    void debugInspectorRendersVariablesWatchAndCallStack();
     void enforcesRtlDirectionAcrossShellContainers();
     void workbenchDeclaresKeyboardFocusOrder();
     void statusBarExposesEditorRuntimeAndGitIndicators();
@@ -64,6 +67,7 @@ private slots:
     void commandPaletteExposesRegisteredWorkbenchCommands();
     void commandPaletteShowsPersistedShortcutOverrides();
     void coreCommandSurfacesDeclareRegisteredCommandIds();
+    void debugAdapterCommandUsesBundledRuntimeAndSanitizedEnvironment();
     void commandPaletteIncludesInFileFindCommand();
     void commandPaletteIncludesSnippetCommand();
     void commandPaletteIncludesVisibleWhitespaceCommand();
@@ -101,6 +105,11 @@ private slots:
     void trustGrantCancelDoesNotAppendAudit();
     void projectSearchShowsClickableResultRows();
     void projectSearchFindsCurrentUnsavedEditorImmediately();
+    void referencesPanelPopulatesAndOpensLocations();
+    void outlinePanelRendersDocumentSymbolsAndOpensLocations();
+    void workspaceSymbolPickerNavigatesSelectedSymbol();
+    void renameWorkspaceEditAppliesAcrossFilesAndShowsPreview();
+    void renameWorkspaceEditRollsBackWhenAnyEditIsInvalid();
     void overlappingFindInProjectReleasesPriorSearchWatcher();
     void mainWindowSurfacesSearchTruncationInStatusBar();
     void mainWindowDoesNotSurfaceTruncationWhenScanCompletes();
@@ -644,7 +653,7 @@ void TestMainWindow::usesSingleRtlTopCommandBarWithMenuButtons()
     QVERIFY(runButton != nullptr);
     QCOMPARE(runButton->toolButtonStyle(), Qt::ToolButtonTextBesideIcon);
     QCOMPARE(runButton->text(), QString::fromUtf8("تشغيل"));
-    QCOMPARE(runButton->defaultAction()->shortcut(), QKeySequence(QStringLiteral("F5")));
+    QCOMPARE(runButton->defaultAction()->shortcut(), QKeySequence(QStringLiteral("Ctrl+F5")));
     QVERIFY(!runButton->icon().isNull());
     const QImage runIcon = runButton->icon().pixmap(24, 24).toImage();
     bool hasReadablePlayPixel = false;
@@ -701,12 +710,67 @@ void TestMainWindow::exposesPremiumFutureBottomPanelTabs()
     auto *tabs = window.findChild<QTabWidget *>(QStringLiteral("bottomPanelTabs"));
     QVERIFY(tabs != nullptr);
     QCOMPARE(tabs->layoutDirection(), Qt::RightToLeft);
-    QCOMPARE(tabs->count(), 5);
+    QCOMPARE(tabs->count(), 7);
     QCOMPARE(tabs->tabText(0), QString::fromUtf8("الطرفية"));
     QCOMPARE(tabs->tabText(1), QString::fromUtf8("الإخراج"));
     QCOMPARE(tabs->tabText(2), QString::fromUtf8("المشاكل"));
     QCOMPARE(tabs->tabText(3), QString::fromUtf8("نتائج البحث"));
-    QCOMPARE(tabs->tabText(4), QString::fromUtf8("التصحيح"));
+    QCOMPARE(tabs->tabText(4), QString::fromUtf8("المراجع"));
+    QCOMPARE(tabs->tabText(5), QString::fromUtf8("المخطط"));
+    QCOMPARE(tabs->tabText(6), QString::fromUtf8("التصحيح"));
+}
+
+void TestMainWindow::debugInspectorPanelsExistInsideDebugTab()
+{
+    MainWindow window;
+
+    auto *debugContainer = window.findChild<QWidget *>(QStringLiteral("debugContainerPanel"));
+    QVERIFY(debugContainer != nullptr);
+    auto *debugTabs = window.findChild<QTabWidget *>(QStringLiteral("debugInspectorTabs"));
+    QVERIFY(debugTabs != nullptr);
+    QCOMPARE(debugTabs->count(), 4);
+    QCOMPARE(debugTabs->tabText(0), QString::fromUtf8("السجل"));
+    QCOMPARE(debugTabs->tabText(1), QString::fromUtf8("المتغيرات"));
+    QCOMPARE(debugTabs->tabText(2), QString::fromUtf8("المراقبة"));
+    QCOMPARE(debugTabs->tabText(3), QString::fromUtf8("المكدس"));
+    QVERIFY(window.findChild<QPlainTextEdit *>(QStringLiteral("debugPanel")) != nullptr);
+    QVERIFY(window.findChild<QListWidget *>(QStringLiteral("debugVariablesPanel")) != nullptr);
+    QVERIFY(window.findChild<QListWidget *>(QStringLiteral("debugWatchPanel")) != nullptr);
+    QVERIFY(window.findChild<QListWidget *>(QStringLiteral("debugCallStackPanel")) != nullptr);
+}
+
+void TestMainWindow::debugInspectorRendersVariablesWatchAndCallStack()
+{
+    MainWindow window;
+
+    window.renderDebugVariables({
+        {QString::fromUtf8("عدد"), QStringLiteral("42"), QStringLiteral("int"), 0},
+        {QString::fromUtf8("رسالة"), QString::fromUtf8("مرحبا"), QStringLiteral("str"), 0},
+    });
+    auto *variables = window.findChild<QListWidget *>(QStringLiteral("debugVariablesPanel"));
+    QVERIFY(variables != nullptr);
+    QCOMPARE(variables->count(), 2);
+    QVERIFY(variables->item(0)->text().contains(QString::fromUtf8("عدد")));
+    QCOMPARE(variables->item(0)->data(Qt::UserRole).toString(), QString::fromUtf8("عدد"));
+
+    variables->setCurrentRow(0);
+    window.addSelectedDebugVariableToWatch();
+    auto *watch = window.findChild<QListWidget *>(QStringLiteral("debugWatchPanel"));
+    QVERIFY(watch != nullptr);
+    QCOMPARE(watch->count(), 1);
+    QVERIFY(watch->item(0)->text().contains(QString::fromUtf8("عدد")));
+    QVERIFY(watch->item(0)->text().contains(QStringLiteral("--")));
+
+    window.renderDebugCallStack({
+        {11, QStringLiteral("main"), QStringLiteral("C:/project/main.apy"), 8, 1},
+    });
+    auto *stack = window.findChild<QListWidget *>(QStringLiteral("debugCallStackPanel"));
+    QVERIFY(stack != nullptr);
+    QCOMPARE(stack->count(), 1);
+    QVERIFY(stack->item(0)->text().contains(QStringLiteral("main.apy")));
+    QCOMPARE(stack->item(0)->data(Qt::UserRole).toString(), QStringLiteral("C:/project/main.apy"));
+    QCOMPARE(stack->item(0)->data(Qt::UserRole + 1).toInt(), 8);
+    QCOMPARE(stack->item(0)->data(Qt::UserRole + 2).toInt(), 11);
 }
 
 void TestMainWindow::enforcesRtlDirectionAcrossShellContainers()
@@ -873,8 +937,8 @@ void TestMainWindow::commandPaletteExposesRegisteredWorkbenchCommands()
     QVERIFY(QMetaObject::invokeMethod(&window, "openCommandPalette", Qt::DirectConnection));
 
     commandIds.sort();
-    const QStringList expectedIds = {
-        QStringLiteral("command-palette"),
+    QStringList expectedIds = {
+        QStringLiteral("system.commandPalette"),
         QStringLiteral("cursor.addAbove"),
         QStringLiteral("cursor.addAtNextMatch"),
         QStringLiteral("cursor.addBelow"),
@@ -886,12 +950,20 @@ void TestMainWindow::commandPaletteExposesRegisteredWorkbenchCommands()
         QStringLiteral("document.saveAll"),
         QStringLiteral("editor.toggleTrimTrailingWhitespace"),
         QStringLiteral("editor.toggleVisibleWhitespace"),
-        QStringLiteral("find-in-file"),
-        QStringLiteral("format-current-file"),
-        QStringLiteral("lint-current-file"),
-        QStringLiteral("new-file"),
-        QStringLiteral("open-file"),
-        QStringLiteral("open-project"),
+        QStringLiteral("editor.findInFile"),
+        QStringLiteral("lsp.findReferences"),
+        QStringLiteral("lsp.goToDefinition"),
+        QStringLiteral("lsp.renameSymbol"),
+        QStringLiteral("lsp.workspaceSymbol"),
+        QStringLiteral("debug.continue"),
+        QStringLiteral("debug.stepInto"),
+        QStringLiteral("debug.stepOut"),
+        QStringLiteral("debug.stepOver"),
+        QStringLiteral("run.formatCurrentFile"),
+        QStringLiteral("run.lintCurrentFile"),
+        QStringLiteral("file.new"),
+        QStringLiteral("file.open"),
+        QStringLiteral("project.open"),
         QStringLiteral("output.clear"),
         QStringLiteral("output.copy"),
         QStringLiteral("output.filter.all"),
@@ -908,20 +980,21 @@ void TestMainWindow::commandPaletteExposesRegisteredWorkbenchCommands()
         QStringLiteral("project.item.rename"),
         QStringLiteral("project.item.reveal"),
         QStringLiteral("project.refresh"),
-        QStringLiteral("replace-in-project"),
-        QStringLiteral("replace-in-project.applyAccepted"),
-        QStringLiteral("run-current-file"),
+        QStringLiteral("search.replacePreview"),
+        QStringLiteral("search.replaceApplyAccepted"),
+        QStringLiteral("run.currentFile"),
         QStringLiteral("run.rerunLast"),
-        QStringLiteral("save-as"),
-        QStringLiteral("save-file"),
-        QStringLiteral("search-project"),
-        QStringLiteral("settings"),
+        QStringLiteral("file.saveAs"),
+        QStringLiteral("file.save"),
+        QStringLiteral("search.project"),
+        QStringLiteral("system.settings"),
         QStringLiteral("snippet.insertPrint"),
-        QStringLiteral("stop-run"),
+        QStringLiteral("run.stop"),
         QStringLiteral("terminal.openPowerShell"),
         QStringLiteral("workspace.trust"),
         QStringLiteral("workspace.untrust"),
     };
+    expectedIds.sort();
     QCOMPARE(commandIds, expectedIds);
 }
 
@@ -932,7 +1005,7 @@ void TestMainWindow::commandPaletteShowsPersistedShortcutOverrides()
     const QString settingsPath = temp.filePath(QStringLiteral("settings.ini"));
 
     QJsonObject shortcuts;
-    shortcuts.insert(QStringLiteral("save-file"), QStringLiteral("Ctrl+Alt+S"));
+    shortcuts.insert(QStringLiteral("file.save"), QStringLiteral("Ctrl+Alt+S"));
     QJsonObject shortcutSettings;
     shortcutSettings.insert(QStringLiteral("version"), 1);
     shortcutSettings.insert(QStringLiteral("shortcuts"), shortcuts);
@@ -956,7 +1029,7 @@ void TestMainWindow::commandPaletteShowsPersistedShortcutOverrides()
 
         for (int row = 0; row < commands->count(); ++row) {
             auto *item = commands->item(row);
-            if (item->data(Qt::UserRole).toString() != QStringLiteral("save-file")) {
+            if (item->data(Qt::UserRole).toString() != QStringLiteral("file.save")) {
                 continue;
             }
             metadataShortcut = item->data(Qt::UserRole + 2).toString();
@@ -1022,8 +1095,8 @@ void TestMainWindow::coreCommandSurfacesDeclareRegisteredCommandIds()
     surfaceIds.removeDuplicates();
     surfaceIds.sort();
 
-    const QStringList expectedSurfaceIds = {
-        QStringLiteral("command-palette"),
+    QStringList expectedSurfaceIds = {
+        QStringLiteral("system.commandPalette"),
         QStringLiteral("cursor.addAbove"),
         QStringLiteral("cursor.addAtNextMatch"),
         QStringLiteral("cursor.addBelow"),
@@ -1031,12 +1104,20 @@ void TestMainWindow::coreCommandSurfacesDeclareRegisteredCommandIds()
         QStringLiteral("cursor.selectAllMatches"),
         QStringLiteral("editor.toggleTrimTrailingWhitespace"),
         QStringLiteral("editor.toggleVisibleWhitespace"),
-        QStringLiteral("find-in-file"),
-        QStringLiteral("format-current-file"),
-        QStringLiteral("lint-current-file"),
-        QStringLiteral("new-file"),
-        QStringLiteral("open-file"),
-        QStringLiteral("open-project"),
+        QStringLiteral("editor.findInFile"),
+        QStringLiteral("lsp.findReferences"),
+        QStringLiteral("lsp.goToDefinition"),
+        QStringLiteral("lsp.renameSymbol"),
+        QStringLiteral("lsp.workspaceSymbol"),
+        QStringLiteral("debug.continue"),
+        QStringLiteral("debug.stepInto"),
+        QStringLiteral("debug.stepOut"),
+        QStringLiteral("debug.stepOver"),
+        QStringLiteral("run.formatCurrentFile"),
+        QStringLiteral("run.lintCurrentFile"),
+        QStringLiteral("file.new"),
+        QStringLiteral("file.open"),
+        QStringLiteral("project.open"),
         QStringLiteral("output.clear"),
         QStringLiteral("output.copy"),
         QStringLiteral("output.filter.all"),
@@ -1053,24 +1134,42 @@ void TestMainWindow::coreCommandSurfacesDeclareRegisteredCommandIds()
         QStringLiteral("project.item.rename"),
         QStringLiteral("project.item.reveal"),
         QStringLiteral("project.refresh"),
-        QStringLiteral("replace-in-project"),
-        QStringLiteral("replace-in-project.applyAccepted"),
-        QStringLiteral("run-current-file"),
-        QStringLiteral("save-as"),
-        QStringLiteral("save-file"),
-        QStringLiteral("search-project"),
-        QStringLiteral("settings"),
+        QStringLiteral("search.replacePreview"),
+        QStringLiteral("search.replaceApplyAccepted"),
+        QStringLiteral("run.currentFile"),
+        QStringLiteral("file.saveAs"),
+        QStringLiteral("file.save"),
+        QStringLiteral("search.project"),
+        QStringLiteral("system.settings"),
         QStringLiteral("snippet.insertPrint"),
-        QStringLiteral("stop-run"),
+        QStringLiteral("run.stop"),
         QStringLiteral("terminal.openPowerShell"),
         QStringLiteral("workspace.trust"),
         QStringLiteral("workspace.untrust"),
     };
+    expectedSurfaceIds.sort();
     QCOMPARE(surfaceIds, expectedSurfaceIds);
 
     for (const QString &surfaceId : surfaceIds) {
         QVERIFY2(paletteIds.contains(surfaceId), qPrintable(QStringLiteral("Missing command registry entry for %1").arg(surfaceId)));
     }
+}
+
+void TestMainWindow::debugAdapterCommandUsesBundledRuntimeAndSanitizedEnvironment()
+{
+    MainWindow window;
+    window.configureDebugAdapter();
+
+    const DapServerCommand command = window.dapClient.serverCommand();
+    QVERIFY(command.program.endsWith(QStringLiteral("runtime\\python\\python.exe"))
+        || command.program.endsWith(QStringLiteral("runtime/python/python.exe")));
+    QCOMPARE(command.arguments, QStringList({QStringLiteral("-m"), QStringLiteral("debugpy.adapter")}));
+    QVERIFY(!command.workingDirectory.isEmpty());
+    QVERIFY(!command.environment.contains(QStringLiteral("PYTHONHOME")));
+    QVERIFY(!command.environment.contains(QStringLiteral("PYTHONPATH")));
+    QCOMPARE(command.environment.value(QStringLiteral("PYTHONNOUSERSITE")), QStringLiteral("1"));
+    QCOMPARE(command.environment.value(QStringLiteral("PYTHONUTF8")), QStringLiteral("1"));
+    QCOMPARE(command.environment.value(QStringLiteral("PYTHONIOENCODING")), QStringLiteral("utf-8"));
 }
 
 void TestMainWindow::commandPaletteIncludesInFileFindCommand()
@@ -1097,7 +1196,7 @@ void TestMainWindow::commandPaletteIncludesInFileFindCommand()
     });
 
     QVERIFY(QMetaObject::invokeMethod(&window, "openCommandPalette", Qt::DirectConnection));
-    QVERIFY(commandIds.contains(QStringLiteral("find-in-file")));
+    QVERIFY(commandIds.contains(QStringLiteral("editor.findInFile")));
 }
 
 void TestMainWindow::commandPaletteIncludesSnippetCommand()
@@ -1260,7 +1359,7 @@ void TestMainWindow::commandPaletteFiltersAndExecutesSelectedCommand()
     QVERIFY(sawCommandMetadata);
     QVERIFY(sawCommandWidgets);
     QCOMPARE(visibleRows, 1);
-    QCOMPARE(visibleCommandId, QStringLiteral("new-file"));
+    QCOMPARE(visibleCommandId, QStringLiteral("file.new"));
     QCOMPARE(tabs->count(), beforeTabCount + 1);
     QCOMPARE(window.currentEditorPath(), QString());
     auto *currentEditor = qobject_cast<EditorSurface *>(tabs->currentWidget());
@@ -1306,7 +1405,7 @@ void TestMainWindow::commandPaletteFiltersAndExecutesSelectedCommand()
     QVERIFY(QMetaObject::invokeMethod(&window, "openCommandPalette", Qt::DirectConnection));
 
     QCOMPARE(doubleClickVisibleRows, 1);
-    QCOMPARE(doubleClickCommandId, QStringLiteral("new-file"));
+    QCOMPARE(doubleClickCommandId, QStringLiteral("file.new"));
     QCOMPARE(tabs->count(), beforeTabCount + 2);
 }
 
@@ -1414,12 +1513,14 @@ void TestMainWindow::terminalCommandRequiresTrustedWorkspace()
 
     auto *terminalPanel = window.findChild<QPlainTextEdit *>(QStringLiteral("terminalPanel"));
     QVERIFY(terminalPanel != nullptr);
+    auto *terminalContainer = window.findChild<QWidget *>(QStringLiteral("terminalContainerPanel"));
+    QVERIFY(terminalContainer != nullptr);
     auto *tabs = window.findChild<QTabWidget *>(QStringLiteral("bottomPanelTabs"));
     QVERIFY(tabs != nullptr);
 
     QVERIFY(QMetaObject::invokeMethod(&window, "openPowerShellTerminal", Qt::DirectConnection));
 
-    QCOMPARE(tabs->currentWidget(), terminalPanel);
+    QCOMPARE(tabs->currentWidget(), terminalContainer);
     QVERIFY2(terminalPanel->toPlainText().contains(QString::fromUtf8("الثقة")), qPrintable(terminalPanel->toPlainText()));
     QVERIFY2(!terminalPanel->toPlainText().contains(QStringLiteral("powershell.exe -NoLogo")), qPrintable(terminalPanel->toPlainText()));
 }
@@ -1434,6 +1535,10 @@ void TestMainWindow::trustWorkspaceCommandPersistsAndUnblocksTerminalReadiness()
 
     auto *terminalPanel = window.findChild<QPlainTextEdit *>(QStringLiteral("terminalPanel"));
     QVERIFY(terminalPanel != nullptr);
+    auto *terminalProfilePicker = window.findChild<QComboBox *>(QStringLiteral("terminalProfilePicker"));
+    QVERIFY(terminalProfilePicker != nullptr);
+    auto *terminalInput = window.findChild<QLineEdit *>(QStringLiteral("terminalInput"));
+    QVERIFY(terminalInput != nullptr);
 
     QVERIFY(QMetaObject::invokeMethod(&window, "openPowerShellTerminal", Qt::DirectConnection));
     QVERIFY(terminalPanel->toPlainText().contains(QString::fromUtf8("الثقة")));
@@ -1456,9 +1561,20 @@ void TestMainWindow::trustWorkspaceCommandPersistsAndUnblocksTerminalReadiness()
     QVERIFY2(error.isEmpty(), qPrintable(error));
     QVERIFY(settings.trusted);
 
+    const int cmdIndex = terminalProfilePicker->findData(QStringLiteral("cmd"));
+    QVERIFY(cmdIndex >= 0);
+    terminalProfilePicker->setCurrentIndex(cmdIndex);
+    QCOMPARE(store.load().terminalProfileId, QStringLiteral("cmd"));
+
     QVERIFY(QMetaObject::invokeMethod(&window, "openPowerShellTerminal", Qt::DirectConnection));
-    QVERIFY2(terminalPanel->toPlainText().contains(QString::fromUtf8("جاهزة")), qPrintable(terminalPanel->toPlainText()));
+    QVERIFY2(terminalPanel->toPlainText().contains(QString::fromUtf8("بدء طرفية")), qPrintable(terminalPanel->toPlainText()));
     QVERIFY2(!terminalPanel->toPlainText().contains(QString::fromUtf8("الثقة")), qPrintable(terminalPanel->toPlainText()));
+    QVERIFY(terminalInput->isEnabled());
+
+    terminalInput->setText(QStringLiteral("echo ui-terminal"));
+    QVERIFY(QMetaObject::invokeMethod(&window, "sendTerminalInput", Qt::DirectConnection));
+    QTRY_VERIFY2(terminalPanel->toPlainText().contains(QStringLiteral("ui-terminal")), qPrintable(terminalPanel->toPlainText()));
+    QVERIFY(QMetaObject::invokeMethod(&window, "stopTerminalProcess", Qt::DirectConnection));
 }
 
 void TestMainWindow::untrustWorkspaceCommandPersistsAndBlocksTerminalAgain()
@@ -2213,6 +2329,194 @@ void TestMainWindow::projectSearchFindsCurrentUnsavedEditorImmediately()
     QVERIFY(results->item(0)->toolTip().contains(QStringLiteral("adult")));
 }
 
+void TestMainWindow::referencesPanelPopulatesAndOpensLocations()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    QDir root(temp.path());
+    const QString filePath = writeFile(
+        root,
+        QStringLiteral("src/main.apy"),
+        QString::fromUtf8("س = 1\nاطبع(س)\nاطبع(س)\n"));
+
+    MainWindow window;
+    window.resize(1000, 700);
+    QVERIFY(window.openPath(root.absolutePath()));
+
+    QVector<LspLocation> references;
+    references.append({QUrl::fromLocalFile(filePath).toString(), 1, 4});
+    references.append({QUrl::fromLocalFile(filePath).toString(), 2, 4});
+    window.renderReferencesForTest(references);
+
+    auto *panel = window.findChild<QListWidget *>(QStringLiteral("referencesPanel"));
+    QVERIFY(panel != nullptr);
+    QCOMPARE(panel->layoutDirection(), Qt::RightToLeft);
+    QCOMPARE(panel->count(), 2);
+    QCOMPARE(panel->item(0)->data(Qt::UserRole).toString(), QUrl::fromLocalFile(filePath).toString());
+    QCOMPARE(panel->item(0)->data(Qt::UserRole + 1).toInt(), 2);
+    QCOMPARE(panel->item(0)->data(Qt::UserRole + 2).toInt(), 5);
+
+    auto *tabs = window.findChild<QTabWidget *>(QStringLiteral("bottomPanelTabs"));
+    QVERIFY(tabs != nullptr);
+    QCOMPARE(tabs->currentWidget(), panel);
+
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    panel->setFocus();
+    panel->setCurrentRow(1);
+    QTest::keyClick(panel, Qt::Key_Return);
+
+    QCOMPARE(QDir::toNativeSeparators(window.currentEditorPath()), QDir::toNativeSeparators(filePath));
+    auto *editor = window.findChild<EditorSurface *>(QStringLiteral("editorSurface"));
+    QVERIFY(editor != nullptr);
+    QCOMPARE(editor->textCursor().blockNumber(), 2);
+}
+
+void TestMainWindow::outlinePanelRendersDocumentSymbolsAndOpensLocations()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    QDir root(temp.path());
+    const QString filePath = writeFile(
+        root,
+        QStringLiteral("src/main.apy"),
+        QString::fromUtf8("دالة اجمع(س):\n    ارجع س\n\nاطبع(اجمع(١))\n"));
+
+    MainWindow window;
+    window.resize(1000, 700);
+    QVERIFY(window.openPath(root.absolutePath()));
+
+    QVector<LspSymbol> symbols;
+    symbols.append({QString::fromUtf8("اجمع"), QStringLiteral("function"), QUrl::fromLocalFile(filePath).toString(), 0, 5, 12});
+    window.renderOutlineForTest(symbols);
+
+    auto *panel = window.findChild<QListWidget *>(QStringLiteral("outlinePanel"));
+    QVERIFY(panel != nullptr);
+    QCOMPARE(panel->layoutDirection(), Qt::RightToLeft);
+    QCOMPARE(panel->count(), 1);
+    QCOMPARE(panel->item(0)->data(Qt::UserRole).toString(), QUrl::fromLocalFile(filePath).toString());
+    QCOMPARE(panel->item(0)->data(Qt::UserRole + 1).toInt(), 1);
+    QCOMPARE(panel->item(0)->data(Qt::UserRole + 2).toInt(), 6);
+    QVERIFY(panel->item(0)->text().contains(QString::fromUtf8("اجمع")));
+
+    auto *tabs = window.findChild<QTabWidget *>(QStringLiteral("bottomPanelTabs"));
+    QVERIFY(tabs != nullptr);
+    QCOMPARE(tabs->currentWidget(), panel);
+
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    panel->setFocus();
+    panel->setCurrentRow(0);
+    QTest::keyClick(panel, Qt::Key_Return);
+
+    QCOMPARE(QDir::toNativeSeparators(window.currentEditorPath()), QDir::toNativeSeparators(filePath));
+    auto *editor = window.findChild<EditorSurface *>(QStringLiteral("editorSurface"));
+    QVERIFY(editor != nullptr);
+    QCOMPARE(editor->textCursor().blockNumber(), 0);
+}
+
+void TestMainWindow::workspaceSymbolPickerNavigatesSelectedSymbol()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    QDir root(temp.path());
+    const QString firstPath = writeFile(root, QStringLiteral("src/main.apy"), QString::fromUtf8("دالة رئيسية():\n    ارجع ١\n"));
+    const QString secondPath = writeFile(root, QStringLiteral("src/lib.apy"), QString::fromUtf8("دالة اجمع(س):\n    ارجع س\n"));
+
+    MainWindow window;
+    window.resize(1000, 700);
+    QVERIFY(window.openPath(root.absolutePath()));
+
+    QVector<LspSymbol> symbols;
+    symbols.append({QString::fromUtf8("رئيسية"), QStringLiteral("function"), QUrl::fromLocalFile(firstPath).toString(), 0, 5, 12});
+    symbols.append({QString::fromUtf8("اجمع"), QStringLiteral("function"), QUrl::fromLocalFile(secondPath).toString(), 0, 5, 12});
+
+    QTimer::singleShot(0, [&]() {
+        auto *dialog = window.findChild<QDialog *>(QStringLiteral("workspaceSymbolDialog"));
+        QVERIFY(dialog != nullptr);
+        auto *results = dialog->findChild<QListWidget *>(QStringLiteral("workspaceSymbolResults"));
+        QVERIFY(results != nullptr);
+        QCOMPARE(results->count(), 2);
+        results->setCurrentRow(1);
+        dialog->accept();
+    });
+
+    window.openWorkspaceSymbolPickerForTest(symbols);
+
+    QCOMPARE(QDir::toNativeSeparators(window.currentEditorPath()), QDir::toNativeSeparators(secondPath));
+    auto *editor = window.findChild<EditorSurface *>(QStringLiteral("editorSurface"));
+    QVERIFY(editor != nullptr);
+    QCOMPARE(editor->textCursor().blockNumber(), 0);
+}
+
+void TestMainWindow::renameWorkspaceEditAppliesAcrossFilesAndShowsPreview()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    QDir root(temp.path());
+    const QString firstPath = writeFile(root, QStringLiteral("main.apy"), QString::fromUtf8("عدد = 1\nاطبع(عدد)\n"));
+    const QString secondPath = writeFile(root, QStringLiteral("lib.apy"), QString::fromUtf8("اطبع(عدد)\n"));
+
+    MainWindow window;
+    QVERIFY(window.openPath(root.absolutePath()));
+
+    LspWorkspaceEdit edit;
+    edit.edits.append({QUrl::fromLocalFile(firstPath).toString(), 0, 0, 0, 3, QString::fromUtf8("قيمة")});
+    edit.edits.append({QUrl::fromLocalFile(firstPath).toString(), 1, 5, 1, 8, QString::fromUtf8("قيمة")});
+    edit.edits.append({QUrl::fromLocalFile(secondPath).toString(), 0, 5, 0, 8, QString::fromUtf8("قيمة")});
+
+    QString error;
+    QVERIFY2(window.applyWorkspaceEdit(edit, &error), qPrintable(error));
+
+    QFile firstFile(firstPath);
+    QFile secondFile(secondPath);
+    QVERIFY(firstFile.open(QIODevice::ReadOnly));
+    QVERIFY(secondFile.open(QIODevice::ReadOnly));
+    QString firstText = QString::fromUtf8(firstFile.readAll());
+    QString secondText = QString::fromUtf8(secondFile.readAll());
+    firstText.replace(QStringLiteral("\r\n"), QStringLiteral("\n"));
+    secondText.replace(QStringLiteral("\r\n"), QStringLiteral("\n"));
+    QCOMPARE(firstText, QString::fromUtf8("قيمة = 1\nاطبع(قيمة)\n"));
+    QCOMPARE(secondText, QString::fromUtf8("اطبع(قيمة)\n"));
+
+    auto *panel = window.findChild<QListWidget *>(QStringLiteral("referencesPanel"));
+    QVERIFY(panel != nullptr);
+    QCOMPARE(panel->count(), 3);
+    QVERIFY(panel->item(0)->text().contains(QString::fromUtf8("إعادة تسمية")));
+    QVERIFY(panel->item(0)->toolTip().contains(QString::fromUtf8("قيمة")));
+}
+
+void TestMainWindow::renameWorkspaceEditRollsBackWhenAnyEditIsInvalid()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    QDir root(temp.path());
+    const QString firstPath = writeFile(root, QStringLiteral("main.apy"), QString::fromUtf8("عدد = 1\n"));
+    const QString secondPath = writeFile(root, QStringLiteral("lib.apy"), QString::fromUtf8("اطبع(عدد)\n"));
+
+    MainWindow window;
+    QVERIFY(window.openPath(root.absolutePath()));
+
+    LspWorkspaceEdit edit;
+    edit.edits.append({QUrl::fromLocalFile(firstPath).toString(), 0, 0, 0, 3, QString::fromUtf8("قيمة")});
+    edit.edits.append({QUrl::fromLocalFile(secondPath).toString(), 20, 0, 20, 3, QString::fromUtf8("قيمة")});
+
+    QString error;
+    QVERIFY(!window.applyWorkspaceEdit(edit, &error));
+    QVERIFY(!error.isEmpty());
+
+    QFile firstFile(firstPath);
+    QFile secondFile(secondPath);
+    QVERIFY(firstFile.open(QIODevice::ReadOnly));
+    QVERIFY(secondFile.open(QIODevice::ReadOnly));
+    QString firstText = QString::fromUtf8(firstFile.readAll());
+    QString secondText = QString::fromUtf8(secondFile.readAll());
+    firstText.replace(QStringLiteral("\r\n"), QStringLiteral("\n"));
+    secondText.replace(QStringLiteral("\r\n"), QStringLiteral("\n"));
+    QCOMPARE(firstText, QString::fromUtf8("عدد = 1\n"));
+    QCOMPARE(secondText, QString::fromUtf8("اطبع(عدد)\n"));
+}
+
 void TestMainWindow::overlappingFindInProjectReleasesPriorSearchWatcher()
 {
     QTemporaryDir temp;
@@ -2275,15 +2579,17 @@ void TestMainWindow::mainWindowSurfacesSearchTruncationInStatusBar()
     QTemporaryDir temp;
     QVERIFY(temp.isValid());
     QDir root(temp.path());
+    constexpr int TestScanCap = 20;
 
-    for (int i = 0; i <= SearchService::MaxScannedFiles; ++i) {
+    for (int i = 0; i <= TestScanCap; ++i) {
         writeFile(
             root,
             QStringLiteral("file-%1.apy").arg(i, 4, 10, QLatin1Char('0')),
-            i == SearchService::MaxScannedFiles ? QStringLiteral("needle\n") : QStringLiteral("لا يوجد\n"));
+            i == TestScanCap ? QStringLiteral("needle\n") : QStringLiteral("لا يوجد\n"));
     }
 
     MainWindow window;
+    window.setSearchScanCapForTest(TestScanCap);
     QVERIFY(window.openPath(root.absolutePath()));
 
     auto *commandBox = window.findChild<QLineEdit *>(QStringLiteral("commandBox"));
@@ -2295,7 +2601,7 @@ void TestMainWindow::mainWindowSurfacesSearchTruncationInStatusBar()
     QVERIFY(QMetaObject::invokeMethod(&window, "findInProject", Qt::DirectConnection));
 
     const QString truncationText = QString::fromUtf8("تم اقتطاع نتائج البحث عند %1 ملف")
-                                       .arg(SearchService::MaxScannedFiles);
+                                       .arg(TestScanCap);
     QTRY_VERIFY_WITH_TIMEOUT(status->text().contains(truncationText), 10000);
 }
 
@@ -2343,7 +2649,7 @@ void TestMainWindow::projectReplacePreviewRendersRowsWithoutWritingFile()
     auto *replaceInput = window.findChild<QLineEdit *>(QStringLiteral("projectReplaceInput"));
     QVERIFY(commandBox != nullptr);
     QVERIFY(replaceInput != nullptr);
-    QCOMPARE(replaceInput->property("commandId").toString(), QStringLiteral("replace-in-project"));
+    QCOMPARE(replaceInput->property("commandId").toString(), QStringLiteral("search.replacePreview"));
 
     commandBox->setText(QString::fromUtf8("عدد"));
     replaceInput->setText(QString::fromUtf8("قيمة"));
@@ -2499,7 +2805,7 @@ void TestMainWindow::projectReplaceApplyWritesCheckedRowsOnly()
     QVERIFY(commandBox != nullptr);
     QVERIFY(replaceInput != nullptr);
     QVERIFY(applyButton != nullptr);
-    QCOMPARE(applyButton->property("commandId").toString(), QStringLiteral("replace-in-project.applyAccepted"));
+    QCOMPARE(applyButton->property("commandId").toString(), QStringLiteral("search.replaceApplyAccepted"));
 
     commandBox->setText(QString::fromUtf8("عدد"));
     replaceInput->setText(QString::fromUtf8("قيمة"));
@@ -3356,13 +3662,13 @@ void TestMainWindow::settingsDialogEditsSelectedShortcutBinding()
         }
 
         for (int row = 0; row < shortcutList->count(); ++row) {
-            if (shortcutList->item(row)->data(Qt::UserRole).toString() == QStringLiteral("save-file")) {
+            if (shortcutList->item(row)->data(Qt::UserRole).toString() == QStringLiteral("file.save")) {
                 shortcutList->setCurrentRow(row);
                 break;
             }
         }
         if (!shortcutList->currentItem()) {
-            failure = QStringLiteral("save-file shortcut row missing");
+            failure = QStringLiteral("file.save shortcut row missing");
             dialog->reject();
             return;
         }
@@ -3375,7 +3681,7 @@ void TestMainWindow::settingsDialogEditsSelectedShortcutBinding()
     QTRY_VERIFY2(inspected, qPrintable(failure));
     QVERIFY2(failure.isEmpty(), qPrintable(failure));
     QCOMPARE(
-        SettingsStore(settingsPath).shortcutSettingsJson().value(QStringLiteral("shortcuts")).toObject().value(QStringLiteral("save-file")).toString(),
+        SettingsStore(settingsPath).shortcutSettingsJson().value(QStringLiteral("shortcuts")).toObject().value(QStringLiteral("file.save")).toString(),
         QStringLiteral("Ctrl+Alt+S"));
 }
 
@@ -3386,7 +3692,7 @@ void TestMainWindow::persistedShortcutOverrideAppliesToWorkbenchActions()
     const QString settingsPath = temp.filePath(QStringLiteral("settings.ini"));
 
     QJsonObject shortcuts;
-    shortcuts.insert(QStringLiteral("save-file"), QStringLiteral("Ctrl+Alt+S"));
+    shortcuts.insert(QStringLiteral("file.save"), QStringLiteral("Ctrl+Alt+S"));
     QJsonObject shortcutSettings;
     shortcutSettings.insert(QStringLiteral("version"), 1);
     shortcutSettings.insert(QStringLiteral("shortcuts"), shortcuts);
@@ -3396,7 +3702,7 @@ void TestMainWindow::persistedShortcutOverrideAppliesToWorkbenchActions()
 
     int saveActionCount = 0;
     for (auto *action : window.findChildren<QAction *>()) {
-        if (action->property("commandId").toString() != QStringLiteral("save-file")) {
+        if (action->property("commandId").toString() != QStringLiteral("file.save")) {
             continue;
         }
         ++saveActionCount;
@@ -3414,7 +3720,7 @@ void TestMainWindow::shortcutSettingsExportWritesPersistedJson()
     const QString settingsPath = temp.filePath(QStringLiteral("settings.ini"));
 
     QJsonObject shortcuts;
-    shortcuts.insert(QStringLiteral("save-file"), QStringLiteral("Ctrl+Alt+S"));
+    shortcuts.insert(QStringLiteral("file.save"), QStringLiteral("Ctrl+Alt+S"));
     QJsonObject shortcutSettings;
     shortcutSettings.insert(QStringLiteral("version"), 1);
     shortcutSettings.insert(QStringLiteral("shortcuts"), shortcuts);
@@ -3437,7 +3743,7 @@ void TestMainWindow::shortcutSettingsExportWritesPersistedJson()
     const QJsonObject exportedJson = QJsonDocument::fromJson(exportedFile.readAll()).object();
     QCOMPARE(exportedJson.value(QStringLiteral("version")).toInt(), 1);
     QCOMPARE(
-        exportedJson.value(QStringLiteral("shortcuts")).toObject().value(QStringLiteral("save-file")).toString(),
+        exportedJson.value(QStringLiteral("shortcuts")).toObject().value(QStringLiteral("file.save")).toString(),
         QStringLiteral("Ctrl+Alt+S"));
 }
 
@@ -3449,7 +3755,7 @@ void TestMainWindow::shortcutSettingsImportAppliesValidJson()
     const QString importPath = temp.filePath(QStringLiteral("shortcuts.json"));
 
     QJsonObject shortcuts;
-    shortcuts.insert(QStringLiteral("save-file"), QStringLiteral("Ctrl+Alt+S"));
+    shortcuts.insert(QStringLiteral("file.save"), QStringLiteral("Ctrl+Alt+S"));
     QJsonObject shortcutSettings;
     shortcutSettings.insert(QStringLiteral("version"), 1);
     shortcutSettings.insert(QStringLiteral("shortcuts"), shortcuts);
@@ -3470,12 +3776,12 @@ void TestMainWindow::shortcutSettingsImportAppliesValidJson()
 
     QVERIFY(imported);
     QCOMPARE(
-        SettingsStore(settingsPath).shortcutSettingsJson().value(QStringLiteral("shortcuts")).toObject().value(QStringLiteral("save-file")).toString(),
+        SettingsStore(settingsPath).shortcutSettingsJson().value(QStringLiteral("shortcuts")).toObject().value(QStringLiteral("file.save")).toString(),
         QStringLiteral("Ctrl+Alt+S"));
 
     int saveActionCount = 0;
     for (auto *action : window.findChildren<QAction *>()) {
-        if (action->property("commandId").toString() != QStringLiteral("save-file")) {
+        if (action->property("commandId").toString() != QStringLiteral("file.save")) {
             continue;
         }
         ++saveActionCount;
@@ -3492,7 +3798,7 @@ void TestMainWindow::shortcutSettingsImportRejectsInvalidJsonWithoutChangingExis
     const QString importPath = temp.filePath(QStringLiteral("bad-shortcuts.json"));
 
     QJsonObject existingShortcuts;
-    existingShortcuts.insert(QStringLiteral("save-file"), QStringLiteral("Ctrl+Alt+S"));
+    existingShortcuts.insert(QStringLiteral("file.save"), QStringLiteral("Ctrl+Alt+S"));
     QJsonObject existingSettings;
     existingSettings.insert(QStringLiteral("version"), 1);
     existingSettings.insert(QStringLiteral("shortcuts"), existingShortcuts);
@@ -3520,7 +3826,7 @@ void TestMainWindow::shortcutSettingsImportRejectsInvalidJsonWithoutChangingExis
 
     QVERIFY(!imported);
     QCOMPARE(
-        SettingsStore(settingsPath).shortcutSettingsJson().value(QStringLiteral("shortcuts")).toObject().value(QStringLiteral("save-file")).toString(),
+        SettingsStore(settingsPath).shortcutSettingsJson().value(QStringLiteral("shortcuts")).toObject().value(QStringLiteral("file.save")).toString(),
         QStringLiteral("Ctrl+Alt+S"));
     QVERIFY(window.property("shortcutSettingsError").toString().contains(QStringLiteral("missing-command")));
 }
@@ -3532,7 +3838,7 @@ void TestMainWindow::shortcutSettingsResetRestoresDefaultActions()
     const QString settingsPath = temp.filePath(QStringLiteral("settings.ini"));
 
     QJsonObject shortcuts;
-    shortcuts.insert(QStringLiteral("save-file"), QStringLiteral("Ctrl+Alt+S"));
+    shortcuts.insert(QStringLiteral("file.save"), QStringLiteral("Ctrl+Alt+S"));
     QJsonObject shortcutSettings;
     shortcutSettings.insert(QStringLiteral("version"), 1);
     shortcutSettings.insert(QStringLiteral("shortcuts"), shortcuts);
@@ -3552,7 +3858,7 @@ void TestMainWindow::shortcutSettingsResetRestoresDefaultActions()
 
     int saveActionCount = 0;
     for (auto *action : window.findChildren<QAction *>()) {
-        if (action->property("commandId").toString() != QStringLiteral("save-file")) {
+        if (action->property("commandId").toString() != QStringLiteral("file.save")) {
             continue;
         }
         ++saveActionCount;
@@ -3574,17 +3880,17 @@ void TestMainWindow::shortcutOverrideHelperPersistsAndAppliesCommandShortcut()
         "setShortcutOverrideForCommand",
         Qt::DirectConnection,
         Q_RETURN_ARG(bool, saved),
-        Q_ARG(QString, QStringLiteral("save-file")),
+        Q_ARG(QString, QStringLiteral("file.save")),
         Q_ARG(QKeySequence, QKeySequence(QStringLiteral("Ctrl+Alt+S")))));
 
     QVERIFY(saved);
     QCOMPARE(
-        SettingsStore(settingsPath).shortcutSettingsJson().value(QStringLiteral("shortcuts")).toObject().value(QStringLiteral("save-file")).toString(),
+        SettingsStore(settingsPath).shortcutSettingsJson().value(QStringLiteral("shortcuts")).toObject().value(QStringLiteral("file.save")).toString(),
         QStringLiteral("Ctrl+Alt+S"));
 
     int saveActionCount = 0;
     for (auto *action : window.findChildren<QAction *>()) {
-        if (action->property("commandId").toString() != QStringLiteral("save-file")) {
+        if (action->property("commandId").toString() != QStringLiteral("file.save")) {
             continue;
         }
         ++saveActionCount;
@@ -3606,12 +3912,12 @@ void TestMainWindow::shortcutOverrideHelperRejectsConflictsWithoutChangingSettin
         "setShortcutOverrideForCommand",
         Qt::DirectConnection,
         Q_RETURN_ARG(bool, saved),
-        Q_ARG(QString, QStringLiteral("save-file")),
+        Q_ARG(QString, QStringLiteral("file.save")),
         Q_ARG(QKeySequence, QKeySequence(QKeySequence::Open))));
 
     QVERIFY(!saved);
     QVERIFY(SettingsStore(settingsPath).shortcutSettingsJson().isEmpty());
-    QVERIFY(window.property("shortcutSettingsError").toString().contains(QStringLiteral("open-file")));
+    QVERIFY(window.property("shortcutSettingsError").toString().contains(QStringLiteral("file.open")));
 }
 
 QTEST_MAIN(TestMainWindow)

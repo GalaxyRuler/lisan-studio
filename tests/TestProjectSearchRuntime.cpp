@@ -73,6 +73,7 @@ private slots:
     void settingsStorePersistsShortcutSettingsJson();
     void packageScriptDerivesMsiArtifactNameFromProductVersion();
     void packageScriptStampsInstallerBuildId();
+    void packageScriptSupportsOptionalAuthenticodeSigning();
     void releaseEvidenceScriptDerivesMsiPathFromProductVersion();
     void workspaceSettingsStoreDefaultsWhenMissingOrInvalid();
     void workspaceSettingsStorePersistsTrustAndEditorPreferences();
@@ -656,6 +657,12 @@ void TestProjectSearchRuntime::terminalProfileModelBuildsExplicitPowerShellProfi
     QCOMPARE(profile.workingDirectory, QStringLiteral("C:/project"));
     QVERIFY(profile.requiresTrustedWorkspace);
     QVERIFY(!profile.arguments.join(QLatin1Char(' ')).contains(QStringLiteral("&&")));
+
+    const TerminalProfile cmd = TerminalProfileModel::defaultCmdProfile(QStringLiteral("C:/project"));
+    QCOMPARE(cmd.id, QStringLiteral("cmd"));
+    QCOMPARE(cmd.program, QStringLiteral("cmd.exe"));
+    QVERIFY(cmd.arguments.isEmpty());
+    QCOMPARE(cmd.workingDirectory, QStringLiteral("C:/project"));
 }
 
 void TestProjectSearchRuntime::terminalProfileModelRequiresWorkspaceTrustForLaunch()
@@ -761,20 +768,26 @@ void TestProjectSearchRuntime::bottomPanelControllerMapsStableIdsAndSelections()
     QPlainTextEdit output;
     QListWidget problems;
     QListWidget search;
+    QListWidget references;
+    QListWidget outline;
     QPlainTextEdit debug;
 
     tabs.addTab(&terminal, QString::fromUtf8("الطرفية"));
     tabs.addTab(&output, QString::fromUtf8("الإخراج"));
     tabs.addTab(&problems, QString::fromUtf8("المشاكل"));
     tabs.addTab(&search, QString::fromUtf8("نتائج البحث"));
+    tabs.addTab(&references, QString::fromUtf8("المراجع"));
+    tabs.addTab(&outline, QString::fromUtf8("المخطط"));
     tabs.addTab(&debug, QString::fromUtf8("التصحيح"));
 
-    BottomPanelController controller(&tabs, &output, &terminal, &problems, &search, &debug);
+    BottomPanelController controller(&tabs, &output, &terminal, &problems, &search, &references, &outline, &debug);
 
     QCOMPARE(controller.panelId(&terminal), QStringLiteral("terminal"));
     QCOMPARE(controller.panelId(&output), QStringLiteral("output"));
     QCOMPARE(controller.panelId(&problems), QStringLiteral("problems"));
     QCOMPARE(controller.panelId(&search), QStringLiteral("search"));
+    QCOMPARE(controller.panelId(&references), QStringLiteral("references"));
+    QCOMPARE(controller.panelId(&outline), QStringLiteral("outline"));
     QCOMPARE(controller.panelId(&debug), QStringLiteral("debug"));
     QCOMPARE(controller.panelId(nullptr), QStringLiteral("terminal"));
 
@@ -782,6 +795,8 @@ void TestProjectSearchRuntime::bottomPanelControllerMapsStableIdsAndSelections()
     QCOMPARE(controller.panelForId(QStringLiteral("output")), &output);
     QCOMPARE(controller.panelForId(QStringLiteral("problems")), &problems);
     QCOMPARE(controller.panelForId(QStringLiteral("search")), &search);
+    QCOMPARE(controller.panelForId(QStringLiteral("references")), &references);
+    QCOMPARE(controller.panelForId(QStringLiteral("outline")), &outline);
     QCOMPARE(controller.panelForId(QStringLiteral("debug")), &debug);
     QCOMPARE(controller.panelForId(QStringLiteral("missing")), &terminal);
 
@@ -793,6 +808,10 @@ void TestProjectSearchRuntime::bottomPanelControllerMapsStableIdsAndSelections()
     QCOMPARE(tabs.currentWidget(), &problems);
     controller.showSearchResultsPanel();
     QCOMPARE(tabs.currentWidget(), &search);
+    controller.showReferencesPanel();
+    QCOMPARE(tabs.currentWidget(), &references);
+    controller.showOutlinePanel();
+    QCOMPARE(tabs.currentWidget(), &outline);
 }
 
 void TestProjectSearchRuntime::runtimeProblemParserExtractsArabicSyntaxLine()
@@ -905,8 +924,8 @@ void TestProjectSearchRuntime::settingsStorePersistsShortcutSettingsJson()
     QVERIFY(empty.shortcutSettingsJson().isEmpty());
 
     QJsonObject shortcuts;
-    shortcuts.insert(QStringLiteral("save-file"), QStringLiteral("Ctrl+Alt+S"));
-    shortcuts.insert(QStringLiteral("run-current-file"), QStringLiteral("F6"));
+    shortcuts.insert(QStringLiteral("file.save"), QStringLiteral("Ctrl+Alt+S"));
+    shortcuts.insert(QStringLiteral("run.currentFile"), QStringLiteral("F6"));
 
     QJsonObject exported;
     exported.insert(QStringLiteral("version"), 1);
@@ -918,7 +937,7 @@ void TestProjectSearchRuntime::settingsStorePersistsShortcutSettingsJson()
     SettingsStore reloaded(temp.path() + QStringLiteral("/settings.ini"));
     const QJsonObject loaded = reloaded.shortcutSettingsJson();
     QCOMPARE(loaded.value(QStringLiteral("version")).toInt(), 1);
-    QCOMPARE(loaded.value(QStringLiteral("shortcuts")).toObject().value(QStringLiteral("save-file")).toString(), QStringLiteral("Ctrl+Alt+S"));
+    QCOMPARE(loaded.value(QStringLiteral("shortcuts")).toObject().value(QStringLiteral("file.save")).toString(), QStringLiteral("Ctrl+Alt+S"));
     QCOMPARE(loaded.value(QStringLiteral("futureMetadata")).toArray().first().toString(), QStringLiteral("kept"));
 }
 
@@ -964,6 +983,23 @@ void TestProjectSearchRuntime::packageScriptStampsInstallerBuildId()
     QVERIFY(wxsSource.contains(QStringLiteral("$(var.BuildId)")));
 }
 
+void TestProjectSearchRuntime::packageScriptSupportsOptionalAuthenticodeSigning()
+{
+    QString scriptPath = QDir::current().absoluteFilePath(QStringLiteral("scripts/package.ps1"));
+    if (!QFileInfo::exists(scriptPath)) {
+        scriptPath = QDir::current().absoluteFilePath(QStringLiteral("../scripts/package.ps1"));
+    }
+    QFile script(scriptPath);
+    QVERIFY2(script.open(QIODevice::ReadOnly | QIODevice::Text), qPrintable(scriptPath));
+    const QString source = QString::fromUtf8(script.readAll());
+
+    QVERIFY(source.contains(QStringLiteral("[string]$SigningCertificateThumbprint")));
+    QVERIFY(source.contains(QStringLiteral("LISAN_SIGNING_CERT_THUMBPRINT")));
+    QVERIFY(source.contains(QStringLiteral("signtool.exe")));
+    QVERIFY(source.contains(QStringLiteral("/sha1")));
+    QVERIFY(source.contains(QStringLiteral("Write-SigningStatus")));
+}
+
 void TestProjectSearchRuntime::releaseEvidenceScriptDerivesMsiPathFromProductVersion()
 {
     QString scriptPath = QDir::current().absoluteFilePath(QStringLiteral("scripts/release-evidence.ps1"));
@@ -996,6 +1032,7 @@ void TestProjectSearchRuntime::workspaceSettingsStoreDefaultsWhenMissingOrInvali
     QVERIFY(!settings.trusted);
     QVERIFY(!settings.trimTrailingWhitespaceOnSave);
     QVERIFY(settings.defaultRunWorkingDirectory.isEmpty());
+    QVERIFY(settings.terminalProfileId.isEmpty());
 
     QFile invalid(store.settingsFilePath());
     QVERIFY(QDir().mkpath(QFileInfo(invalid).absolutePath()));
@@ -1008,6 +1045,7 @@ void TestProjectSearchRuntime::workspaceSettingsStoreDefaultsWhenMissingOrInvali
     QVERIFY(!settings.trusted);
     QVERIFY(!settings.trimTrailingWhitespaceOnSave);
     QVERIFY(settings.defaultRunWorkingDirectory.isEmpty());
+    QVERIFY(settings.terminalProfileId.isEmpty());
 }
 
 void TestProjectSearchRuntime::workspaceSettingsStorePersistsTrustAndEditorPreferences()
@@ -1020,6 +1058,7 @@ void TestProjectSearchRuntime::workspaceSettingsStorePersistsTrustAndEditorPrefe
     settings.trusted = true;
     settings.trimTrailingWhitespaceOnSave = true;
     settings.defaultRunWorkingDirectory = QStringLiteral("src");
+    settings.terminalProfileId = QStringLiteral("cmd");
 
     QString error;
     QVERIFY2(store.save(settings, &error), qPrintable(error));
@@ -1030,6 +1069,7 @@ void TestProjectSearchRuntime::workspaceSettingsStorePersistsTrustAndEditorPrefe
     QVERIFY(loaded.trusted);
     QVERIFY(loaded.trimTrailingWhitespaceOnSave);
     QCOMPARE(loaded.defaultRunWorkingDirectory, QStringLiteral("src"));
+    QCOMPARE(loaded.terminalProfileId, QStringLiteral("cmd"));
 }
 
 void TestProjectSearchRuntime::settingsDialogModelBuildsUiStateFromStoreAndDiagnostics()

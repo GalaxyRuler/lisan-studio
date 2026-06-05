@@ -9,12 +9,16 @@ BottomPanelController::BottomPanelController(
     QWidget *terminalPanel,
     QWidget *problemsPanel,
     QWidget *searchResultsPanel,
+    QWidget *referencesPanel,
+    QWidget *outlinePanel,
     QWidget *debugPanel)
     : tabs(tabs),
       output(outputPanel),
       terminal(terminalPanel),
       problems(problemsPanel),
       search(searchResultsPanel),
+      references(referencesPanel),
+      outline(outlinePanel),
       debug(debugPanel)
 {
 }
@@ -39,6 +43,16 @@ void BottomPanelController::showSearchResultsPanel()
     setCurrent(search);
 }
 
+void BottomPanelController::showReferencesPanel()
+{
+    setCurrent(references);
+}
+
+void BottomPanelController::showOutlinePanel()
+{
+    setCurrent(outline);
+}
+
 QString BottomPanelController::panelId(QWidget *panel) const
 {
     if (panel == output) {
@@ -49,6 +63,12 @@ QString BottomPanelController::panelId(QWidget *panel) const
     }
     if (panel == search) {
         return QStringLiteral("search");
+    }
+    if (panel == references) {
+        return QStringLiteral("references");
+    }
+    if (panel == outline) {
+        return QStringLiteral("outline");
     }
     if (panel == debug) {
         return QStringLiteral("debug");
@@ -66,6 +86,12 @@ QWidget *BottomPanelController::panelForId(const QString &id) const
     }
     if (id == QStringLiteral("search")) {
         return search;
+    }
+    if (id == QStringLiteral("references")) {
+        return references;
+    }
+    if (id == QStringLiteral("outline")) {
+        return outline;
     }
     if (id == QStringLiteral("debug")) {
         return debug;

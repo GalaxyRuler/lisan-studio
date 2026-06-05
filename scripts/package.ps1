@@ -3,12 +3,16 @@ param(
     [string]$ApythonRoot = "C:\Users\Admin\apython",
     [Parameter()]
     [string]$PythonRoot = "C:\Users\Admin\AppData\Local\Programs\Python\Python313",
+    [string]$DebugpySourceSitePackages = "",
     [string]$Configuration = "Release",
     [string]$ProductVersion = "0.1.0",
     [string]$BuildId = "",
     [string]$BashPath = "C:\msys64\usr\bin\bash.exe",
     [string]$WindeployQtPath = "C:\msys64\ucrt64\bin\windeployqt6.exe",
     [string]$WixPath = "C:\Program Files\WiX Toolset v7.0\bin\wix.exe",
+    [string]$SignToolPath = "",
+    [string]$SigningCertificateThumbprint = "",
+    [string]$TimestampServer = "http://timestamp.digicert.com",
     [string]$QtLicenseRoot = "C:\msys64\ucrt64\share\licenses\qt6-base",
     [switch]$SkipMsi
 )
@@ -145,6 +149,38 @@ Tag: py3-none-any
     "" | Set-Content -LiteralPath (Join-Path $distInfo "RECORD") -Encoding ASCII
 }
 
+function Install-DebugpyRuntimeOffline {
+    param(
+        [Parameter(Mandatory = $true)][string]$SourceSitePackages,
+        [Parameter(Mandatory = $true)][string]$DestinationSitePackages
+    )
+
+    $sourceDebugpy = Join-Path $SourceSitePackages "debugpy"
+    if (-not (Test-Path -LiteralPath $sourceDebugpy)) {
+        throw "debugpy package source missing: $sourceDebugpy. Install debugpy into PythonRoot or pass -DebugpySourceSitePackages."
+    }
+
+    $sourceDistInfo = @(Get-ChildItem -LiteralPath $SourceSitePackages -Directory -Filter "debugpy-*.dist-info" -ErrorAction SilentlyContinue | Select-Object -First 1)
+    if ($sourceDistInfo.Count -eq 0) {
+        throw "debugpy dist-info source missing under: $SourceSitePackages"
+    }
+
+    foreach ($destinationName in @("debugpy") + @($sourceDistInfo[0].Name)) {
+        $destinationPath = Join-Path $DestinationSitePackages $destinationName
+        if (Test-Path -LiteralPath $destinationPath) {
+            Remove-Item -LiteralPath $destinationPath -Recurse -Force
+        }
+    }
+
+    Copy-DirectoryContents -Source $sourceDebugpy -Destination (Join-Path $DestinationSitePackages "debugpy")
+    Copy-DirectoryContents -Source $sourceDistInfo[0].FullName -Destination (Join-Path $DestinationSitePackages $sourceDistInfo[0].Name)
+
+    $adapterEntrypoint = Join-Path $DestinationSitePackages "debugpy\adapter\__main__.py"
+    if (-not (Test-Path -LiteralPath $adapterEntrypoint)) {
+        throw "debugpy adapter entrypoint missing after copy: $adapterEntrypoint"
+    }
+}
+
 function Assert-StagedApythonRuntime {
     param(
         [Parameter(Mandatory = $true)][string]$PythonExe,
@@ -154,7 +190,8 @@ function Assert-StagedApythonRuntime {
     foreach ($requiredFile in @(
             (Join-Path $SitePackages "arabicpython\__init__.py"),
             (Join-Path $SitePackages "arabicpython\cli.py"),
-            (Join-Path $SitePackages "arabicpython_kernel\__init__.py")
+            (Join-Path $SitePackages "arabicpython_kernel\__init__.py"),
+            (Join-Path $SitePackages "debugpy\adapter\__main__.py")
         )) {
         if (-not (Test-Path -LiteralPath $requiredFile)) {
             throw "Staged Apython runtime file missing: $requiredFile"
@@ -167,7 +204,7 @@ import importlib.util
 import pathlib
 
 site = pathlib.Path(r'''$SitePackages''').resolve()
-for package in ('arabicpython', 'arabicpython_kernel'):
+for package in ('arabicpython', 'arabicpython_kernel', 'debugpy'):
     spec = importlib.util.find_spec(package)
     if spec is None or spec.origin is None:
         raise SystemExit(f'{package} import spec missing')
@@ -175,7 +212,10 @@ for package in ('arabicpython', 'arabicpython_kernel'):
     if site != origin and site not in origin.parents:
         raise SystemExit(f'{package} imported from outside staged runtime: {origin}')
     print(f'{package} {origin}')
+if importlib.util.find_spec('debugpy.adapter') is None:
+    raise SystemExit('debugpy.adapter import spec missing')
 print('lughat-althuban', md.version('lughat-althuban'))
+print('debugpy', md.version('debugpy'))
 "@
 
     & $PythonExe -I -c $runtimeCheck
@@ -238,6 +278,64 @@ function Write-SigningStatus {
     ) | Set-Content -LiteralPath $OutputPath -Encoding UTF8
 }
 
+function Resolve-SignToolPath {
+    param([string]$ExplicitPath)
+
+    if (-not [string]::IsNullOrWhiteSpace($ExplicitPath)) {
+        if (-not (Test-Path -LiteralPath $ExplicitPath)) {
+            throw "signtool.exe not found: $ExplicitPath"
+        }
+        return (Resolve-Path -LiteralPath $ExplicitPath).Path
+    }
+
+    $pathCandidate = Get-Command signtool.exe -ErrorAction SilentlyContinue
+    if ($pathCandidate) {
+        return $pathCandidate.Source
+    }
+
+    $kitRoots = @(
+        (Join-Path ${env:ProgramFiles(x86)} "Windows Kits\10\bin"),
+        (Join-Path $env:ProgramFiles "Windows Kits\10\bin")
+    ) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) -and (Test-Path -LiteralPath $_) }
+
+    foreach ($kitRoot in $kitRoots) {
+        $candidate = Get-ChildItem -LiteralPath $kitRoot -Recurse -Filter signtool.exe -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -match '\\x64\\signtool\.exe$' } |
+            Sort-Object FullName -Descending |
+            Select-Object -First 1
+        if ($candidate) {
+            return $candidate.FullName
+        }
+    }
+
+    throw "signtool.exe not found. Install the Windows SDK or pass -SignToolPath."
+}
+
+function Invoke-MsiAuthenticodeSigning {
+    param(
+        [Parameter(Mandatory = $true)][string]$MsiPath,
+        [Parameter(Mandatory = $true)][string]$CertificateThumbprint,
+        [string]$SignToolPath,
+        [string]$TimestampServer
+    )
+
+    $normalizedThumbprint = $CertificateThumbprint -replace '\s', ''
+    if ([string]::IsNullOrWhiteSpace($normalizedThumbprint)) {
+        throw "Signing certificate thumbprint is empty."
+    }
+
+    $resolvedSignToolPath = Resolve-SignToolPath -ExplicitPath $SignToolPath
+    $arguments = @(
+        'sign',
+        '/fd', 'SHA256',
+        '/sha1', $normalizedThumbprint,
+        '/tr', $TimestampServer,
+        '/td', 'SHA256',
+        $MsiPath
+    )
+    Invoke-NativeToolAllowingStderr -FilePath $resolvedSignToolPath -Arguments $arguments -DisplayName 'signtool.exe'
+}
+
 $repo = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $stage = Join-Path $repo "stage"
 $artifacts = Join-Path $repo "artifacts"
@@ -250,6 +348,16 @@ $wxs = Join-Path $repo "packaging\wix\LisanStudio.wxs"
 $msiFileName = "LisanStudio-$ProductVersion-beta.msi"
 $msiPath = Join-Path $artifacts $msiFileName
 $repoUnix = Convert-ToMsysPath -WindowsPath $repo
+
+if ([string]::IsNullOrWhiteSpace($SigningCertificateThumbprint) -and -not [string]::IsNullOrWhiteSpace($env:LISAN_SIGNING_CERT_THUMBPRINT)) {
+    $SigningCertificateThumbprint = $env:LISAN_SIGNING_CERT_THUMBPRINT
+}
+if ([string]::IsNullOrWhiteSpace($SignToolPath) -and -not [string]::IsNullOrWhiteSpace($env:LISAN_SIGNTOOL_PATH)) {
+    $SignToolPath = $env:LISAN_SIGNTOOL_PATH
+}
+if (-not [string]::IsNullOrWhiteSpace($env:LISAN_TIMESTAMP_URL)) {
+    $TimestampServer = $env:LISAN_TIMESTAMP_URL
+}
 
 if ([string]::IsNullOrWhiteSpace($BuildId)) {
     $gitBuildId = ""
@@ -323,6 +431,12 @@ if (Test-Path $sitePackages) {
 }
 
 Install-ApythonRuntimeOffline -SourceRoot $ApythonRoot -DestinationSitePackages $sitePackages
+$resolvedDebugpySourceSitePackages = if ([string]::IsNullOrWhiteSpace($DebugpySourceSitePackages)) {
+    Join-Path $PythonRoot "Lib\site-packages"
+} else {
+    $DebugpySourceSitePackages
+}
+Install-DebugpyRuntimeOffline -SourceSitePackages $resolvedDebugpySourceSitePackages -DestinationSitePackages $sitePackages
 
 $editableMarkers = Get-ChildItem -LiteralPath $sitePackages -Force -ErrorAction SilentlyContinue |
     Where-Object { $_.Name -like "__editable__*" -or $_.Name -like "apython-*.dist-info" }
@@ -355,6 +469,13 @@ if (-not $SkipMsi) {
         -define "BuildId=$BuildId" `
         -define "SourceDir=$stage" `
         -out $msiPath
+    if (-not [string]::IsNullOrWhiteSpace($SigningCertificateThumbprint)) {
+        Invoke-MsiAuthenticodeSigning `
+            -MsiPath $msiPath `
+            -CertificateThumbprint $SigningCertificateThumbprint `
+            -SignToolPath $SignToolPath `
+            -TimestampServer $TimestampServer
+    }
     Write-SigningStatus -MsiPath $msiPath -OutputPath (Join-Path $artifacts "SIGNING_STATUS.txt")
 }
 

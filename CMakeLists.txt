@@ -17,6 +17,10 @@ find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Test Concurrent)
 
 qt_standard_project_setup()
 
+set(LSP_BUILD_EXAMPLES OFF CACHE BOOL "Build lsp-framework examples" FORCE)
+set(LSP_INSTALL OFF CACHE BOOL "Install lsp-framework package files" FORCE)
+add_subdirectory(third_party/lsp-framework EXCLUDE_FROM_ALL)
+
 add_library(acs_core
     src/CommandRegistry.h
     src/CommandRegistry.cpp
@@ -68,10 +72,18 @@ add_library(acs_core
     src/RuntimeHistory.cpp
     src/RuntimeProblemParser.h
     src/RuntimeProblemParser.cpp
+    src/JsonMessageFraming.h
+    src/JsonMessageFraming.cpp
+    src/DapClient.h
+    src/DapClient.cpp
+    src/TerminalBackend.h
+    src/TerminalBackend.cpp
     src/TerminalProfileModel.h
     src/TerminalProfileModel.cpp
     src/TerminalLinkParser.h
     src/TerminalLinkParser.cpp
+    src/LspClient.h
+    src/LspClient.cpp
     src/SearchService.h
     src/SearchService.cpp
     src/ShortcutSettingsModel.h
@@ -171,6 +183,24 @@ qt_add_executable(acs_untitled_draft_recovery_tests
 
 target_link_libraries(acs_untitled_draft_recovery_tests PRIVATE acs_core Qt6::Test Qt6::Concurrent)
 
+qt_add_executable(acs_lsp_client_tests
+    tests/TestLspClient.cpp
+)
+
+target_link_libraries(acs_lsp_client_tests PRIVATE acs_core Qt6::Test lsp)
+
+qt_add_executable(acs_dap_client_tests
+    tests/TestDapClient.cpp
+)
+
+target_link_libraries(acs_dap_client_tests PRIVATE acs_core Qt6::Test)
+
+qt_add_executable(acs_terminal_backend_tests
+    tests/TestTerminalBackend.cpp
+)
+
+target_link_libraries(acs_terminal_backend_tests PRIVATE acs_core Qt6::Test)
+
 add_test(NAME acs_editor_tests COMMAND acs_editor_tests)
 add_test(NAME acs_editor_tabs_controller_tests COMMAND acs_editor_tabs_controller_tests)
 add_test(NAME acs_project_tree_controller_tests COMMAND acs_project_tree_controller_tests)
@@ -181,3 +211,6 @@ add_test(NAME acs_runtime_orchestrator_tests COMMAND acs_runtime_orchestrator_te
 add_test(NAME acs_main_window_tests COMMAND acs_main_window_tests)
 add_test(NAME acs_editor_torture_tests COMMAND acs_editor_torture_tests)
 add_test(NAME acs_untitled_draft_recovery_tests COMMAND acs_untitled_draft_recovery_tests)
+add_test(NAME acs_lsp_client_tests COMMAND acs_lsp_client_tests)
+add_test(NAME acs_dap_client_tests COMMAND acs_dap_client_tests)
+add_test(NAME acs_terminal_backend_tests COMMAND acs_terminal_backend_tests)

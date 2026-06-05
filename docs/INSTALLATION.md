@@ -175,6 +175,7 @@ the package install command again.
 From the repository root:
 
 ```powershell
+git submodule update --init --recursive
 .\scripts\build.ps1
 ```
 
@@ -183,8 +184,16 @@ This configures and builds:
 ```text
 build\LisanStudio.exe
 build\acs_editor_tests.exe
+build\acs_editor_tabs_controller_tests.exe
+build\acs_project_tree_controller_tests.exe
+build\acs_command_registry_tests.exe
+build\acs_workbench_state_tests.exe
 build\acs_project_runtime_tests.exe
+build\acs_runtime_orchestrator_tests.exe
 build\acs_main_window_tests.exe
+build\acs_editor_torture_tests.exe
+build\acs_untitled_draft_recovery_tests.exe
+build\acs_lsp_client_tests.exe
 ```
 
 ## Test
@@ -198,8 +207,16 @@ Run the normal project validation gate:
 This builds the app and runs:
 
 - `acs_editor_tests`
+- `acs_editor_tabs_controller_tests`
+- `acs_project_tree_controller_tests`
+- `acs_command_registry_tests`
+- `acs_workbench_state_tests`
 - `acs_project_runtime_tests`
+- `acs_runtime_orchestrator_tests`
 - `acs_main_window_tests`
+- `acs_editor_torture_tests`
+- `acs_untitled_draft_recovery_tests`
+- `acs_lsp_client_tests`
 
 GUI-sensitive validation should run in an interactive desktop session. Do not
 weaken GUI-sensitive tests to make a non-interactive runner pass.

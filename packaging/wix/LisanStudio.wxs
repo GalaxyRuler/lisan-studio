@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
   <?ifndef ProductVersion ?>
-    <?define ProductVersion = "0.2.0" ?>
+    <?define ProductVersion = "0.5.0" ?>
   <?endif?>
   <Package
     Name="Lisan Studio"

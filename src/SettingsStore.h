@@ -35,6 +35,9 @@ public:
 
     SavedWorkbenchSession savedWorkbenchSession() const;
     void saveWorkbenchSession(const SavedWorkbenchSession &session);
+    bool hasNonOrderlyShutdown() const;
+    void markWorkbenchSessionStarted();
+    void markWorkbenchSessionClosedGracefully();
 
     QJsonObject shortcutSettingsJson() const;
     void saveShortcutSettingsJson(const QJsonObject &object);

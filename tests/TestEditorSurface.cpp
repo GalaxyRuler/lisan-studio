@@ -48,6 +48,19 @@ private slots:
     void addCursorAboveAndBelowPreserveColumn();
     void collapseToSinglePrimaryCursorClearsAllSecondaries();
     void typingWithMultipleCursorsInsertsAtAllPositions();
+    void multiCursorUndoRevertsAllCursorEditsInOneStep();
+    void multiCursorUndoRedoStormPreservesPositionsAndDirtyState();
+    void multiCursorTabIndentsEachCursorLineByOneIndent();
+    void multiCursorShiftTabDedentsEachCursorLineByOneIndent();
+    void multiCursorIndentIsSingleUndoStep();
+    void arabicImeCompositionProducesIdenticalCommittedTextAtEveryCursor();
+    void imeCompositionWithSecondaryCursorsPreservesSingleUndoStep();
+    void completionRequestSignalReportsCursorPosition();
+    void completionPopupDisplaysItemsAndAcceptsSelection();
+    void hoverTooltipSurfaceStoresMarkdown();
+    void semanticTokensLayerOnTopOfApyHighlighter();
+    void lineNumberMarginClickTogglesBreakpoints();
+    void ctrlClickRequestsDefinitionAtIdentifier();
     void selectAllFindMatchesAsCursorsConvertsFindHighlights();
     void altColumnDragGeneratesOneCursorPerLineInRectangle();
     void altColumnDragWithZeroWidthColumnsGeneratesZeroWidthCursors();
@@ -799,6 +812,327 @@ void TestEditorSurface::typingWithMultipleCursorsInsertsAtAllPositions()
     QCOMPARE(editor.toPlainText(), QStringLiteral("line oneX\nline twoX\nline threeX\n"));
     editor.undo();
     QCOMPARE(editor.toPlainText(), original);
+}
+
+void TestEditorSurface::multiCursorUndoRevertsAllCursorEditsInOneStep()
+{
+    EditorSurface editor;
+    editor.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&editor));
+    const QString original = QStringLiteral("first\nsecond\nthird\n");
+    editor.setPlainText(original);
+    editor.document()->setModified(false);
+
+    QTextCursor cursor(editor.document()->findBlockByNumber(0));
+    cursor.movePosition(QTextCursor::EndOfBlock);
+    editor.setTextCursor(cursor);
+    const QTextBlock second = editor.document()->findBlockByNumber(1);
+    const QTextBlock third = editor.document()->findBlockByNumber(2);
+    QVERIFY(editor.addCursorAtPosition(second.position() + second.length() - 1));
+    QVERIFY(editor.addCursorAtPosition(third.position() + third.length() - 1));
+
+    QTest::keyClicks(&editor, QStringLiteral("X"));
+    QCOMPARE(editor.toPlainText(), QStringLiteral("firstX\nsecondX\nthirdX\n"));
+    QVERIFY(editor.document()->isModified());
+
+    QTest::keyClick(&editor, Qt::Key_Z, Qt::ControlModifier);
+    QCOMPARE(editor.toPlainText(), original);
+    QVERIFY(!editor.document()->isModified());
+
+    QTest::keyClick(&editor, Qt::Key_Y, Qt::ControlModifier);
+    QCOMPARE(editor.toPlainText(), QStringLiteral("firstX\nsecondX\nthirdX\n"));
+    QVERIFY(editor.document()->isModified());
+}
+
+void TestEditorSurface::multiCursorUndoRedoStormPreservesPositionsAndDirtyState()
+{
+    EditorSurface editor;
+    editor.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&editor));
+    const QString original = QStringLiteral("alpha\nbeta\ngamma\n");
+    editor.setPlainText(original);
+    editor.document()->setModified(false);
+
+    QTextCursor cursor(editor.document()->findBlockByNumber(0));
+    cursor.movePosition(QTextCursor::EndOfBlock);
+    editor.setTextCursor(cursor);
+    const QTextBlock second = editor.document()->findBlockByNumber(1);
+    const QTextBlock third = editor.document()->findBlockByNumber(2);
+    QVERIFY(editor.addCursorAtPosition(second.position() + second.length() - 1));
+    QVERIFY(editor.addCursorAtPosition(third.position() + third.length() - 1));
+
+    auto cursorPositions = [&editor]() {
+        QVector<int> positions;
+        positions.append(editor.textCursor().position());
+        const QVector<QTextCursor> secondaries = editor.secondaryCursorsForTest();
+        for (const QTextCursor &secondary : secondaries) {
+            positions.append(secondary.position());
+        }
+        std::sort(positions.begin(), positions.end());
+        return positions;
+    };
+
+    const QVector<int> cleanPositions = cursorPositions();
+    for (int i = 0; i < 50; ++i) {
+        QTest::keyClicks(&editor, QStringLiteral("X"));
+        const QVector<int> editedPositions = cursorPositions();
+        QCOMPARE(editor.toPlainText(), QStringLiteral("alphaX\nbetaX\ngammaX\n"));
+        QVERIFY(editor.document()->isModified());
+
+        QTest::keyClick(&editor, Qt::Key_Z, Qt::ControlModifier);
+        QCOMPARE(editor.toPlainText(), original);
+        QCOMPARE(cursorPositions(), cleanPositions);
+        QVERIFY(!editor.document()->isModified());
+
+        QTest::keyClick(&editor, Qt::Key_Y, Qt::ControlModifier);
+        QCOMPARE(editor.toPlainText(), QStringLiteral("alphaX\nbetaX\ngammaX\n"));
+        QCOMPARE(cursorPositions(), editedPositions);
+        QVERIFY(editor.document()->isModified());
+
+        QTest::keyClick(&editor, Qt::Key_Z, Qt::ControlModifier);
+        QCOMPARE(editor.toPlainText(), original);
+        QCOMPARE(cursorPositions(), cleanPositions);
+        QVERIFY(!editor.document()->isModified());
+    }
+}
+
+void TestEditorSurface::multiCursorTabIndentsEachCursorLineByOneIndent()
+{
+    EditorSurface editor;
+    editor.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&editor));
+    editor.setPlainText(QStringLiteral("alpha\nbeta\ngamma\n"));
+
+    QTextCursor cursor(editor.document()->findBlockByNumber(0));
+    cursor.movePosition(QTextCursor::EndOfBlock);
+    editor.setTextCursor(cursor);
+    const QTextBlock second = editor.document()->findBlockByNumber(1);
+    const QTextBlock third = editor.document()->findBlockByNumber(2);
+    QVERIFY(editor.addCursorAtPosition(second.position() + second.length() - 1));
+    QVERIFY(editor.addCursorAtPosition(third.position() + third.length() - 1));
+
+    QTest::keyClick(&editor, Qt::Key_Tab);
+
+    QCOMPARE(editor.toPlainText(), QStringLiteral("    alpha\n    beta\n    gamma\n"));
+}
+
+void TestEditorSurface::multiCursorShiftTabDedentsEachCursorLineByOneIndent()
+{
+    EditorSurface editor;
+    editor.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&editor));
+    editor.setPlainText(QStringLiteral("    alpha\n    beta\n    gamma\n"));
+
+    QTextCursor cursor(editor.document()->findBlockByNumber(0));
+    cursor.movePosition(QTextCursor::EndOfBlock);
+    editor.setTextCursor(cursor);
+    const QTextBlock second = editor.document()->findBlockByNumber(1);
+    const QTextBlock third = editor.document()->findBlockByNumber(2);
+    QVERIFY(editor.addCursorAtPosition(second.position() + second.length() - 1));
+    QVERIFY(editor.addCursorAtPosition(third.position() + third.length() - 1));
+
+    QTest::keyClick(&editor, Qt::Key_Backtab, Qt::ShiftModifier);
+
+    QCOMPARE(editor.toPlainText(), QStringLiteral("alpha\nbeta\ngamma\n"));
+}
+
+void TestEditorSurface::multiCursorIndentIsSingleUndoStep()
+{
+    EditorSurface editor;
+    editor.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&editor));
+    const QString original = QStringLiteral("alpha\nbeta\ngamma\n");
+    editor.setPlainText(original);
+    editor.document()->setModified(false);
+
+    QTextCursor cursor(editor.document()->findBlockByNumber(0));
+    cursor.movePosition(QTextCursor::EndOfBlock);
+    editor.setTextCursor(cursor);
+    const QTextBlock second = editor.document()->findBlockByNumber(1);
+    const QTextBlock third = editor.document()->findBlockByNumber(2);
+    QVERIFY(editor.addCursorAtPosition(second.position() + second.length() - 1));
+    QVERIFY(editor.addCursorAtPosition(third.position() + third.length() - 1));
+
+    QTest::keyClick(&editor, Qt::Key_Tab);
+    QCOMPARE(editor.toPlainText(), QStringLiteral("    alpha\n    beta\n    gamma\n"));
+    QVERIFY(editor.document()->isModified());
+
+    QTest::keyClick(&editor, Qt::Key_Z, Qt::ControlModifier);
+    QCOMPARE(editor.toPlainText(), original);
+    QVERIFY(!editor.document()->isModified());
+}
+
+void TestEditorSurface::arabicImeCompositionProducesIdenticalCommittedTextAtEveryCursor()
+{
+    EditorSurface editor;
+    editor.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&editor));
+    editor.setPlainText(QString::fromUtf8("سطر1\nسطر2\nسطر3\n"));
+
+    QTextCursor cursor(editor.document()->findBlockByNumber(0));
+    cursor.movePosition(QTextCursor::EndOfBlock);
+    editor.setTextCursor(cursor);
+    const QTextBlock second = editor.document()->findBlockByNumber(1);
+    const QTextBlock third = editor.document()->findBlockByNumber(2);
+    QVERIFY(editor.addCursorAtPosition(second.position() + second.length() - 1));
+    QVERIFY(editor.addCursorAtPosition(third.position() + third.length() - 1));
+
+    QInputMethodEvent preedit(QString::fromUtf8("مرح"), {});
+    QApplication::sendEvent(&editor, &preedit);
+
+    QInputMethodEvent commit;
+    commit.setCommitString(QString::fromUtf8("مرحبا"));
+    QApplication::sendEvent(&editor, &commit);
+
+    QCOMPARE(editor.toPlainText(), QString::fromUtf8("سطر1مرحبا\nسطر2مرحبا\nسطر3مرحبا\n"));
+}
+
+void TestEditorSurface::imeCompositionWithSecondaryCursorsPreservesSingleUndoStep()
+{
+    EditorSurface editor;
+    editor.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&editor));
+    const QString original = QString::fromUtf8("سطر1\nسطر2\nسطر3\n");
+    editor.setPlainText(original);
+    editor.document()->setModified(false);
+
+    QTextCursor cursor(editor.document()->findBlockByNumber(0));
+    cursor.movePosition(QTextCursor::EndOfBlock);
+    editor.setTextCursor(cursor);
+    const QTextBlock second = editor.document()->findBlockByNumber(1);
+    const QTextBlock third = editor.document()->findBlockByNumber(2);
+    QVERIFY(editor.addCursorAtPosition(second.position() + second.length() - 1));
+    QVERIFY(editor.addCursorAtPosition(third.position() + third.length() - 1));
+
+    QInputMethodEvent commit;
+    commit.setCommitString(QString::fromUtf8("مرحبا"));
+    QApplication::sendEvent(&editor, &commit);
+    QCOMPARE(editor.toPlainText(), QString::fromUtf8("سطر1مرحبا\nسطر2مرحبا\nسطر3مرحبا\n"));
+    QVERIFY(editor.document()->isModified());
+
+    QTest::keyClick(&editor, Qt::Key_Z, Qt::ControlModifier);
+    QCOMPARE(editor.toPlainText(), original);
+    QVERIFY(!editor.document()->isModified());
+}
+
+void TestEditorSurface::completionRequestSignalReportsCursorPosition()
+{
+    EditorSurface editor;
+    editor.setPlainText(QString::fromUtf8("س = اط\n"));
+    editor.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&editor));
+
+    QTextCursor cursor = cursorAtLineColumn(editor, 0, 6);
+    editor.setTextCursor(cursor);
+
+    QSignalSpy spy(&editor, &EditorSurface::completionRequested);
+    QTest::keyClick(&editor, Qt::Key_Space, Qt::ControlModifier);
+
+    QCOMPARE(spy.size(), 1);
+    QCOMPARE(spy.at(0).at(0).toInt(), 0);
+    QCOMPARE(spy.at(0).at(1).toInt(), 6);
+}
+
+void TestEditorSurface::completionPopupDisplaysItemsAndAcceptsSelection()
+{
+    EditorSurface editor;
+    editor.setPlainText(QString::fromUtf8("س = اط"));
+    editor.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&editor));
+
+    QTextCursor cursor = cursorAtLineColumn(editor, 0, 6);
+    editor.setTextCursor(cursor);
+
+    QVector<EditorCompletionItem> items;
+    items.append({QString::fromUtf8("اطبع"), QStringLiteral("print(value)"), QString::fromUtf8("اطبع")});
+    items.append({QString::fromUtf8("اذا"), QStringLiteral("conditional"), QString::fromUtf8("اذا")});
+
+    editor.showCompletionItems(items);
+
+    QVERIFY(editor.isCompletionPopupVisibleForTest());
+    QCOMPARE(editor.completionLabelsForTest(), QStringList({QString::fromUtf8("اطبع"), QString::fromUtf8("اذا")}));
+
+    QTest::keyClick(&editor, Qt::Key_Return);
+
+    QVERIFY(!editor.isCompletionPopupVisibleForTest());
+    QCOMPARE(editor.toPlainText(), QString::fromUtf8("س = اطبع"));
+}
+
+void TestEditorSurface::hoverTooltipSurfaceStoresMarkdown()
+{
+    EditorSurface editor;
+    editor.setPlainText(QString::fromUtf8("اطبع(\"مرحبا\")\n"));
+    editor.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&editor));
+
+    editor.showHoverMarkdown(QStringLiteral("**اطبع** -> `print(value)`"), QPoint(8, 8));
+
+    QCOMPARE(editor.visibleHoverTextForTest(), QStringLiteral("**اطبع** -> `print(value)`"));
+}
+
+void TestEditorSurface::semanticTokensLayerOnTopOfApyHighlighter()
+{
+    EditorSurface editor;
+    editor.setPlainText(QString::fromUtf8("دالة اجمع(س):\n    ارجع س\n"));
+    editor.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&editor));
+
+    QVector<EditorSemanticToken> tokens;
+    tokens.append({0, 5, 4, QStringLiteral("function")});
+    tokens.append({1, 9, 1, QStringLiteral("variable")});
+    editor.setSemanticTokens(tokens);
+
+    QCOMPARE(editor.semanticTokenSelectionCountForTest(), 2);
+
+    editor.setSemanticTokens({});
+    QCOMPARE(editor.semanticTokenSelectionCountForTest(), 0);
+}
+
+void TestEditorSurface::lineNumberMarginClickTogglesBreakpoints()
+{
+    EditorSurface editor;
+    editor.setPlainText(QString::fromUtf8("س = ١\nاطبع(س)\n"));
+    editor.resize(640, 360);
+    editor.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&editor));
+
+    auto *lineNumbers = editor.findChild<QWidget *>(QStringLiteral("lineNumberArea"));
+    QVERIFY(lineNumbers != nullptr);
+    QSignalSpy spy(&editor, &EditorSurface::breakpointToggled);
+
+    QTest::mouseClick(lineNumbers, Qt::LeftButton, Qt::NoModifier, QPoint(lineNumbers->width() / 2, editor.fontMetrics().height() / 2));
+
+    QVERIFY(editor.hasBreakpointAtLine(1));
+    QCOMPARE(editor.breakpointLinesForTest(), QVector<int>({1}));
+    QCOMPARE(spy.size(), 1);
+    QCOMPARE(spy.first().at(0).toInt(), 1);
+    QVERIFY(spy.first().at(1).toBool());
+
+    QTest::mouseClick(lineNumbers, Qt::LeftButton, Qt::NoModifier, QPoint(lineNumbers->width() / 2, editor.fontMetrics().height() / 2));
+
+    QVERIFY(!editor.hasBreakpointAtLine(1));
+    QVERIFY(editor.breakpointLinesForTest().isEmpty());
+    QCOMPARE(spy.size(), 2);
+    QVERIFY(!spy.at(1).at(1).toBool());
+}
+
+void TestEditorSurface::ctrlClickRequestsDefinitionAtIdentifier()
+{
+    EditorSurface editor;
+    editor.setPlainText(QString::fromUtf8("اطبع(س)\n"));
+    editor.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&editor));
+
+    const QTextCursor cursor = cursorAtLineColumn(editor, 0, 2);
+    const QPoint clickPoint = editor.cursorRect(cursor).center();
+    QSignalSpy spy(&editor, &EditorSurface::definitionRequested);
+
+    QTest::mouseClick(editor.viewport(), Qt::LeftButton, Qt::ControlModifier, clickPoint);
+
+    QCOMPARE(spy.size(), 1);
+    QCOMPARE(spy.at(0).at(0).toInt(), 0);
+    QCOMPARE(spy.at(0).at(1).toInt(), 2);
+    QCOMPARE(editor.totalCursorCount(), 1);
 }
 
 void TestEditorSurface::selectAllFindMatchesAsCursorsConvertsFindHighlights()

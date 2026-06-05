@@ -19,6 +19,7 @@ private slots:
     void rejectsDuplicateCommandIds();
     void disabledCommandDoesNotTrigger();
     void shortcutSettingsRoundTripsOverrides();
+    void legacyCommandIdInShortcutJsonMigratesToCanonicalForm();
     void shortcutSettingsRejectsUnknownCommandsAndConflicts();
     void commandPaletteModelBuildsRowsWithShortcutOverrides();
     void commandPaletteModelFiltersByTitleShortcutAndKeywords();
@@ -42,19 +43,19 @@ void TestCommandRegistry::registersMetadataAndTriggersEnabledCommand()
 {
     bool triggered = false;
     CommandRegistry registry;
-    QVERIFY(registry.registerCommand(makeCommand(QStringLiteral("new-file"), &triggered)));
+    QVERIFY(registry.registerCommand(makeCommand(QStringLiteral("file.new"), &triggered)));
 
     const auto commands = registry.commands();
     QCOMPARE(commands.size(), 1);
-    QCOMPARE(commands.first().id, QStringLiteral("new-file"));
+    QCOMPARE(commands.first().id, QStringLiteral("file.new"));
     QCOMPARE(commands.first().title, QString::fromUtf8("ملف جديد"));
     QCOMPARE(commands.first().category, QString::fromUtf8("ملف"));
     QCOMPARE(commands.first().defaultShortcut, QKeySequence(QKeySequence::New));
     QCOMPARE(commands.first().keywords, QString::fromUtf8("ملف جديد new file"));
 
-    QVERIFY(registry.contains(QStringLiteral("new-file")));
-    QVERIFY(registry.isCommandEnabled(QStringLiteral("new-file")));
-    QVERIFY(registry.triggerCommand(QStringLiteral("new-file")));
+    QVERIFY(registry.contains(QStringLiteral("file.new")));
+    QVERIFY(registry.isCommandEnabled(QStringLiteral("file.new")));
+    QVERIFY(registry.triggerCommand(QStringLiteral("file.new")));
     QVERIFY(triggered);
 }
 
@@ -63,11 +64,11 @@ void TestCommandRegistry::rejectsDuplicateCommandIds()
     bool firstTriggered = false;
     bool secondTriggered = false;
     CommandRegistry registry;
-    QVERIFY(registry.registerCommand(makeCommand(QStringLiteral("new-file"), &firstTriggered)));
-    QVERIFY(!registry.registerCommand(makeCommand(QStringLiteral("new-file"), &secondTriggered)));
+    QVERIFY(registry.registerCommand(makeCommand(QStringLiteral("file.new"), &firstTriggered)));
+    QVERIFY(!registry.registerCommand(makeCommand(QStringLiteral("file.new"), &secondTriggered)));
 
     QCOMPARE(registry.commands().size(), 1);
-    QVERIFY(registry.triggerCommand(QStringLiteral("new-file")));
+    QVERIFY(registry.triggerCommand(QStringLiteral("file.new")));
     QVERIFY(firstTriggered);
     QVERIFY(!secondTriggered);
 }
@@ -76,11 +77,11 @@ void TestCommandRegistry::disabledCommandDoesNotTrigger()
 {
     bool triggered = false;
     CommandRegistry registry;
-    QVERIFY(registry.registerCommand(makeCommand(QStringLiteral("run-current-file"), &triggered, false)));
+    QVERIFY(registry.registerCommand(makeCommand(QStringLiteral("run.currentFile"), &triggered, false)));
 
-    QVERIFY(registry.contains(QStringLiteral("run-current-file")));
-    QVERIFY(!registry.isCommandEnabled(QStringLiteral("run-current-file")));
-    QVERIFY(!registry.triggerCommand(QStringLiteral("run-current-file")));
+    QVERIFY(registry.contains(QStringLiteral("run.currentFile")));
+    QVERIFY(!registry.isCommandEnabled(QStringLiteral("run.currentFile")));
+    QVERIFY(!registry.triggerCommand(QStringLiteral("run.currentFile")));
     QVERIFY(!triggered);
 }
 
@@ -89,22 +90,44 @@ void TestCommandRegistry::shortcutSettingsRoundTripsOverrides()
     bool saveTriggered = false;
     bool runTriggered = false;
     CommandRegistry registry;
-    QVERIFY(registry.registerCommand(makeCommand(QStringLiteral("save-file"), &saveTriggered)));
-    QVERIFY(registry.registerCommand(makeCommand(QStringLiteral("run-current-file"), &runTriggered)));
+    QVERIFY(registry.registerCommand(makeCommand(QStringLiteral("file.save"), &saveTriggered)));
+    QVERIFY(registry.registerCommand(makeCommand(QStringLiteral("run.currentFile"), &runTriggered)));
 
     ShortcutSettingsModel settings;
     QString error;
-    QVERIFY2(settings.setOverride(registry, QStringLiteral("save-file"), QKeySequence(QStringLiteral("Ctrl+Alt+S")), &error), qPrintable(error));
+    QVERIFY2(settings.setOverride(registry, QStringLiteral("file.save"), QKeySequence(QStringLiteral("Ctrl+Alt+S")), &error), qPrintable(error));
 
-    QCOMPARE(settings.effectiveShortcut(registry, QStringLiteral("save-file")), QKeySequence(QStringLiteral("Ctrl+Alt+S")));
-    QCOMPARE(settings.effectiveShortcut(registry, QStringLiteral("run-current-file")), QKeySequence(QKeySequence::New));
+    QCOMPARE(settings.effectiveShortcut(registry, QStringLiteral("file.save")), QKeySequence(QStringLiteral("Ctrl+Alt+S")));
+    QCOMPARE(settings.effectiveShortcut(registry, QStringLiteral("run.currentFile")), QKeySequence(QKeySequence::New));
 
     const QJsonObject exported = settings.toJson();
     ShortcutSettingsModel imported;
     QVERIFY2(imported.loadJson(exported, registry, &error), qPrintable(error));
 
-    QCOMPARE(imported.effectiveShortcut(registry, QStringLiteral("save-file")), QKeySequence(QStringLiteral("Ctrl+Alt+S")));
-    QCOMPARE(imported.effectiveShortcut(registry, QStringLiteral("run-current-file")), QKeySequence(QKeySequence::New));
+    QCOMPARE(imported.effectiveShortcut(registry, QStringLiteral("file.save")), QKeySequence(QStringLiteral("Ctrl+Alt+S")));
+    QCOMPARE(imported.effectiveShortcut(registry, QStringLiteral("run.currentFile")), QKeySequence(QKeySequence::New));
+}
+
+void TestCommandRegistry::legacyCommandIdInShortcutJsonMigratesToCanonicalForm()
+{
+    bool saveTriggered = false;
+    CommandRegistry registry;
+    QVERIFY(registry.registerCommand(makeCommand(QStringLiteral("file.save"), &saveTriggered)));
+
+    QJsonObject shortcuts;
+    shortcuts.insert(QStringLiteral("save-file"), QStringLiteral("Ctrl+Alt+S"));
+    QJsonObject shortcutSettings;
+    shortcutSettings.insert(QStringLiteral("version"), 1);
+    shortcutSettings.insert(QStringLiteral("shortcuts"), shortcuts);
+
+    ShortcutSettingsModel imported;
+    QString error;
+    QVERIFY2(imported.loadJson(shortcutSettings, registry, &error), qPrintable(error));
+
+    QCOMPARE(imported.effectiveShortcut(registry, QStringLiteral("file.save")), QKeySequence(QStringLiteral("Ctrl+Alt+S")));
+    const QJsonObject exported = imported.toJson().value(QStringLiteral("shortcuts")).toObject();
+    QVERIFY(exported.contains(QStringLiteral("file.save")));
+    QVERIFY(!exported.contains(QStringLiteral("save-file")));
 }
 
 void TestCommandRegistry::shortcutSettingsRejectsUnknownCommandsAndConflicts()
@@ -112,16 +135,16 @@ void TestCommandRegistry::shortcutSettingsRejectsUnknownCommandsAndConflicts()
     bool firstTriggered = false;
     bool secondTriggered = false;
     CommandRegistry registry;
-    QVERIFY(registry.registerCommand(makeCommand(QStringLiteral("save-file"), &firstTriggered)));
-    QVERIFY(registry.registerCommand(makeCommand(QStringLiteral("open-file"), &secondTriggered)));
+    QVERIFY(registry.registerCommand(makeCommand(QStringLiteral("file.save"), &firstTriggered)));
+    QVERIFY(registry.registerCommand(makeCommand(QStringLiteral("file.open"), &secondTriggered)));
 
     ShortcutSettingsModel settings;
     QString error;
     QVERIFY(!settings.setOverride(registry, QStringLiteral("missing-command"), QKeySequence(QStringLiteral("Ctrl+M")), &error));
     QVERIFY2(error.contains(QStringLiteral("missing-command")), qPrintable(error));
 
-    QVERIFY2(settings.setOverride(registry, QStringLiteral("save-file"), QKeySequence(QStringLiteral("Ctrl+Alt+S")), &error), qPrintable(error));
-    QVERIFY(!settings.setOverride(registry, QStringLiteral("open-file"), QKeySequence(QStringLiteral("Ctrl+Alt+S")), &error));
+    QVERIFY2(settings.setOverride(registry, QStringLiteral("file.save"), QKeySequence(QStringLiteral("Ctrl+Alt+S")), &error), qPrintable(error));
+    QVERIFY(!settings.setOverride(registry, QStringLiteral("file.open"), QKeySequence(QStringLiteral("Ctrl+Alt+S")), &error));
     QVERIFY2(error.contains(QStringLiteral("Ctrl+Alt+S")), qPrintable(error));
 }
 
@@ -130,17 +153,17 @@ void TestCommandRegistry::commandPaletteModelBuildsRowsWithShortcutOverrides()
     bool saveTriggered = false;
     bool runTriggered = false;
     CommandRegistry registry;
-    QVERIFY(registry.registerCommand(makeCommand(QStringLiteral("save-file"), &saveTriggered)));
-    QVERIFY(registry.registerCommand(makeCommand(QStringLiteral("run-current-file"), &runTriggered)));
+    QVERIFY(registry.registerCommand(makeCommand(QStringLiteral("file.save"), &saveTriggered)));
+    QVERIFY(registry.registerCommand(makeCommand(QStringLiteral("run.currentFile"), &runTriggered)));
 
     ShortcutSettingsModel settings;
     QString error;
-    QVERIFY2(settings.setOverride(registry, QStringLiteral("save-file"), QKeySequence(QStringLiteral("Ctrl+Alt+S")), &error), qPrintable(error));
+    QVERIFY2(settings.setOverride(registry, QStringLiteral("file.save"), QKeySequence(QStringLiteral("Ctrl+Alt+S")), &error), qPrintable(error));
 
     const QVector<CommandPaletteRow> rows = CommandPaletteModel::rows(registry, &settings);
 
     QCOMPARE(rows.size(), 2);
-    QCOMPARE(rows.first().id, QStringLiteral("save-file"));
+    QCOMPARE(rows.first().id, QStringLiteral("file.save"));
     QCOMPARE(rows.first().title, QString::fromUtf8("ملف جديد"));
     QCOMPARE(rows.first().shortcutText, QKeySequence(QStringLiteral("Ctrl+Alt+S")).toString(QKeySequence::NativeText));
     QCOMPARE(rows.first().keywords, QString::fromUtf8("ملف جديد new file"));
@@ -150,7 +173,7 @@ void TestCommandRegistry::commandPaletteModelBuildsRowsWithShortcutOverrides()
 void TestCommandRegistry::commandPaletteModelFiltersByTitleShortcutAndKeywords()
 {
     CommandPaletteRow row;
-    row.id = QStringLiteral("run-current-file");
+    row.id = QStringLiteral("run.currentFile");
     row.title = QString::fromUtf8("تشغيل الملف الحالي");
     row.shortcutText = QStringLiteral("F5");
     row.keywords = QStringLiteral("run current file");
@@ -175,7 +198,7 @@ void TestCommandRegistry::allRegisteredCommandsSatisfyVisibleSurfaceInvariants()
     const QVector<CommandDefinition> commands = window.registeredCommandDefinitions();
     QVERIFY2(!commands.isEmpty(), "MainWindow registered no commands to sweep");
     QSet<QString> commandIds;
-    const QRegularExpression stableIdPattern(QStringLiteral("^[a-z][a-zA-Z0-9._-]*$"));
+    const QRegularExpression stableIdPattern(QStringLiteral("^[a-z]+(\\.[a-z][a-zA-Z0-9]*)+$"));
     EditorSurface bidiScanner;
 
     for (const CommandDefinition &command : commands) {
@@ -185,7 +208,7 @@ void TestCommandRegistry::allRegisteredCommandsSatisfyVisibleSurfaceInvariants()
                  invariantMessage(idForMessage, QStringLiteral("stable id"), QStringLiteral("id is empty")).constData());
         QVERIFY2(stableIdPattern.match(command.id).hasMatch(),
                  invariantMessage(command.id, QStringLiteral("stable id"),
-                                  QStringLiteral("id must match /^[a-z][a-zA-Z0-9._-]*$/"))
+                                  QStringLiteral("id must match /^[a-z]+(\\.[a-z][a-zA-Z0-9]*)+$/"))
                      .constData());
         QVERIFY2(!command.title.isEmpty(),
                  invariantMessage(command.id, QStringLiteral("label"), QStringLiteral("label is empty")).constData());

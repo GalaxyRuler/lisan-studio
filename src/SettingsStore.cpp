@@ -138,6 +138,26 @@ void SettingsStore::saveWorkbenchSession(const SavedWorkbenchSession &session)
     settings.setValue(QStringLiteral("session/bottomPanelId"), session.bottomPanelId);
 }
 
+bool SettingsStore::hasNonOrderlyShutdown() const
+{
+    QSettings settings(path, QSettings::IniFormat);
+    return settings.value(QStringLiteral("session/nonOrderlyShutdown"), false).toBool();
+}
+
+void SettingsStore::markWorkbenchSessionStarted()
+{
+    QSettings settings(path, QSettings::IniFormat);
+    settings.setValue(QStringLiteral("session/nonOrderlyShutdown"), true);
+    settings.sync();
+}
+
+void SettingsStore::markWorkbenchSessionClosedGracefully()
+{
+    QSettings settings(path, QSettings::IniFormat);
+    settings.setValue(QStringLiteral("session/nonOrderlyShutdown"), false);
+    settings.sync();
+}
+
 QJsonObject SettingsStore::shortcutSettingsJson() const
 {
     QSettings settings(path, QSettings::IniFormat);

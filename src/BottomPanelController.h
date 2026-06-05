@@ -14,12 +14,16 @@ public:
         QWidget *terminalPanel,
         QWidget *problemsPanel,
         QWidget *searchResultsPanel,
+        QWidget *referencesPanel,
+        QWidget *outlinePanel,
         QWidget *debugPanel);
 
     void showOutputPanel();
     void showTerminalPanel();
     void showProblemsPanel();
     void showSearchResultsPanel();
+    void showReferencesPanel();
+    void showOutlinePanel();
 
     QString panelId(QWidget *panel) const;
     QWidget *panelForId(const QString &id) const;
@@ -30,6 +34,8 @@ private:
     QWidget *terminal = nullptr;
     QWidget *problems = nullptr;
     QWidget *search = nullptr;
+    QWidget *references = nullptr;
+    QWidget *outline = nullptr;
     QWidget *debug = nullptr;
 
     void setCurrent(QWidget *panel);

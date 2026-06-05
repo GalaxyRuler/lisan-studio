@@ -4,8 +4,10 @@
 #include "CommandRegistry.h"
 #include "DocumentChangePoller.h"
 #include "DocumentRegistry.h"
+#include "DapClient.h"
 #include "EditorTabsController.h"
 #include "EditorSurface.h"
+#include "LspClient.h"
 #include "OutputTranscript.h"
 #include "ProjectModel.h"
 #include "ProjectTreeController.h"
@@ -14,6 +16,7 @@
 #include "SearchService.h"
 #include "SettingsDialogModel.h"
 #include "SettingsStore.h"
+#include "TerminalBackend.h"
 #include "TerminalProfileModel.h"
 #include "UnsavedChangesGuard.h"
 #include "WorkbenchState.h"
@@ -22,6 +25,7 @@
 #include <QFileSystemModel>
 #include <QAction>
 #include <QCloseEvent>
+#include <QComboBox>
 #include <QDockWidget>
 #include <QFutureWatcher>
 #include <QLabel>
@@ -76,6 +80,9 @@ private slots:
     void showOnlyStderrOutput();
     void showOnlySystemOutput();
     void openPowerShellTerminal();
+    void sendTerminalInput();
+    void stopTerminalProcess();
+    void persistSelectedTerminalProfile();
     void trustCurrentWorkspace();
     void untrustCurrentWorkspace();
     void openCommandPalette();
@@ -93,6 +100,8 @@ private slots:
     void replaceAllInFileMatches();
     void openSearchResult(QListWidgetItem *item);
     void openProblemResult(QListWidgetItem *item);
+    void openReferenceResult(QListWidgetItem *item);
+    void openOutlineResult(QListWidgetItem *item);
     void openSettings();
     void pollOpenDocumentChanges();
     void addCursorAboveAction();
@@ -116,11 +125,22 @@ private:
     QLineEdit *projectReplaceInput = nullptr;
     QPushButton *projectReplacePreviewButton = nullptr;
     QPushButton *projectReplaceApplyButton = nullptr;
+    QWidget *terminalContainerPanel = nullptr;
+    QComboBox *terminalProfilePicker = nullptr;
+    QLineEdit *terminalInput = nullptr;
+    QPushButton *terminalSendButton = nullptr;
+    QPushButton *terminalStopButton = nullptr;
     QPlainTextEdit *outputPanel = nullptr;
     QPlainTextEdit *terminalPanel = nullptr;
     QListWidget *problemsPanel = nullptr;
     QListWidget *searchResultsPanel = nullptr;
+    QListWidget *referencesPanel = nullptr;
+    QListWidget *outlinePanel = nullptr;
     QPlainTextEdit *debugPanel = nullptr;
+    QWidget *debugContainerPanel = nullptr;
+    QListWidget *debugVariablesPanel = nullptr;
+    QListWidget *debugWatchPanel = nullptr;
+    QListWidget *debugCallStackPanel = nullptr;
     QTabWidget *bottomPanelTabs = nullptr;
     QDockWidget *outputDock = nullptr;
     QLabel *statusLabel = nullptr;
@@ -137,12 +157,17 @@ private:
     QAction *formatAction = nullptr;
     QAction *cancelRunAction = nullptr;
     QTimer *documentChangePollTimer = nullptr;
+    QTimer *untitledDraftAutosaveTimer = nullptr;
     QFutureWatcher<SearchResults> *activeSearchWatcher = nullptr;
     bool multiCursorSoftCapNoticeShown = false;
+    int searchScanCap = SearchService::MaxScannedFiles;
     QVector<ProjectReplacePreviewRow> currentProjectReplacePreviewRows;
     SettingsStore settings;
     std::function<RuntimeDiagnostics(int)> runtimeDiagnosticsProvider;
     RuntimeOrchestrator runtimeOrchestrator;
+    DapClient dapClient;
+    LspClient lspClient;
+    TerminalBackend terminalBackend;
     CommandRegistry commandRegistry;
     DocumentRegistry documentRegistry;
     DocumentChangePoller documentChangePoller;
@@ -150,6 +175,15 @@ private:
     WorkspaceSettings workspaceSettings;
     OutputTranscript outputTranscript;
     OutputTranscriptFilter outputFilter;
+    QVector<TerminalProfile> terminalProfiles;
+    QString lspDocumentUri;
+    int lspDocumentVersion = 0;
+    bool lspDocumentOpen = false;
+    bool debugSessionActive = false;
+    bool debugSessionPaused = false;
+    int activeDebugThreadId = 0;
+    int activeDebugFrameId = 0;
+    QStringList debugWatchExpressions;
     std::unique_ptr<EditorTabsController> editorTabsController;
     std::unique_ptr<ProjectTreeController> projectTreeController;
     std::unique_ptr<BottomPanelController> bottomPanels;
@@ -165,19 +199,54 @@ private:
     void applyThemePreference();
     void applyShortcutSettings();
     void refreshCurrentEditorUi(bool includeProblems);
+    void configureLanguageServer();
+    void configureDebugAdapter();
+    bool startDebugSession();
+    void syncCurrentEditorToLanguageServer(bool reopenDocument);
+    void notifyLanguageServerOfSave();
+    void closeLanguageServerDocument();
+    void requestLanguageServerCompletion(int line, int character);
+    void requestLanguageServerHover(int line, int character, const QPoint &viewportPosition);
+    void requestLanguageServerDefinition(int line, int character);
+    void requestLanguageServerReferences();
+    void requestLanguageServerRename();
+    void requestLanguageServerSemanticTokens();
+    void requestLanguageServerDocumentSymbols();
+    void requestLanguageServerWorkspaceSymbols();
+    void continueDebugSession();
+    void stepOverDebugSession();
+    void stepIntoDebugSession();
+    void stepOutDebugSession();
+    void refreshDebugInspection(int threadId);
+    void refreshDebugWatches();
+    void renderDebugVariables(const QVector<DapVariable> &variables);
+    void renderDebugCallStack(const QVector<DapStackFrame> &frames);
+    void addSelectedDebugVariableToWatch();
+    void addWatchExpression(const QString &expression);
     void updateBreadcrumbBar();
     void updateStatusIndicators();
     // Test-only snapshot for verifying MainWindow's registry integration.
     QVector<DocumentRecord> documentRecordsForTest() const { return documentRegistry.documents(); }
+    void setSearchScanCapForTest(int cap) { searchScanCap = qMax(1, cap); }
     void resolveExternalDocumentChange(const DocumentRecord &record);
     void writeOutput(const QString &title, const QString &text);
     void showOutputPanel();
     void showTerminalPanel();
     void showProblemsPanel();
     void showSearchResultsPanel();
+    void showReferencesPanel();
+    void showOutlinePanel();
     QVector<SearchResultRow> currentEditorSearchResults(const QString &query) const;
     QVector<ProjectReplacePreviewRow> currentEditorReplacePreviewRows(const QString &query, const QString &replacement) const;
     void renderSearchResults(const QVector<SearchResultRow> &rows);
+    void renderReferences(const QVector<LspLocation> &locations);
+    void renderReferencesForTest(const QVector<LspLocation> &locations) { renderReferences(locations); }
+    void renderOutline(const QVector<LspSymbol> &symbols);
+    void renderOutlineForTest(const QVector<LspSymbol> &symbols) { renderOutline(symbols); }
+    void openWorkspaceSymbolPicker(const QVector<LspSymbol> &symbols);
+    void openWorkspaceSymbolPickerForTest(const QVector<LspSymbol> &symbols) { openWorkspaceSymbolPicker(symbols); }
+    void renderRenamePreview(const LspWorkspaceEdit &edit);
+    bool applyWorkspaceEdit(const LspWorkspaceEdit &edit, QString *error = nullptr);
     void renderProjectReplacePreview(const QVector<ProjectReplacePreviewRow> &rows);
     void setProjectReplaceFileAccepted(const QString &path, bool accepted);
     QVector<ProjectReplacePreviewRow> acceptedProjectReplaceRows() const;
@@ -196,8 +265,14 @@ private:
     void appendRuntimeOutput(OutputTranscriptChannel channel, const QString &label, const QString &text);
     void setOutputFilter(const OutputTranscriptFilter &filter);
     void renderOutputTranscript();
-    void restoreWorkbenchSession();
+    void refreshTerminalProfiles();
+    TerminalProfile selectedTerminalProfile() const;
+    void appendTerminalOutput(const QString &text);
+    void updateTerminalControls();
+    void restoreWorkbenchSession(bool promptForDraftRecovery = false);
     void saveWorkbenchSession();
+    bool hasDirtyUntitledDraft() const;
+    void scheduleUntitledDraftAutosave();
     void closeEvent(QCloseEvent *event) override;
     bool eventFilter(QObject *watched, QEvent *event) override;
 };

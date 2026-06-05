@@ -26,10 +26,13 @@
 #include <QIcon>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QInputDialog>
 #include <QKeySequenceEdit>
 #include <QListWidget>
 #include <QListWidgetItem>
+#include <QMap>
 #include <QMessageBox>
+#include <QMenu>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPaintEvent>
@@ -39,6 +42,7 @@
 #include <QPushButton>
 #include <QSplitter>
 #include <QSaveFile>
+#include <QSignalBlocker>
 #include <QStatusBar>
 #include <QStyle>
 #include <QSpinBox>
@@ -48,6 +52,7 @@
 #include <QTextStream>
 #include <QToolButton>
 #include <QStandardPaths>
+#include <QUrl>
 #include <QVBoxLayout>
 #include <QtConcurrent>
 
@@ -228,6 +233,63 @@ static QString languageModeStatusText(const QString &path)
     return QString::fromUtf8("نص عادي");
 }
 
+static bool offsetForLspPosition(const QString &text, int targetLine, int targetCharacter, int *offset)
+{
+    if (!offset || targetLine < 0 || targetCharacter < 0) {
+        return false;
+    }
+
+    int line = 0;
+    int lineStart = 0;
+    for (int i = 0; i <= text.size(); ++i) {
+        const bool atEnd = i == text.size();
+        const bool atNewline = !atEnd && text.at(i) == QLatin1Char('\n');
+        if (!atEnd && !atNewline) {
+            continue;
+        }
+
+        if (line == targetLine) {
+            const int lineEnd = atNewline ? i : text.size();
+            const int logicalLineEnd = lineEnd > lineStart && text.at(lineEnd - 1) == QLatin1Char('\r')
+                ? lineEnd - 1
+                : lineEnd;
+            if (targetCharacter > logicalLineEnd - lineStart) {
+                return false;
+            }
+            *offset = lineStart + targetCharacter;
+            return true;
+        }
+
+        ++line;
+        lineStart = i + 1;
+    }
+
+    return false;
+}
+
+static bool textEditToDocumentEdit(const QString &text, const LspTextEdit &lspEdit, DocumentTextEdit *documentEdit)
+{
+    int startOffset = -1;
+    int endOffset = -1;
+    if (!offsetForLspPosition(text, lspEdit.startLine, lspEdit.startCharacter, &startOffset)
+        || !offsetForLspPosition(text, lspEdit.endLine, lspEdit.endCharacter, &endOffset)
+        || endOffset < startOffset) {
+        return false;
+    }
+
+    if (documentEdit) {
+        documentEdit->start = startOffset;
+        documentEdit->length = endOffset - startOffset;
+        documentEdit->replacement = lspEdit.newText;
+    }
+    return true;
+}
+
+static bool isApySourcePath(const QString &path)
+{
+    return QFileInfo(path).suffix().compare(QStringLiteral("apy"), Qt::CaseInsensitive) == 0;
+}
+
 static QLabel *createStatusIndicator(const QString &objectName, const QString &text, QWidget *parent)
 {
     auto *label = new QLabel(text, parent);
@@ -291,9 +353,15 @@ MainWindow::MainWindow(QWidget *parent, const QString &settingsPath)
     : QMainWindow(parent),
       settings(settingsPath),
       runtimeOrchestrator(this),
+      dapClient(this),
+      lspClient(this),
       documentChangePoller(&documentRegistry)
 {
+    const bool promptForDraftRecovery = settings.hasNonOrderlyShutdown();
+    settings.markWorkbenchSessionStarted();
+
     buildUi();
+    configureLanguageServer();
     connect(&runtimeOrchestrator, &RuntimeOrchestrator::outputCleared, this, [this]() {
         showOutputPanel();
         outputTranscript.clear();
@@ -316,11 +384,55 @@ MainWindow::MainWindow(QWidget *parent, const QString &settingsPath)
             editorTabsController->syncSessionsInto(workbenchState);
         }
     });
+    connect(&dapClient, &DapClient::stopped, this, [this](const QString &reason, int threadId) {
+        debugSessionActive = true;
+        debugSessionPaused = true;
+        activeDebugThreadId = threadId;
+        if (debugPanel) {
+            debugPanel->appendPlainText(QString::fromUtf8("توقف التصحيح: %1، الخيط %2").arg(reason).arg(threadId));
+        }
+        refreshDebugInspection(threadId);
+        setStatus(QString::fromUtf8("توقف التصحيح"));
+    });
+    connect(&dapClient, &DapClient::continued, this, [this](int threadId) {
+        debugSessionActive = true;
+        debugSessionPaused = false;
+        activeDebugThreadId = threadId;
+        if (debugPanel) {
+            debugPanel->appendPlainText(QString::fromUtf8("متابعة التصحيح: الخيط %1").arg(threadId));
+        }
+        setStatus(QString::fromUtf8("متابعة التصحيح"));
+    });
+    connect(&dapClient, &DapClient::terminated, this, [this]() {
+        debugSessionActive = false;
+        debugSessionPaused = false;
+        activeDebugThreadId = 0;
+        activeDebugFrameId = 0;
+        if (debugPanel) {
+            debugPanel->appendPlainText(QString::fromUtf8("انتهت جلسة التصحيح"));
+        }
+        setStatus(QString::fromUtf8("انتهى التصحيح"));
+    });
     documentChangePollTimer = new QTimer(this);
     documentChangePollTimer->setInterval(2000);
     connect(documentChangePollTimer, &QTimer::timeout, this, &MainWindow::pollOpenDocumentChanges);
     documentChangePollTimer->start();
-    restoreWorkbenchSession();
+
+    untitledDraftAutosaveTimer = new QTimer(this);
+    untitledDraftAutosaveTimer->setObjectName(QStringLiteral("untitledDraftAutosaveTimer"));
+    untitledDraftAutosaveTimer->setInterval(5000);
+    untitledDraftAutosaveTimer->setSingleShot(true);
+    connect(untitledDraftAutosaveTimer, &QTimer::timeout, this, [this]() {
+        if (!hasDirtyUntitledDraft()) {
+            return;
+        }
+        saveWorkbenchSession();
+        if (hasDirtyUntitledDraft()) {
+            untitledDraftAutosaveTimer->start();
+        }
+    });
+
+    restoreWorkbenchSession(promptForDraftRecovery);
     resize(1280, 820);
     setWindowTitle(QString::fromUtf8("استوديو لسان"));
     setWindowIcon(QIcon(QStringLiteral(":/branding/lisan-logo.png")));
@@ -558,33 +670,33 @@ void MainWindow::buildUi()
     };
 
     auto *saveAction = makeAction(style()->standardIcon(QStyle::SP_DialogSaveButton), QString::fromUtf8("حفظ"), &MainWindow::saveFile);
-    saveAction->setProperty("commandId", QStringLiteral("save-file"));
+    saveAction->setProperty("commandId", QStringLiteral("file.save"));
     auto *openProjectAction = makeAction(style()->standardIcon(QStyle::SP_DirOpenIcon), QString::fromUtf8("فتح مشروع"), &MainWindow::openFolder);
-    openProjectAction->setProperty("commandId", QStringLiteral("open-project"));
+    openProjectAction->setProperty("commandId", QStringLiteral("project.open"));
     runAction = makeAction(lightPlayIcon(), QString::fromUtf8("تشغيل"), &MainWindow::runCurrentFile);
     runAction->setObjectName(QStringLiteral("runAction"));
-    runAction->setProperty("commandId", QStringLiteral("run-current-file"));
-    runAction->setShortcut(QKeySequence(QStringLiteral("F5")));
+    runAction->setProperty("commandId", QStringLiteral("run.currentFile"));
+    runAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+F5")));
     runAction->setShortcutContext(Qt::ApplicationShortcut);
     cancelRunAction = makeAction(style()->standardIcon(QStyle::SP_MediaStop), QString::fromUtf8("إيقاف"), &MainWindow::cancelRuntimeProcess);
     cancelRunAction->setObjectName(QStringLiteral("cancelRunAction"));
-    cancelRunAction->setProperty("commandId", QStringLiteral("stop-run"));
+    cancelRunAction->setProperty("commandId", QStringLiteral("run.stop"));
     cancelRunAction->setShortcut(QKeySequence(QStringLiteral("Shift+F5")));
     cancelRunAction->setShortcutContext(Qt::ApplicationShortcut);
     cancelRunAction->setEnabled(false);
     lintAction = makeAction(style()->standardIcon(QStyle::SP_MessageBoxInformation), QString::fromUtf8("فحص"), &MainWindow::lintCurrentFile);
     lintAction->setObjectName(QStringLiteral("lintAction"));
-    lintAction->setProperty("commandId", QStringLiteral("lint-current-file"));
+    lintAction->setProperty("commandId", QStringLiteral("run.lintCurrentFile"));
     formatAction = makeAction(style()->standardIcon(QStyle::SP_BrowserReload), QString::fromUtf8("تنسيق"), &MainWindow::formatCurrentFile);
     formatAction->setObjectName(QStringLiteral("formatAction"));
-    formatAction->setProperty("commandId", QStringLiteral("format-current-file"));
+    formatAction->setProperty("commandId", QStringLiteral("run.formatCurrentFile"));
     commandPaletteAction = makeAction(style()->standardIcon(QStyle::SP_FileDialogListView), QString::fromUtf8("لوحة الأوامر"), &MainWindow::openCommandPalette);
     commandPaletteAction->setObjectName(QStringLiteral("commandPaletteAction"));
-    commandPaletteAction->setProperty("commandId", QStringLiteral("command-palette"));
+    commandPaletteAction->setProperty("commandId", QStringLiteral("system.commandPalette"));
     commandPaletteAction->setShortcuts({QKeySequence(QStringLiteral("Ctrl+Shift+P"))});
     auto *settingsAction = makeAction(QIcon(), QString::fromUtf8("الإعدادات"), &MainWindow::openSettings);
     settingsAction->setObjectName(QStringLiteral("settingsAction"));
-    settingsAction->setProperty("commandId", QStringLiteral("settings"));
+    settingsAction->setProperty("commandId", QStringLiteral("system.settings"));
 
     addTopButton(QStringLiteral("topRunButton"), runAction, "primaryAction", Qt::ToolButtonTextBesideIcon);
 
@@ -624,11 +736,11 @@ void MainWindow::buildUi()
         return action;
     };
 
-    connect(addTextOnlyMenuAction(fileMenu, QString::fromUtf8("ملف جديد"), QKeySequence::New, QStringLiteral("new-file")), &QAction::triggered, this, &MainWindow::newFile);
-    connect(addTextOnlyMenuAction(fileMenu, QString::fromUtf8("فتح ملف"), QKeySequence::Open, QStringLiteral("open-file")), &QAction::triggered, this, &MainWindow::openFile);
-    connect(addTextOnlyMenuAction(fileMenu, QString::fromUtf8("فتح مشروع"), QKeySequence(), QStringLiteral("open-project")), &QAction::triggered, this, &MainWindow::openFolder);
-    connect(addTextOnlyMenuAction(fileMenu, QString::fromUtf8("حفظ"), QKeySequence::Save, QStringLiteral("save-file")), &QAction::triggered, this, &MainWindow::saveFile);
-    connect(addTextOnlyMenuAction(fileMenu, QString::fromUtf8("حفظ باسم"), QKeySequence::SaveAs, QStringLiteral("save-as")), &QAction::triggered, this, &MainWindow::saveFileAs);
+    connect(addTextOnlyMenuAction(fileMenu, QString::fromUtf8("ملف جديد"), QKeySequence::New, QStringLiteral("file.new")), &QAction::triggered, this, &MainWindow::newFile);
+    connect(addTextOnlyMenuAction(fileMenu, QString::fromUtf8("فتح ملف"), QKeySequence::Open, QStringLiteral("file.open")), &QAction::triggered, this, &MainWindow::openFile);
+    connect(addTextOnlyMenuAction(fileMenu, QString::fromUtf8("فتح مشروع"), QKeySequence(), QStringLiteral("project.open")), &QAction::triggered, this, &MainWindow::openFolder);
+    connect(addTextOnlyMenuAction(fileMenu, QString::fromUtf8("حفظ"), QKeySequence::Save, QStringLiteral("file.save")), &QAction::triggered, this, &MainWindow::saveFile);
+    connect(addTextOnlyMenuAction(fileMenu, QString::fromUtf8("حفظ باسم"), QKeySequence::SaveAs, QStringLiteral("file.saveAs")), &QAction::triggered, this, &MainWindow::saveFileAs);
     connect(addTextOnlyMenuAction(editMenu, QString::fromUtf8("تراجع"), QKeySequence::Undo), &QAction::triggered, this, [this]() {
         if (editor) {
             editor->undo();
@@ -639,16 +751,26 @@ void MainWindow::buildUi()
             editor->redo();
         }
     });
-    connect(addTextOnlyMenuAction(editMenu, QString::fromUtf8("بحث واستبدال"), QKeySequence::Find, QStringLiteral("find-in-file")), &QAction::triggered, this, &MainWindow::openInFileFind);
+    connect(addTextOnlyMenuAction(editMenu, QString::fromUtf8("بحث واستبدال"), QKeySequence::Find, QStringLiteral("editor.findInFile")), &QAction::triggered, this, &MainWindow::openInFileFind);
     connect(addTextOnlyMenuAction(editMenu, QString::fromUtf8("إضافة مؤشر أعلى"), QKeySequence(QStringLiteral("Ctrl+Alt+Up")), QStringLiteral("cursor.addAbove")), &QAction::triggered, this, &MainWindow::addCursorAboveAction);
     connect(addTextOnlyMenuAction(editMenu, QString::fromUtf8("إضافة مؤشر أسفل"), QKeySequence(QStringLiteral("Ctrl+Alt+Down")), QStringLiteral("cursor.addBelow")), &QAction::triggered, this, &MainWindow::addCursorBelowAction);
     connect(addTextOnlyMenuAction(editMenu, QString::fromUtf8("إضافة مؤشر عند المطابقة التالية"), QKeySequence(QStringLiteral("Ctrl+D")), QStringLiteral("cursor.addAtNextMatch")), &QAction::triggered, this, &MainWindow::addCursorAtNextMatchAction);
     connect(addTextOnlyMenuAction(editMenu, QString::fromUtf8("تحديد كل المطابقات"), QKeySequence(QStringLiteral("Ctrl+Shift+L")), QStringLiteral("cursor.selectAllMatches")), &QAction::triggered, this, &MainWindow::selectAllCursorMatchesAction);
+    connect(addTextOnlyMenuAction(editMenu, QString::fromUtf8("انتقال إلى التعريف"), QKeySequence(QStringLiteral("F12")), QStringLiteral("lsp.goToDefinition")), &QAction::triggered, this, [this]() {
+        if (!editor) {
+            return;
+        }
+        const QTextCursor cursor = editor->textCursor();
+        requestLanguageServerDefinition(cursor.blockNumber(), cursor.position() - cursor.block().position());
+    });
+    connect(addTextOnlyMenuAction(editMenu, QString::fromUtf8("إيجاد المراجع"), QKeySequence(QStringLiteral("Shift+F12")), QStringLiteral("lsp.findReferences")), &QAction::triggered, this, &MainWindow::requestLanguageServerReferences);
+    connect(addTextOnlyMenuAction(editMenu, QString::fromUtf8("إعادة تسمية الرمز"), QKeySequence(QStringLiteral("F2")), QStringLiteral("lsp.renameSymbol")), &QAction::triggered, this, &MainWindow::requestLanguageServerRename);
+    connect(addTextOnlyMenuAction(editMenu, QString::fromUtf8("انتقال إلى رمز في المشروع"), QKeySequence(QStringLiteral("Ctrl+T")), QStringLiteral("lsp.workspaceSymbol")), &QAction::triggered, this, &MainWindow::requestLanguageServerWorkspaceSymbols);
     // Esc is handled directly by EditorSurface so the app-level action does not steal normal editor cancellation.
     connect(addTextOnlyMenuAction(editMenu, QString::fromUtf8("الرجوع إلى مؤشر واحد"), QKeySequence(), QStringLiteral("cursor.collapseToSingle")), &QAction::triggered, this, &MainWindow::collapseToSingleCursorAction);
     connect(addTextOnlyMenuAction(editMenu, QString::fromUtf8("إدراج اطبع"), QKeySequence(), QStringLiteral("snippet.insertPrint")), &QAction::triggered, this, &MainWindow::insertPrintSnippet);
     commandPaletteAction->setIconVisibleInMenu(false);
-    connect(addTextOnlyMenuAction(viewMenu, QString::fromUtf8("لوحة الأوامر"), QKeySequence(), QStringLiteral("command-palette")), &QAction::triggered, this, &MainWindow::openCommandPalette);
+    connect(addTextOnlyMenuAction(viewMenu, QString::fromUtf8("لوحة الأوامر"), QKeySequence(), QStringLiteral("system.commandPalette")), &QAction::triggered, this, &MainWindow::openCommandPalette);
     connect(addTextOnlyMenuAction(viewMenu, QString::fromUtf8("إظهار المسافات"), QKeySequence(), QStringLiteral("editor.toggleVisibleWhitespace")), &QAction::triggered, this, &MainWindow::toggleVisibleWhitespace);
     connect(addTextOnlyMenuAction(viewMenu, QString::fromUtf8("حذف فراغات آخر السطر عند الحفظ"), QKeySequence(), QStringLiteral("editor.toggleTrimTrailingWhitespace")), &QAction::triggered, this, &MainWindow::toggleTrimTrailingWhitespace);
     connect(addTextOnlyMenuAction(viewMenu, QString::fromUtf8("نسخ الإخراج"), QKeySequence(), QStringLiteral("output.copy")), &QAction::triggered, this, &MainWindow::copyOutputPanel);
@@ -659,19 +781,23 @@ void MainWindow::buildUi()
     connect(addTextOnlyMenuAction(viewMenu, QString::fromUtf8("إخراج stderr فقط"), QKeySequence(), QStringLiteral("output.filter.stderr")), &QAction::triggered, this, &MainWindow::showOnlyStderrOutput);
     connect(addTextOnlyMenuAction(viewMenu, QString::fromUtf8("رسائل النظام فقط"), QKeySequence(), QStringLiteral("output.filter.system")), &QAction::triggered, this, &MainWindow::showOnlySystemOutput);
     connect(addTextOnlyMenuAction(viewMenu, QString::fromUtf8("فتح طرفية PowerShell"), QKeySequence(), QStringLiteral("terminal.openPowerShell")), &QAction::triggered, this, &MainWindow::openPowerShellTerminal);
-    connect(addTextOnlyMenuAction(toolsMenu, QString::fromUtf8("فحص"), QKeySequence(), QStringLiteral("lint-current-file")), &QAction::triggered, this, &MainWindow::lintCurrentFile);
-    connect(addTextOnlyMenuAction(toolsMenu, QString::fromUtf8("تنسيق"), QKeySequence(), QStringLiteral("format-current-file")), &QAction::triggered, this, &MainWindow::formatCurrentFile);
+    connect(addTextOnlyMenuAction(toolsMenu, QString::fromUtf8("فحص"), QKeySequence(), QStringLiteral("run.lintCurrentFile")), &QAction::triggered, this, &MainWindow::lintCurrentFile);
+    connect(addTextOnlyMenuAction(toolsMenu, QString::fromUtf8("تنسيق"), QKeySequence(), QStringLiteral("run.formatCurrentFile")), &QAction::triggered, this, &MainWindow::formatCurrentFile);
+    connect(addTextOnlyMenuAction(toolsMenu, QString::fromUtf8("بدء أو متابعة التصحيح"), QKeySequence(QStringLiteral("F5")), QStringLiteral("debug.continue")), &QAction::triggered, this, &MainWindow::continueDebugSession);
+    connect(addTextOnlyMenuAction(toolsMenu, QString::fromUtf8("خطوة فوق"), QKeySequence(QStringLiteral("F10")), QStringLiteral("debug.stepOver")), &QAction::triggered, this, &MainWindow::stepOverDebugSession);
+    connect(addTextOnlyMenuAction(toolsMenu, QString::fromUtf8("خطوة داخل"), QKeySequence(QStringLiteral("F11")), QStringLiteral("debug.stepInto")), &QAction::triggered, this, &MainWindow::stepIntoDebugSession);
+    connect(addTextOnlyMenuAction(toolsMenu, QString::fromUtf8("خروج من الدالة"), QKeySequence(QStringLiteral("Shift+F11")), QStringLiteral("debug.stepOut")), &QAction::triggered, this, &MainWindow::stepOutDebugSession);
     connect(addTextOnlyMenuAction(toolsMenu, QString::fromUtf8("الثقة بمساحة العمل"), QKeySequence(), QStringLiteral("workspace.trust")), &QAction::triggered, this, &MainWindow::trustCurrentWorkspace);
     connect(addTextOnlyMenuAction(toolsMenu, QString::fromUtf8("إلغاء الثقة بمساحة العمل"), QKeySequence(), QStringLiteral("workspace.untrust")), &QAction::triggered, this, &MainWindow::untrustCurrentWorkspace);
     settingsAction->setIconVisibleInMenu(false);
-    connect(addTextOnlyMenuAction(toolsMenu, QString::fromUtf8("الإعدادات"), QKeySequence(), QStringLiteral("settings")), &QAction::triggered, this, &MainWindow::openSettings);
+    connect(addTextOnlyMenuAction(toolsMenu, QString::fromUtf8("الإعدادات"), QKeySequence(), QStringLiteral("system.settings")), &QAction::triggered, this, &MainWindow::openSettings);
     connect(addTextOnlyMenuAction(helpMenu, QString::fromUtf8("عن استوديو لسان")), &QAction::triggered, this, [this]() {
         QMessageBox::information(this, QString::fromUtf8("عن استوديو لسان"), QString::fromUtf8("استوديو لسان\nبيئة عربية أصلية لملفات .apy"));
     });
 
     commandBox = new QLineEdit(this);
     commandBox->setObjectName(QStringLiteral("commandBox"));
-    commandBox->setProperty("commandId", QStringLiteral("search-project"));
+    commandBox->setProperty("commandId", QStringLiteral("search.project"));
     commandBox->setPlaceholderText(QString::fromUtf8("ابحث في الأوامر والملفات..."));
     commandBox->setLayoutDirection(Qt::RightToLeft);
     commandBox->setFixedWidth(440);
@@ -679,19 +805,19 @@ void MainWindow::buildUi()
 
     projectReplaceInput = new QLineEdit(this);
     projectReplaceInput->setObjectName(QStringLiteral("projectReplaceInput"));
-    projectReplaceInput->setProperty("commandId", QStringLiteral("replace-in-project"));
+    projectReplaceInput->setProperty("commandId", QStringLiteral("search.replacePreview"));
     projectReplaceInput->setPlaceholderText(QString::fromUtf8("استبدال بـ..."));
     projectReplaceInput->setLayoutDirection(Qt::RightToLeft);
     projectReplaceInput->setFixedWidth(180);
 
     projectReplacePreviewButton = new QPushButton(QString::fromUtf8("معاينة"), this);
     projectReplacePreviewButton->setObjectName(QStringLiteral("projectReplacePreviewButton"));
-    projectReplacePreviewButton->setProperty("commandId", QStringLiteral("replace-in-project"));
+    projectReplacePreviewButton->setProperty("commandId", QStringLiteral("search.replacePreview"));
     connect(projectReplacePreviewButton, &QPushButton::clicked, this, &MainWindow::previewProjectReplace);
 
     projectReplaceApplyButton = new QPushButton(QString::fromUtf8("تطبيق"), this);
     projectReplaceApplyButton->setObjectName(QStringLiteral("projectReplaceApplyButton"));
-    projectReplaceApplyButton->setProperty("commandId", QStringLiteral("replace-in-project.applyAccepted"));
+    projectReplaceApplyButton->setProperty("commandId", QStringLiteral("search.replaceApplyAccepted"));
     connect(projectReplaceApplyButton, &QPushButton::clicked, this, &MainWindow::applyAcceptedProjectReplaceRows);
 
     menuLayout->addStretch(1);
@@ -849,16 +975,40 @@ void MainWindow::buildUi()
                     multiCursorSoftCapNoticeShown = false;
                 }
             });
-            connect(surface, &EditorSurface::multiCursorImeRejected, this, [this]() {
-                setStatus(QString::fromUtf8("تعذر إدخال IME مع مؤشرات متعددة"));
+        }
+        if (surface && !surface->property("untitledDraftAutosaveConnected").toBool()) {
+            surface->setProperty("untitledDraftAutosaveConnected", true);
+            connect(surface->document(), &QTextDocument::contentsChanged, this, &MainWindow::scheduleUntitledDraftAutosave);
+        }
+        if (surface && !surface->property("lspDocumentSyncConnected").toBool()) {
+            surface->setProperty("lspDocumentSyncConnected", true);
+            connect(surface->document(), &QTextDocument::contentsChanged, this, [this]() {
+                syncCurrentEditorToLanguageServer(false);
+            });
+            connect(surface, &EditorSurface::completionRequested, this, [this, surface](int line, int character) {
+                if (surface == editor) {
+                    requestLanguageServerCompletion(line, character);
+                }
+            });
+            connect(surface, &EditorSurface::hoverRequested, this, [this, surface](int line, int character, QPoint viewportPosition) {
+                if (surface == editor) {
+                    requestLanguageServerHover(line, character, viewportPosition);
+                }
+            });
+            connect(surface, &EditorSurface::definitionRequested, this, [this, surface](int line, int character) {
+                if (surface == editor) {
+                    requestLanguageServerDefinition(line, character);
+                }
             });
         }
         if (!surface || surface->totalCursorCount() < EditorSurface::kSoftCursorCap) {
             multiCursorSoftCapNoticeShown = false;
         }
+        syncCurrentEditorToLanguageServer(true);
         refreshCurrentEditorUi(true);
     });
     connect(editorTabsController.get(), &EditorTabsController::pathChanged, this, [this](DocumentId, const QString &) {
+        syncCurrentEditorToLanguageServer(true);
         refreshCurrentEditorUi(false);
     });
     connect(editorTabsController.get(), &EditorTabsController::dirtyStateChanged, this, [this](DocumentId, bool) {
@@ -899,12 +1049,56 @@ void MainWindow::buildUi()
     outputPanel->setToolTip(QString::fromUtf8("انقر نقرا مزدوجا على مسار ملف لفتحه."));
     arabicOutputPanel->setArabicPlaceholderText(QString::fromUtf8("المخرجات ستظهر هنا"));
 
-    auto *arabicTerminalPanel = new ArabicPlaceholderPlainTextEdit(bottomPanelTabs);
+    terminalContainerPanel = new QWidget(bottomPanelTabs);
+    terminalContainerPanel->setObjectName(QStringLiteral("terminalContainerPanel"));
+    terminalContainerPanel->setLayoutDirection(Qt::RightToLeft);
+    auto *terminalLayout = new QVBoxLayout(terminalContainerPanel);
+    terminalLayout->setContentsMargins(6, 6, 6, 6);
+    terminalLayout->setSpacing(6);
+
+    auto *terminalToolbar = new QWidget(terminalContainerPanel);
+    terminalToolbar->setObjectName(QStringLiteral("terminalToolbar"));
+    auto *terminalToolbarLayout = new QHBoxLayout(terminalToolbar);
+    terminalToolbarLayout->setContentsMargins(0, 0, 0, 0);
+    terminalToolbarLayout->setSpacing(6);
+    terminalProfilePicker = new QComboBox(terminalToolbar);
+    terminalProfilePicker->setObjectName(QStringLiteral("terminalProfilePicker"));
+    terminalProfilePicker->setMinimumWidth(130);
+    terminalInput = new QLineEdit(terminalToolbar);
+    terminalInput->setObjectName(QStringLiteral("terminalInput"));
+    terminalInput->setPlaceholderText(QString::fromUtf8("أدخل أمر الطرفية"));
+    terminalInput->setLayoutDirection(Qt::LeftToRight);
+    terminalSendButton = new QPushButton(QString::fromUtf8("إرسال"), terminalToolbar);
+    terminalSendButton->setObjectName(QStringLiteral("terminalSendButton"));
+    terminalStopButton = new QPushButton(QString::fromUtf8("إيقاف"), terminalToolbar);
+    terminalStopButton->setObjectName(QStringLiteral("terminalStopButton"));
+    terminalToolbarLayout->addWidget(terminalProfilePicker);
+    terminalToolbarLayout->addWidget(terminalInput, 1);
+    terminalToolbarLayout->addWidget(terminalSendButton);
+    terminalToolbarLayout->addWidget(terminalStopButton);
+
+    auto *arabicTerminalPanel = new ArabicPlaceholderPlainTextEdit(terminalContainerPanel);
     terminalPanel = arabicTerminalPanel;
     terminalPanel->setObjectName(QStringLiteral("terminalPanel"));
     terminalPanel->setReadOnly(true);
-    terminalPanel->setLayoutDirection(Qt::RightToLeft);
+    terminalPanel->setLayoutDirection(Qt::LeftToRight);
+    QTextOption terminalOption = terminalPanel->document()->defaultTextOption();
+    terminalOption.setTextDirection(Qt::LeftToRight);
+    terminalOption.setAlignment(Qt::AlignLeft);
+    terminalPanel->document()->setDefaultTextOption(terminalOption);
     arabicTerminalPanel->setArabicPlaceholderText(QString::fromUtf8("الطرفية ستظهر هنا"));
+    terminalLayout->addWidget(terminalToolbar);
+    terminalLayout->addWidget(terminalPanel, 1);
+    connect(terminalSendButton, &QPushButton::clicked, this, &MainWindow::sendTerminalInput);
+    connect(terminalInput, &QLineEdit::returnPressed, this, &MainWindow::sendTerminalInput);
+    connect(terminalStopButton, &QPushButton::clicked, this, &MainWindow::stopTerminalProcess);
+    connect(terminalProfilePicker, qOverload<int>(&QComboBox::currentIndexChanged), this, &MainWindow::persistSelectedTerminalProfile);
+    connect(&terminalBackend, &TerminalBackend::outputReceived, this, &MainWindow::appendTerminalOutput);
+    connect(&terminalBackend, &TerminalBackend::processExited, this, [this](int exitCode) {
+        appendTerminalOutput(QString::fromUtf8("\n[انتهت الطرفية: %1]\n").arg(exitCode));
+        setStatus(QString::fromUtf8("انتهت الطرفية"));
+        updateTerminalControls();
+    });
 
     problemsPanel = new QListWidget(bottomPanelTabs);
     problemsPanel->setObjectName(QStringLiteral("problemsPanel"));
@@ -926,25 +1120,111 @@ void MainWindow::buildUi()
     connect(searchResultsPanel, &QListWidget::itemActivated, this, &MainWindow::openSearchResult);
     connect(searchResultsPanel, &QListWidget::itemDoubleClicked, this, &MainWindow::openSearchResult);
 
-    auto *arabicDebugPanel = new ArabicPlaceholderPlainTextEdit(bottomPanelTabs);
+    referencesPanel = new QListWidget(bottomPanelTabs);
+    referencesPanel->setObjectName(QStringLiteral("referencesPanel"));
+    referencesPanel->setLayoutDirection(Qt::RightToLeft);
+    referencesPanel->setWordWrap(true);
+    referencesPanel->setUniformItemSizes(false);
+    referencesPanel->setToolTip(QString::fromUtf8("مراجع الرمز من خادم اللغة. اضغط Enter أو انقر مرتين للفتح."));
+    connect(referencesPanel, &QListWidget::itemClicked, this, &MainWindow::openReferenceResult);
+    connect(referencesPanel, &QListWidget::itemActivated, this, &MainWindow::openReferenceResult);
+    connect(referencesPanel, &QListWidget::itemDoubleClicked, this, &MainWindow::openReferenceResult);
+
+    outlinePanel = new QListWidget(bottomPanelTabs);
+    outlinePanel->setObjectName(QStringLiteral("outlinePanel"));
+    outlinePanel->setLayoutDirection(Qt::RightToLeft);
+    outlinePanel->setWordWrap(true);
+    outlinePanel->setUniformItemSizes(false);
+    outlinePanel->setToolTip(QString::fromUtf8("مخطط رموز الملف من خادم اللغة. اضغط Enter أو انقر مرتين للفتح."));
+    connect(outlinePanel, &QListWidget::itemClicked, this, &MainWindow::openOutlineResult);
+    connect(outlinePanel, &QListWidget::itemActivated, this, &MainWindow::openOutlineResult);
+    connect(outlinePanel, &QListWidget::itemDoubleClicked, this, &MainWindow::openOutlineResult);
+
+    debugContainerPanel = new QWidget(bottomPanelTabs);
+    debugContainerPanel->setObjectName(QStringLiteral("debugContainerPanel"));
+    debugContainerPanel->setLayoutDirection(Qt::RightToLeft);
+    auto *debugLayout = new QVBoxLayout(debugContainerPanel);
+    debugLayout->setContentsMargins(0, 0, 0, 0);
+    auto *debugInspectorTabs = new QTabWidget(debugContainerPanel);
+    debugInspectorTabs->setObjectName(QStringLiteral("debugInspectorTabs"));
+    debugInspectorTabs->setLayoutDirection(Qt::RightToLeft);
+
+    auto *arabicDebugPanel = new ArabicPlaceholderPlainTextEdit(debugInspectorTabs);
     debugPanel = arabicDebugPanel;
     debugPanel->setObjectName(QStringLiteral("debugPanel"));
     debugPanel->setReadOnly(true);
     debugPanel->setLayoutDirection(Qt::RightToLeft);
     arabicDebugPanel->setArabicPlaceholderText(QString::fromUtf8("بيانات التصحيح ستظهر هنا"));
 
-    bottomPanelTabs->addTab(terminalPanel, QString::fromUtf8("الطرفية"));
+    debugVariablesPanel = new QListWidget(debugInspectorTabs);
+    debugVariablesPanel->setObjectName(QStringLiteral("debugVariablesPanel"));
+    debugVariablesPanel->setLayoutDirection(Qt::RightToLeft);
+    debugVariablesPanel->setWordWrap(true);
+    debugVariablesPanel->setContextMenuPolicy(Qt::CustomContextMenu);
+    debugVariablesPanel->setToolTip(QString::fromUtf8("المتغيرات المحلية عند نقطة التوقف. انقر بالزر الأيمن لإضافتها إلى المراقبة."));
+    connect(debugVariablesPanel, &QListWidget::customContextMenuRequested, this, [this](const QPoint &position) {
+        auto *item = debugVariablesPanel ? debugVariablesPanel->itemAt(position) : nullptr;
+        if (!item) {
+            return;
+        }
+        QMenu menu(debugVariablesPanel);
+        auto *addWatch = menu.addAction(QString::fromUtf8("إضافة إلى المراقبة"));
+        connect(addWatch, &QAction::triggered, this, &MainWindow::addSelectedDebugVariableToWatch);
+        menu.exec(debugVariablesPanel->viewport()->mapToGlobal(position));
+    });
+
+    debugWatchPanel = new QListWidget(debugInspectorTabs);
+    debugWatchPanel->setObjectName(QStringLiteral("debugWatchPanel"));
+    debugWatchPanel->setLayoutDirection(Qt::RightToLeft);
+    debugWatchPanel->setWordWrap(true);
+    debugWatchPanel->setToolTip(QString::fromUtf8("تعبيرات المراقبة وقيمها في الإطار الحالي."));
+
+    debugCallStackPanel = new QListWidget(debugInspectorTabs);
+    debugCallStackPanel->setObjectName(QStringLiteral("debugCallStackPanel"));
+    debugCallStackPanel->setLayoutDirection(Qt::RightToLeft);
+    debugCallStackPanel->setWordWrap(true);
+    debugCallStackPanel->setToolTip(QString::fromUtf8("مكدس الاستدعاء. اختيار إطار ينقل المحرر إلى السطر المطابق."));
+    connect(debugCallStackPanel, &QListWidget::itemClicked, this, [this](QListWidgetItem *item) {
+        if (!item) {
+            return;
+        }
+        const QString path = item->data(Qt::UserRole).toString();
+        const int line = item->data(Qt::UserRole + 1).toInt();
+        if (!path.isEmpty()) {
+            openPath(path);
+        }
+        if (line > 0) {
+            goToEditorLine(line);
+        }
+        activeDebugFrameId = item->data(Qt::UserRole + 2).toInt();
+        refreshDebugWatches();
+    });
+
+    debugInspectorTabs->addTab(debugPanel, QString::fromUtf8("السجل"));
+    debugInspectorTabs->addTab(debugVariablesPanel, QString::fromUtf8("المتغيرات"));
+    debugInspectorTabs->addTab(debugWatchPanel, QString::fromUtf8("المراقبة"));
+    debugInspectorTabs->addTab(debugCallStackPanel, QString::fromUtf8("المكدس"));
+    debugLayout->addWidget(debugInspectorTabs);
+
+    refreshTerminalProfiles();
+    updateTerminalControls();
+
+    bottomPanelTabs->addTab(terminalContainerPanel, QString::fromUtf8("الطرفية"));
     bottomPanelTabs->addTab(outputPanel, QString::fromUtf8("الإخراج"));
     bottomPanelTabs->addTab(problemsPanel, QString::fromUtf8("المشاكل"));
     bottomPanelTabs->addTab(searchResultsPanel, QString::fromUtf8("نتائج البحث"));
-    bottomPanelTabs->addTab(debugPanel, QString::fromUtf8("التصحيح"));
+    bottomPanelTabs->addTab(referencesPanel, QString::fromUtf8("المراجع"));
+    bottomPanelTabs->addTab(outlinePanel, QString::fromUtf8("المخطط"));
+    bottomPanelTabs->addTab(debugContainerPanel, QString::fromUtf8("التصحيح"));
     bottomPanels = std::make_unique<BottomPanelController>(
         bottomPanelTabs,
         outputPanel,
-        terminalPanel,
+        terminalContainerPanel,
         problemsPanel,
         searchResultsPanel,
-        debugPanel);
+        referencesPanel,
+        outlinePanel,
+        debugContainerPanel);
 
     outputDock = new QDockWidget(QString::fromUtf8("اللوحة السفلية"), this);
     outputDock->setObjectName(QStringLiteral("outputDock"));
@@ -1043,6 +1323,7 @@ void MainWindow::saveFile()
         QMessageBox::warning(this, QString::fromUtf8("تعذر الحفظ"), error);
         return;
     }
+    notifyLanguageServerOfSave();
     setStatus(QString::fromUtf8("تم الحفظ"));
 }
 
@@ -1067,6 +1348,7 @@ void MainWindow::saveFileAs()
         QMessageBox::warning(this, QString::fromUtf8("تعذر الحفظ"), error);
         return;
     }
+    notifyLanguageServerOfSave();
     setStatus(QString::fromUtf8("تم الحفظ"));
 }
 
@@ -1248,35 +1530,35 @@ void MainWindow::registerWorkbenchCommands()
     };
 
     registerCommand(
-        QStringLiteral("new-file"),
+        QStringLiteral("file.new"),
         QString::fromUtf8("ملف جديد"),
         QString::fromUtf8("ملف"),
         QKeySequence::New,
         QString::fromUtf8("ملف جديد new file"),
         [this]() { newFile(); });
     registerCommand(
-        QStringLiteral("open-file"),
+        QStringLiteral("file.open"),
         QString::fromUtf8("فتح ملف"),
         QString::fromUtf8("ملف"),
         QKeySequence::Open,
         QString::fromUtf8("فتح ملف open file"),
         [this]() { openFile(); });
     registerCommand(
-        QStringLiteral("open-project"),
+        QStringLiteral("project.open"),
         QString::fromUtf8("فتح مشروع"),
         QString::fromUtf8("ملف"),
         QKeySequence(),
         QString::fromUtf8("فتح مشروع مجلد open project folder"),
         [this]() { openFolder(); });
     registerCommand(
-        QStringLiteral("save-file"),
+        QStringLiteral("file.save"),
         QString::fromUtf8("حفظ"),
         QString::fromUtf8("ملف"),
         QKeySequence::Save,
         QString::fromUtf8("حفظ save"),
         [this]() { saveFile(); });
     registerCommand(
-        QStringLiteral("save-as"),
+        QStringLiteral("file.saveAs"),
         QString::fromUtf8("حفظ باسم"),
         QString::fromUtf8("ملف"),
         QKeySequence::SaveAs,
@@ -1344,7 +1626,7 @@ void MainWindow::registerWorkbenchCommands()
         },
         [this]() { return editorTabs && editorTabs->count() > 0; });
     registerCommand(
-        QStringLiteral("find-in-file"),
+        QStringLiteral("editor.findInFile"),
         QString::fromUtf8("بحث واستبدال في الملف"),
         QString::fromUtf8("تحرير"),
         QKeySequence::Find,
@@ -1392,6 +1674,44 @@ void MainWindow::registerWorkbenchCommands()
         [this]() { collapseToSingleCursorAction(); },
         [this]() { return editor != nullptr && editor->totalCursorCount() > 1; });
     registerCommand(
+        QStringLiteral("lsp.goToDefinition"),
+        QString::fromUtf8("انتقال إلى التعريف"),
+        QString::fromUtf8("تحرير"),
+        QKeySequence(QStringLiteral("F12")),
+        QString::fromUtf8("تعريف رمز انتقال language server definition"),
+        [this]() {
+            if (!editor) {
+                return;
+            }
+            const QTextCursor cursor = editor->textCursor();
+            requestLanguageServerDefinition(cursor.blockNumber(), cursor.position() - cursor.block().position());
+        },
+        [this]() { return editor != nullptr; });
+    registerCommand(
+        QStringLiteral("lsp.findReferences"),
+        QString::fromUtf8("إيجاد المراجع"),
+        QString::fromUtf8("تحرير"),
+        QKeySequence(QStringLiteral("Shift+F12")),
+        QString::fromUtf8("مراجع رمز language server references"),
+        [this]() { requestLanguageServerReferences(); },
+        [this]() { return editor != nullptr; });
+    registerCommand(
+        QStringLiteral("lsp.renameSymbol"),
+        QString::fromUtf8("إعادة تسمية الرمز"),
+        QString::fromUtf8("تحرير"),
+        QKeySequence(QStringLiteral("F2")),
+        QString::fromUtf8("إعادة تسمية refactor rename symbol language server"),
+        [this]() { requestLanguageServerRename(); },
+        [this]() { return editor != nullptr; });
+    registerCommand(
+        QStringLiteral("lsp.workspaceSymbol"),
+        QString::fromUtf8("انتقال إلى رمز في المشروع"),
+        QString::fromUtf8("تحرير"),
+        QKeySequence(QStringLiteral("Ctrl+T")),
+        QString::fromUtf8("رمز مشروع workspace symbol language server"),
+        [this]() { requestLanguageServerWorkspaceSymbols(); },
+        [this]() { return editor != nullptr; });
+    registerCommand(
         QStringLiteral("snippet.insertPrint"),
         QString::fromUtf8("إدراج اطبع"),
         QString::fromUtf8("تحرير"),
@@ -1416,36 +1736,68 @@ void MainWindow::registerWorkbenchCommands()
         [this]() { toggleTrimTrailingWhitespace(); },
         [this]() { return editor != nullptr; });
     registerCommand(
-        QStringLiteral("run-current-file"),
+        QStringLiteral("run.currentFile"),
         QString::fromUtf8("تشغيل الملف الحالي"),
         QString::fromUtf8("تشغيل"),
-        QKeySequence(QStringLiteral("F5")),
+        QKeySequence(QStringLiteral("Ctrl+F5")),
         QString::fromUtf8("تشغيل run current file"),
         [this]() { runCurrentFile(); });
+    registerCommand(
+        QStringLiteral("debug.continue"),
+        QString::fromUtf8("بدء أو متابعة التصحيح"),
+        QString::fromUtf8("تصحيح"),
+        QKeySequence(QStringLiteral("F5")),
+        QString::fromUtf8("تصحيح متابعة تشغيل breakpoint continue debug"),
+        [this]() { continueDebugSession(); },
+        [this]() { return editor != nullptr; });
+    registerCommand(
+        QStringLiteral("debug.stepOver"),
+        QString::fromUtf8("خطوة فوق"),
+        QString::fromUtf8("تصحيح"),
+        QKeySequence(QStringLiteral("F10")),
+        QString::fromUtf8("تصحيح خطوة فوق step over next"),
+        [this]() { stepOverDebugSession(); },
+        [this]() { return debugSessionActive && debugSessionPaused; });
+    registerCommand(
+        QStringLiteral("debug.stepInto"),
+        QString::fromUtf8("خطوة داخل"),
+        QString::fromUtf8("تصحيح"),
+        QKeySequence(QStringLiteral("F11")),
+        QString::fromUtf8("تصحيح خطوة داخل step into"),
+        [this]() { stepIntoDebugSession(); },
+        [this]() { return debugSessionActive && debugSessionPaused; });
+    registerCommand(
+        QStringLiteral("debug.stepOut"),
+        QString::fromUtf8("خروج من الدالة"),
+        QString::fromUtf8("تصحيح"),
+        QKeySequence(QStringLiteral("Shift+F11")),
+        QString::fromUtf8("تصحيح خروج خطوة step out"),
+        [this]() { stepOutDebugSession(); },
+        [this]() { return debugSessionActive && debugSessionPaused; });
     registerCommand(
         QStringLiteral("run.rerunLast"),
         QString::fromUtf8("إعادة آخر تشغيل"),
         QString::fromUtf8("تشغيل"),
-        QKeySequence(QStringLiteral("Ctrl+F5")),
+        QKeySequence(QStringLiteral("Ctrl+Shift+F5")),
         QString::fromUtf8("إعادة آخر تشغيل rerun last run history"),
         [this]() { rerunLastRuntimeAction(); },
         [this]() { return runtimeOrchestrator.hasHistory(); });
     registerCommand(
-        QStringLiteral("lint-current-file"),
+        QStringLiteral("run.lintCurrentFile"),
         QString::fromUtf8("فحص الملف الحالي"),
         QString::fromUtf8("تشغيل"),
         QKeySequence(),
         QString::fromUtf8("فحص lint current file"),
         [this]() { lintCurrentFile(); });
     registerCommand(
-        QStringLiteral("format-current-file"),
+        QStringLiteral("run.formatCurrentFile"),
         QString::fromUtf8("تنسيق الملف الحالي"),
         QString::fromUtf8("تشغيل"),
         QKeySequence(),
         QString::fromUtf8("تنسيق format current file"),
         [this]() { formatCurrentFile(); });
     registerCommand(
-        QStringLiteral("stop-run"),
+        QStringLiteral("run.stop"),
         QString::fromUtf8("إيقاف التشغيل"),
         QString::fromUtf8("تشغيل"),
         QKeySequence(QStringLiteral("Shift+F5")),
@@ -1529,7 +1881,7 @@ void MainWindow::registerWorkbenchCommands()
         [this]() { untrustCurrentWorkspace(); },
         [this]() { return !projectRoot.isEmpty() && workspaceSettings.trusted; });
     registerCommand(
-        QStringLiteral("search-project"),
+        QStringLiteral("search.project"),
         QString::fromUtf8("بحث في المشروع"),
         QString::fromUtf8("بحث"),
         QKeySequence(Qt::Key_Return),
@@ -1545,7 +1897,7 @@ void MainWindow::registerWorkbenchCommands()
             }
         });
     registerCommand(
-        QStringLiteral("replace-in-project"),
+        QStringLiteral("search.replacePreview"),
         QString::fromUtf8("معاينة الاستبدال في المشروع"),
         QString::fromUtf8("بحث"),
         QKeySequence(),
@@ -1553,7 +1905,7 @@ void MainWindow::registerWorkbenchCommands()
         [this]() { previewProjectReplace(); },
         [this]() { return !projectRoot.isEmpty(); });
     registerCommand(
-        QStringLiteral("replace-in-project.applyAccepted"),
+        QStringLiteral("search.replaceApplyAccepted"),
         QString::fromUtf8("تطبيق الاستبدالات المقبولة"),
         QString::fromUtf8("بحث"),
         QKeySequence(),
@@ -1633,14 +1985,14 @@ void MainWindow::registerWorkbenchCommands()
         [this]() { if (projectTreeController) projectTreeController->refresh(); },
         [this]() { return !projectRoot.isEmpty(); });
     registerCommand(
-        QStringLiteral("settings"),
+        QStringLiteral("system.settings"),
         QString::fromUtf8("الإعدادات"),
         QString::fromUtf8("النظام"),
         QKeySequence(QStringLiteral("Ctrl+,")),
         QString::fromUtf8("الإعدادات settings preferences"),
         [this]() { openSettings(); });
     registerCommand(
-        QStringLiteral("command-palette"),
+        QStringLiteral("system.commandPalette"),
         QString::fromUtf8("لوحة الأوامر"),
         QString::fromUtf8("النظام"),
         QKeySequence(QStringLiteral("Ctrl+Shift+P")),
@@ -1925,20 +2277,76 @@ void MainWindow::showOnlySystemOutput()
 
 void MainWindow::openPowerShellTerminal()
 {
-    const QString workingDirectory = projectRoot.isEmpty() ? runtimeWorkingDirectory() : projectRoot;
-    const TerminalProfile profile = TerminalProfileModel::defaultPowerShellProfile(workingDirectory);
+    refreshTerminalProfiles();
+    const TerminalProfile profile = selectedTerminalProfile();
     const TerminalLaunchPlan plan = TerminalProfileModel::buildLaunchPlan(profile, workspaceSettings.trusted);
 
     showTerminalPanel();
     if (!plan.allowed) {
         terminalPanel->setPlainText(plan.reason);
         setStatus(plan.reason);
+        updateTerminalControls();
+        return;
+    }
+    if (terminalBackend.isRunning()) {
+        setStatus(QString::fromUtf8("الطرفية تعمل بالفعل"));
         return;
     }
 
-    terminalPanel->setPlainText(QString::fromUtf8("طرفية %1 جاهزة في %2. تنفيذ الطرفية سيضاف في شريحة لاحقة.")
+    terminalPanel->setPlainText(QString::fromUtf8("بدء طرفية %1 في %2\n")
         .arg(profile.name, QDir::toNativeSeparators(plan.command.workingDirectory)));
-    setStatus(QString::fromUtf8("تم تجهيز الطرفية"));
+    QString error;
+    if (!terminalBackend.start(plan.command, &error)) {
+        terminalPanel->appendPlainText(error);
+        setStatus(error);
+        updateTerminalControls();
+        return;
+    }
+    setStatus(QString::fromUtf8("بدأت الطرفية: %1").arg(profile.name));
+    updateTerminalControls();
+}
+
+void MainWindow::sendTerminalInput()
+{
+    if (!terminalInput || !terminalBackend.isRunning()) {
+        return;
+    }
+    const QString command = terminalInput->text();
+    if (command.isEmpty()) {
+        return;
+    }
+
+    QString error;
+    if (!terminalBackend.writeInput(command + QStringLiteral("\r\n"), &error)) {
+        setStatus(error);
+        appendTerminalOutput(QString::fromUtf8("\n%1\n").arg(error));
+        return;
+    }
+    terminalInput->clear();
+}
+
+void MainWindow::stopTerminalProcess()
+{
+    terminalBackend.close();
+    updateTerminalControls();
+    setStatus(QString::fromUtf8("تم إيقاف الطرفية"));
+}
+
+void MainWindow::persistSelectedTerminalProfile()
+{
+    if (!terminalProfilePicker || projectRoot.isEmpty()) {
+        return;
+    }
+    const QString profileId = terminalProfilePicker->currentData().toString();
+    if (profileId.isEmpty() || workspaceSettings.terminalProfileId == profileId) {
+        return;
+    }
+
+    workspaceSettings.terminalProfileId = profileId;
+    QString error;
+    if (!WorkspaceSettingsStore(projectRoot).save(workspaceSettings, &error)) {
+        setStatus(error);
+    }
 }
 
 void MainWindow::trustCurrentWorkspace()
@@ -1974,6 +2382,7 @@ void MainWindow::trustCurrentWorkspace()
         return;
     }
 
+    updateTerminalControls();
     setStatus(QString::fromUtf8("تمت الثقة بمساحة العمل"));
 }
 
@@ -1995,6 +2404,10 @@ void MainWindow::untrustCurrentWorkspace()
         return;
     }
 
+    if (terminalBackend.isRunning()) {
+        terminalBackend.close();
+    }
+    updateTerminalControls();
     setStatus(QString::fromUtf8("ألغيت الثقة بمساحة العمل"));
 }
 
@@ -2105,6 +2518,7 @@ void MainWindow::findInProject()
     }
 
     const QString root = projectRoot;
+    const int scanCap = searchScanCap;
     const int generation = workbenchState.nextSearchGeneration();
     const QVector<SearchResultRow> immediateRows = currentEditorSearchResults(query);
     renderSearchResults(immediateRows);
@@ -2115,7 +2529,7 @@ void MainWindow::findInProject()
 
     auto *watcher = new QFutureWatcher<SearchResults>(this);
     activeSearchWatcher = watcher;
-    connect(watcher, &QFutureWatcher<SearchResults>::finished, this, [this, watcher, generation, immediateRows]() {
+    connect(watcher, &QFutureWatcher<SearchResults>::finished, this, [this, watcher, generation, immediateRows, scanCap]() {
         const SearchResults projectResults = watcher->result();
         watcher->deleteLater();
         if (activeSearchWatcher == watcher) {
@@ -2127,12 +2541,12 @@ void MainWindow::findInProject()
         const QVector<SearchResultRow> mergedRows = SearchService::mergeRows(immediateRows, projectResults.rows);
         renderSearchResults(mergedRows);
         setStatus(projectResults.truncatedAtFileCap
-            ? QString::fromUtf8("تم اقتطاع نتائج البحث عند %1 ملف").arg(SearchService::MaxScannedFiles)
+            ? QString::fromUtf8("تم اقتطاع نتائج البحث عند %1 ملف").arg(scanCap)
             : QString::fromUtf8("نتائج البحث: %1").arg(mergedRows.size()));
     });
-    watcher->setFuture(QtConcurrent::run([root, query]() {
+    watcher->setFuture(QtConcurrent::run([root, query, scanCap]() {
         SearchService service;
-        return service.searchWithMetadata(root, query, 1000);
+        return service.searchWithMetadata(root, query, 1000, scanCap);
     }));
 }
 
@@ -2267,6 +2681,332 @@ void MainWindow::renderSearchResults(const QVector<SearchResultRow> &rows)
         searchResultsPanel->setItemWidget(item, rowWidget);
     }
     showSearchResultsPanel();
+}
+
+void MainWindow::renderReferences(const QVector<LspLocation> &locations)
+{
+    referencesPanel->clear();
+    for (const LspLocation &location : locations) {
+        const QString path = QUrl(location.uri).toLocalFile();
+        auto *item = new QListWidgetItem(referencesPanel);
+        item->setData(Qt::UserRole, location.uri);
+        item->setData(Qt::UserRole + 1, location.line + 1);
+        item->setData(Qt::UserRole + 2, location.character + 1);
+        item->setToolTip(QString::fromUtf8("%1\n%2:%3")
+            .arg(QDir::toNativeSeparators(path.isEmpty() ? location.uri : path))
+            .arg(location.line + 1)
+            .arg(location.character + 1));
+        item->setText(QString::fromUtf8("%1، السطر %2").arg(path.isEmpty() ? location.uri : QFileInfo(path).fileName()).arg(location.line + 1));
+
+        auto *rowWidget = new QWidget(referencesPanel);
+        rowWidget->setObjectName(QStringLiteral("referenceResultRow"));
+        rowWidget->setLayoutDirection(Qt::RightToLeft);
+        rowWidget->setMinimumHeight(64);
+        auto *rowLayout = new QVBoxLayout(rowWidget);
+        rowLayout->setContentsMargins(16, 12, 16, 12);
+        rowLayout->setSpacing(4);
+
+        auto *fileLabel = new QLabel(path.isEmpty() ? location.uri : QDir::toNativeSeparators(path), rowWidget);
+        fileLabel->setObjectName(QStringLiteral("referenceResultFileLabel"));
+        fileLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        fileLabel->setLayoutDirection(path.isEmpty() ? Qt::LeftToRight : Qt::LeftToRight);
+        fileLabel->setStyleSheet(QStringLiteral("color: #E8ECF2; font-weight: 600;"));
+
+        auto *lineLabel = new QLabel(QString::fromUtf8("السطر %1، العمود %2").arg(location.line + 1).arg(location.character + 1), rowWidget);
+        lineLabel->setObjectName(QStringLiteral("referenceResultLineLabel"));
+        lineLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        lineLabel->setLayoutDirection(Qt::RightToLeft);
+        lineLabel->setStyleSheet(QStringLiteral("color: #AEC6FF;"));
+
+        rowLayout->addWidget(fileLabel);
+        rowLayout->addWidget(lineLabel);
+        item->setSizeHint(QSize(rowWidget->sizeHint().width(), 64));
+        referencesPanel->setItemWidget(item, rowWidget);
+    }
+    showReferencesPanel();
+}
+
+void MainWindow::renderOutline(const QVector<LspSymbol> &symbols)
+{
+    outlinePanel->clear();
+    for (const LspSymbol &symbol : symbols) {
+        auto *item = new QListWidgetItem(outlinePanel);
+        item->setData(Qt::UserRole, symbol.uri);
+        item->setData(Qt::UserRole + 1, symbol.line + 1);
+        item->setData(Qt::UserRole + 2, symbol.character + 1);
+        item->setToolTip(QString::fromUtf8("%1\n%2:%3")
+            .arg(symbol.name)
+            .arg(symbol.line + 1)
+            .arg(symbol.character + 1));
+        item->setText(symbol.detail.isEmpty()
+                ? symbol.name
+                : QStringLiteral("%1 - %2").arg(symbol.name, symbol.detail));
+
+        auto *rowWidget = new QWidget(outlinePanel);
+        rowWidget->setObjectName(QStringLiteral("outlineResultRow"));
+        rowWidget->setLayoutDirection(Qt::RightToLeft);
+        rowWidget->setMinimumHeight(64);
+        auto *rowLayout = new QVBoxLayout(rowWidget);
+        rowLayout->setContentsMargins(16, 12, 16, 12);
+        rowLayout->setSpacing(4);
+
+        auto *nameLabel = new QLabel(symbol.name, rowWidget);
+        nameLabel->setObjectName(QStringLiteral("outlineResultNameLabel"));
+        nameLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        nameLabel->setLayoutDirection(Qt::RightToLeft);
+        nameLabel->setStyleSheet(QStringLiteral("color: #E8ECF2; font-weight: 600;"));
+
+        const QString detailText = symbol.detail.isEmpty()
+            ? QString::fromUtf8("السطر %1، العمود %2").arg(symbol.line + 1).arg(symbol.character + 1)
+            : QString::fromUtf8("%1 - السطر %2، العمود %3").arg(symbol.detail).arg(symbol.line + 1).arg(symbol.character + 1);
+        auto *detailLabel = new QLabel(detailText, rowWidget);
+        detailLabel->setObjectName(QStringLiteral("outlineResultDetailLabel"));
+        detailLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        detailLabel->setLayoutDirection(Qt::RightToLeft);
+        detailLabel->setStyleSheet(QStringLiteral("color: #AEC6FF;"));
+
+        rowLayout->addWidget(nameLabel);
+        rowLayout->addWidget(detailLabel);
+        item->setSizeHint(QSize(rowWidget->sizeHint().width(), 64));
+        outlinePanel->setItemWidget(item, rowWidget);
+    }
+    showOutlinePanel();
+}
+
+void MainWindow::openWorkspaceSymbolPicker(const QVector<LspSymbol> &symbols)
+{
+    if (symbols.isEmpty()) {
+        setStatus(QString::fromUtf8("لا توجد رموز مطابقة"));
+        return;
+    }
+
+    QDialog dialog(this);
+    dialog.setObjectName(QStringLiteral("workspaceSymbolDialog"));
+    dialog.setWindowTitle(QString::fromUtf8("انتقال إلى رمز في المشروع"));
+    dialog.setLayoutDirection(Qt::RightToLeft);
+
+    auto *layout = new QVBoxLayout(&dialog);
+    layout->setContentsMargins(16, 16, 16, 16);
+    layout->setSpacing(12);
+
+    auto *results = new QListWidget(&dialog);
+    results->setObjectName(QStringLiteral("workspaceSymbolResults"));
+    results->setLayoutDirection(Qt::RightToLeft);
+    results->setWordWrap(true);
+    results->setUniformItemSizes(false);
+    for (const LspSymbol &symbol : symbols) {
+        const QString path = QUrl(symbol.uri).toLocalFile();
+        auto *item = new QListWidgetItem(results);
+        item->setData(Qt::UserRole, symbol.uri);
+        item->setData(Qt::UserRole + 1, symbol.line + 1);
+        item->setData(Qt::UserRole + 2, symbol.character + 1);
+        item->setText(QString::fromUtf8("%1 - %2:%3")
+            .arg(symbol.name)
+            .arg(path.isEmpty() ? symbol.uri : QFileInfo(path).fileName())
+            .arg(symbol.line + 1));
+        item->setToolTip(QString::fromUtf8("%1\n%2:%3")
+            .arg(QDir::toNativeSeparators(path.isEmpty() ? symbol.uri : path))
+            .arg(symbol.line + 1)
+            .arg(symbol.character + 1));
+    }
+    results->setCurrentRow(0);
+    layout->addWidget(results);
+
+    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+    buttons->button(QDialogButtonBox::Ok)->setText(QString::fromUtf8("فتح"));
+    buttons->button(QDialogButtonBox::Cancel)->setText(QString::fromUtf8("إلغاء"));
+    layout->addWidget(buttons);
+
+    connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    connect(results, &QListWidget::itemActivated, &dialog, &QDialog::accept);
+    connect(results, &QListWidget::itemDoubleClicked, &dialog, &QDialog::accept);
+
+    if (dialog.exec() == QDialog::Accepted && results->currentItem()) {
+        openReferenceResult(results->currentItem());
+    }
+}
+
+void MainWindow::renderRenamePreview(const LspWorkspaceEdit &edit)
+{
+    referencesPanel->clear();
+    for (const LspTextEdit &textEdit : edit.edits) {
+        const QString path = QUrl(textEdit.uri).toLocalFile();
+        auto *item = new QListWidgetItem(referencesPanel);
+        item->setData(Qt::UserRole, textEdit.uri);
+        item->setData(Qt::UserRole + 1, textEdit.startLine + 1);
+        item->setData(Qt::UserRole + 2, textEdit.startCharacter + 1);
+        item->setToolTip(QString::fromUtf8("%1\n%2:%3 -> %4")
+            .arg(QDir::toNativeSeparators(path.isEmpty() ? textEdit.uri : path))
+            .arg(textEdit.startLine + 1)
+            .arg(textEdit.startCharacter + 1)
+            .arg(textEdit.newText));
+        item->setText(QString::fromUtf8("إعادة تسمية: %1، السطر %2")
+            .arg(path.isEmpty() ? textEdit.uri : QFileInfo(path).fileName())
+            .arg(textEdit.startLine + 1));
+
+        auto *rowWidget = new QWidget(referencesPanel);
+        rowWidget->setObjectName(QStringLiteral("renamePreviewRow"));
+        rowWidget->setLayoutDirection(Qt::RightToLeft);
+        rowWidget->setMinimumHeight(72);
+        auto *rowLayout = new QVBoxLayout(rowWidget);
+        rowLayout->setContentsMargins(16, 12, 16, 12);
+        rowLayout->setSpacing(4);
+
+        auto *fileLabel = new QLabel(path.isEmpty() ? textEdit.uri : QDir::toNativeSeparators(path), rowWidget);
+        fileLabel->setObjectName(QStringLiteral("renamePreviewFileLabel"));
+        fileLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        fileLabel->setLayoutDirection(Qt::LeftToRight);
+        fileLabel->setStyleSheet(QStringLiteral("color: #E8ECF2; font-weight: 600;"));
+
+        auto *detailLabel = new QLabel(QString::fromUtf8("السطر %1، العمود %2 -> %3")
+                .arg(textEdit.startLine + 1)
+                .arg(textEdit.startCharacter + 1)
+                .arg(textEdit.newText),
+            rowWidget);
+        detailLabel->setObjectName(QStringLiteral("renamePreviewDetailLabel"));
+        detailLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        detailLabel->setLayoutDirection(Qt::RightToLeft);
+        detailLabel->setStyleSheet(QStringLiteral("color: #AEC6FF;"));
+
+        rowLayout->addWidget(fileLabel);
+        rowLayout->addWidget(detailLabel);
+        item->setSizeHint(QSize(rowWidget->sizeHint().width(), 72));
+        referencesPanel->setItemWidget(item, rowWidget);
+    }
+    showReferencesPanel();
+}
+
+bool MainWindow::applyWorkspaceEdit(const LspWorkspaceEdit &edit, QString *error)
+{
+    if (error) {
+        error->clear();
+    }
+    if (edit.edits.isEmpty()) {
+        setStatus(QString::fromUtf8("لا توجد تعديلات لإعادة التسمية"));
+        return true;
+    }
+
+    QMap<QString, QVector<LspTextEdit>> editsByPath;
+    for (const LspTextEdit &textEdit : edit.edits) {
+        const QString localPath = QUrl(textEdit.uri).toLocalFile();
+        if (localPath.isEmpty()) {
+            if (error) {
+                *error = QString::fromUtf8("تعديل إعادة التسمية لا يحتوي مسارا صالحا.");
+            }
+            return false;
+        }
+        const QString path = QFileInfo(localPath).absoluteFilePath();
+        editsByPath[path].append(textEdit);
+    }
+
+    const QStringList dirtyPaths = editorTabsController ? editorTabsController->dirtyFilePaths() : QStringList {};
+    for (const QString &dirtyPath : dirtyPaths) {
+        const QString normalizedDirtyPath = QFileInfo(dirtyPath).absoluteFilePath();
+        if (editsByPath.contains(normalizedDirtyPath)) {
+            if (error) {
+                *error = QString::fromUtf8("احفظ الملفات المفتوحة قبل إعادة التسمية.");
+            }
+            setStatus(error ? *error : QString());
+            return false;
+        }
+    }
+
+    struct PreparedFile
+    {
+        QString originalText;
+        QString updatedText;
+    };
+
+    QMap<QString, PreparedFile> preparedFiles;
+    for (auto it = editsByPath.begin(); it != editsByPath.end(); ++it) {
+        const QString path = it.key();
+        if (!QFileInfo::exists(path)) {
+            if (error) {
+                *error = QString::fromUtf8("ملف إعادة التسمية غير موجود: %1").arg(QDir::toNativeSeparators(path));
+            }
+            return false;
+        }
+
+        QString loadError;
+        const DocumentLoadResult loaded = DocumentFileIO::loadUtf8(path, &loadError);
+        if (!loadError.isEmpty()) {
+            if (error) {
+                *error = loadError;
+            }
+            return false;
+        }
+
+        QVector<DocumentTextEdit> documentEdits;
+        documentEdits.reserve(it.value().size());
+        for (const LspTextEdit &lspEdit : it.value()) {
+            DocumentTextEdit documentEdit;
+            if (!textEditToDocumentEdit(loaded.text, lspEdit, &documentEdit)) {
+                if (error) {
+                    *error = QString::fromUtf8("نطاق إعادة التسمية غير صالح: %1").arg(QDir::toNativeSeparators(path));
+                }
+                return false;
+            }
+            documentEdits.append(documentEdit);
+        }
+
+        std::sort(documentEdits.begin(), documentEdits.end(), [](const DocumentTextEdit &left, const DocumentTextEdit &right) {
+            return left.start < right.start;
+        });
+        int previousEnd = -1;
+        for (const DocumentTextEdit &documentEdit : documentEdits) {
+            if (documentEdit.start < previousEnd) {
+                if (error) {
+                    *error = QString::fromUtf8("تعديلات إعادة التسمية متداخلة: %1").arg(QDir::toNativeSeparators(path));
+                }
+                return false;
+            }
+            previousEnd = documentEdit.start + documentEdit.length;
+        }
+
+        QString updatedText = loaded.text;
+        std::sort(documentEdits.begin(), documentEdits.end(), [](const DocumentTextEdit &left, const DocumentTextEdit &right) {
+            return left.start > right.start;
+        });
+        for (const DocumentTextEdit &documentEdit : documentEdits) {
+            updatedText.replace(documentEdit.start, documentEdit.length, documentEdit.replacement);
+        }
+        preparedFiles.insert(path, {loaded.text, updatedText});
+    }
+
+    QStringList writtenPaths;
+    for (auto it = preparedFiles.begin(); it != preparedFiles.end(); ++it) {
+        QString saveError;
+        if (!DocumentFileIO::saveUtf8Atomically(it.key(), it.value().updatedText, &saveError)) {
+            for (const QString &writtenPath : writtenPaths) {
+                QString ignoredError;
+                DocumentFileIO::saveUtf8Atomically(writtenPath, preparedFiles.value(writtenPath).originalText, &ignoredError);
+            }
+            if (error) {
+                *error = saveError;
+            }
+            setStatus(saveError);
+            return false;
+        }
+        writtenPaths.append(it.key());
+    }
+
+    for (const QString &path : writtenPaths) {
+        const DocumentId id = documentRegistry.findByPath(path);
+        if (!id.isValid()) {
+            continue;
+        }
+        QString reloadError;
+        documentRegistry.reloadFromDisk(id, &reloadError);
+        EditorSurface *surface = editorTabsController ? editorTabsController->surfaceForDocument(id) : nullptr;
+        if (surface) {
+            surface->openFile(path, &reloadError);
+        }
+    }
+
+    renderRenamePreview(edit);
+    setStatus(QString::fromUtf8("تم تطبيق %1 تعديلات إعادة تسمية في %2 ملف").arg(edit.edits.size()).arg(preparedFiles.size()));
+    return true;
 }
 
 void MainWindow::renderProjectReplacePreview(const QVector<ProjectReplacePreviewRow> &rows)
@@ -2461,6 +3201,27 @@ void MainWindow::openProblemResult(QListWidgetItem *item)
         openEditorFile(path);
     }
     goToEditorLine(line);
+}
+
+void MainWindow::openReferenceResult(QListWidgetItem *item)
+{
+    if (!item) {
+        return;
+    }
+
+    const QString uri = item->data(Qt::UserRole).toString();
+    const QString path = QUrl(uri).toLocalFile();
+    const int line = item->data(Qt::UserRole + 1).toInt();
+    const int column = item->data(Qt::UserRole + 2).toInt();
+    if (!path.isEmpty() && QFileInfo(path).isFile()) {
+        openEditorFile(path);
+    }
+    goToEditorLocation(line, column);
+}
+
+void MainWindow::openOutlineResult(QListWidgetItem *item)
+{
+    openReferenceResult(item);
 }
 
 void MainWindow::clearEditorsForDeletedPath(const QString &path)
@@ -2778,6 +3539,8 @@ bool MainWindow::loadProject(const QString &path)
     if (editorTabsController) {
         editorTabsController->applyWorkspaceSettings(workspaceSettings);
     }
+    refreshTerminalProfiles();
+    updateTerminalControls();
     settings.addRecentProject(projectRoot);
     setStatus(QString::fromUtf8("المشروع: %1").arg(projectRoot));
     return true;
@@ -2999,6 +3762,604 @@ void MainWindow::refreshCurrentEditorUi(bool includeProblems)
     }
 }
 
+void MainWindow::configureLanguageServer()
+{
+    QProcessEnvironment environment = QProcessEnvironment::systemEnvironment();
+    environment.remove(QStringLiteral("PYTHONHOME"));
+    environment.remove(QStringLiteral("PYTHONPATH"));
+    environment.insert(QStringLiteral("PYTHONNOUSERSITE"), QStringLiteral("1"));
+    environment.insert(QStringLiteral("PYTHONUTF8"), QStringLiteral("1"));
+    environment.insert(QStringLiteral("PYTHONIOENCODING"), QStringLiteral("utf-8"));
+
+    LspServerCommand command;
+    command.program = runtimeOrchestrator.pythonExecutablePath();
+    command.arguments = {QStringLiteral("-m"), QStringLiteral("arabicpython.lsp.server")};
+    command.workingDirectory = projectRoot.isEmpty() ? QDir::homePath() : projectRoot;
+    command.environment = environment;
+    lspClient.setServerCommand(command);
+}
+
+void MainWindow::configureDebugAdapter()
+{
+    QProcessEnvironment environment = QProcessEnvironment::systemEnvironment();
+    environment.remove(QStringLiteral("PYTHONHOME"));
+    environment.remove(QStringLiteral("PYTHONPATH"));
+    environment.insert(QStringLiteral("PYTHONNOUSERSITE"), QStringLiteral("1"));
+    environment.insert(QStringLiteral("PYTHONUTF8"), QStringLiteral("1"));
+    environment.insert(QStringLiteral("PYTHONIOENCODING"), QStringLiteral("utf-8"));
+
+    DapServerCommand command;
+    command.program = runtimeOrchestrator.pythonExecutablePath();
+    command.arguments = {QStringLiteral("-m"), QStringLiteral("debugpy.adapter")};
+    command.workingDirectory = runtimeWorkingDirectory();
+    command.environment = environment;
+    dapClient.setServerCommand(command);
+}
+
+bool MainWindow::startDebugSession()
+{
+    QString error;
+    const QString runFilePath = materializeRunnableBuffer(&error);
+    if (runFilePath.isEmpty()) {
+        setStatus(error);
+        return false;
+    }
+
+    if (!QFileInfo::exists(runtimeOrchestrator.pythonExecutablePath())) {
+        setStatus(QString::fromUtf8("تعذر بدء التصحيح: لم يتم العثور على Python المضمن."));
+        return false;
+    }
+
+    if (dapClient.isRunning()) {
+        dapClient.disconnect();
+    }
+    configureDebugAdapter();
+
+    if (debugPanel) {
+        debugPanel->setPlainText(QString::fromUtf8("بدء جلسة التصحيح...\nملف: %1")
+            .arg(QDir::toNativeSeparators(runFilePath)));
+    }
+
+    if (!dapClient.startAndInitialize(5000, &error)) {
+        setStatus(QString::fromUtf8("تعذر بدء التصحيح: %1").arg(error));
+        return false;
+    }
+
+    DapLaunchRequest launch;
+    launch.module = QStringLiteral("arabicpython.cli");
+    launch.arguments = {runFilePath};
+    launch.workingDirectory = runtimeWorkingDirectory();
+    const int launchSequence = dapClient.beginLaunch(launch, &error);
+    if (launchSequence == 0) {
+        setStatus(QString::fromUtf8("تعذر إطلاق التصحيح: %1").arg(error));
+        return false;
+    }
+    if (!dapClient.waitForInitialized(5000, &error)) {
+        setStatus(QString::fromUtf8("تعذر تهيئة التصحيح: %1").arg(error));
+        return false;
+    }
+
+    const QVector<int> breakpoints = editor ? editor->breakpointLinesForTest() : QVector<int>{};
+    if (!dapClient.setBreakpoints(runFilePath, breakpoints, 5000, &error)) {
+        setStatus(QString::fromUtf8("تعذر إرسال نقاط التوقف: %1").arg(error));
+        return false;
+    }
+    if (!dapClient.configurationDone(5000, &error)) {
+        setStatus(QString::fromUtf8("تعذر إكمال إعداد التصحيح: %1").arg(error));
+        return false;
+    }
+    if (!dapClient.waitForRequest(launchSequence, 5000, &error)) {
+        setStatus(QString::fromUtf8("تعذر إطلاق التصحيح: %1").arg(error));
+        return false;
+    }
+
+    debugSessionActive = true;
+    debugSessionPaused = false;
+    activeDebugThreadId = 0;
+    if (debugPanel) {
+        debugPanel->appendPlainText(QString::fromUtf8("تم إطلاق التصحيح عبر debugpy."));
+    }
+    setStatus(QString::fromUtf8("بدأ التصحيح"));
+    return true;
+}
+
+void MainWindow::syncCurrentEditorToLanguageServer(bool reopenDocument)
+{
+    if (!editor) {
+        closeLanguageServerDocument();
+        return;
+    }
+
+    const QString path = editor->currentFilePath();
+    if (path.isEmpty() || !isApySourcePath(path)) {
+        closeLanguageServerDocument();
+        return;
+    }
+
+    if (!QFileInfo::exists(runtimeOrchestrator.pythonExecutablePath())) {
+        return;
+    }
+
+    if (!lspClient.isRunning()) {
+        configureLanguageServer();
+        const QString rootPath = projectRoot.isEmpty() ? QFileInfo(path).absolutePath() : projectRoot;
+        QString error;
+        if (!lspClient.startAndInitialize(QUrl::fromLocalFile(rootPath).toString(), 1000, &error)) {
+            return;
+        }
+    }
+
+    const QString uri = QUrl::fromLocalFile(path).toString();
+    if (reopenDocument || !lspDocumentOpen || lspDocumentUri != uri) {
+        closeLanguageServerDocument();
+        lspDocumentUri = uri;
+        lspDocumentVersion = 1;
+        lspDocumentOpen = true;
+        lspClient.openDocument(lspDocumentUri, QStringLiteral("apy"), lspDocumentVersion, editor->toPlainText());
+        requestLanguageServerSemanticTokens();
+        requestLanguageServerDocumentSymbols();
+        return;
+    }
+
+    ++lspDocumentVersion;
+    lspClient.changeDocument(lspDocumentUri, lspDocumentVersion, editor->toPlainText());
+    requestLanguageServerSemanticTokens();
+}
+
+void MainWindow::notifyLanguageServerOfSave()
+{
+    if (!editor) {
+        return;
+    }
+
+    const QString path = editor->currentFilePath();
+    const QString uri = QUrl::fromLocalFile(path).toString();
+    if (lspClient.isRunning() && lspDocumentOpen && lspDocumentUri == uri) {
+        lspClient.saveDocument(uri, editor->toPlainText());
+        return;
+    }
+
+    syncCurrentEditorToLanguageServer(true);
+}
+
+void MainWindow::closeLanguageServerDocument()
+{
+    if (!lspDocumentOpen || lspDocumentUri.isEmpty() || !lspClient.isRunning()) {
+        lspDocumentOpen = false;
+        lspDocumentUri.clear();
+        lspDocumentVersion = 0;
+        return;
+    }
+
+    lspClient.closeDocument(lspDocumentUri);
+    lspDocumentOpen = false;
+    lspDocumentUri.clear();
+    lspDocumentVersion = 0;
+}
+
+void MainWindow::requestLanguageServerCompletion(int line, int character)
+{
+    if (!editor) {
+        return;
+    }
+
+    syncCurrentEditorToLanguageServer(false);
+    if (!lspClient.isRunning() || !lspDocumentOpen || !lspClient.initializeResult().completionProvider) {
+        return;
+    }
+
+    QString error;
+    const QVector<LspCompletionItem> lspItems = lspClient.requestCompletion(lspDocumentUri, line, character, 200, &error);
+    if (!error.isEmpty()) {
+        return;
+    }
+
+    QVector<EditorCompletionItem> editorItems;
+    editorItems.reserve(lspItems.size());
+    for (const LspCompletionItem &item : lspItems) {
+        editorItems.append({item.label, item.detail, item.insertText});
+    }
+    editor->showCompletionItems(editorItems);
+}
+
+void MainWindow::requestLanguageServerHover(int line, int character, const QPoint &viewportPosition)
+{
+    if (!editor) {
+        return;
+    }
+
+    syncCurrentEditorToLanguageServer(false);
+    if (!lspClient.isRunning() || !lspDocumentOpen || !lspClient.initializeResult().hoverProvider) {
+        return;
+    }
+
+    QString error;
+    const LspHoverResult hover = lspClient.requestHover(lspDocumentUri, line, character, 100, &error);
+    if (error.isEmpty() && hover.hasContent) {
+        editor->showHoverMarkdown(hover.markdown, viewportPosition);
+    }
+}
+
+void MainWindow::requestLanguageServerDefinition(int line, int character)
+{
+    if (!editor) {
+        return;
+    }
+
+    syncCurrentEditorToLanguageServer(false);
+    if (!lspClient.isRunning() || !lspDocumentOpen) {
+        return;
+    }
+
+    QString error;
+    const QVector<LspLocation> locations = lspClient.requestDefinition(lspDocumentUri, line, character, 500, &error);
+    if (!error.isEmpty() || locations.isEmpty()) {
+        return;
+    }
+
+    const LspLocation location = locations.first();
+    const QString path = QUrl(location.uri).toLocalFile();
+    if (!path.isEmpty() && QFileInfo(path).isFile()) {
+        openEditorFile(path);
+    }
+    goToEditorLocation(location.line + 1, location.character + 1);
+}
+
+void MainWindow::requestLanguageServerReferences()
+{
+    if (!editor) {
+        return;
+    }
+
+    const QTextCursor cursor = editor->textCursor();
+    syncCurrentEditorToLanguageServer(false);
+    if (!lspClient.isRunning() || !lspDocumentOpen) {
+        return;
+    }
+
+    QString error;
+    const QVector<LspLocation> locations = lspClient.requestReferences(
+        lspDocumentUri,
+        cursor.blockNumber(),
+        cursor.position() - cursor.block().position(),
+        true,
+        500,
+        &error);
+    if (error.isEmpty()) {
+        renderReferences(locations);
+    }
+}
+
+void MainWindow::requestLanguageServerRename()
+{
+    if (!editor) {
+        return;
+    }
+
+    const QTextCursor cursor = editor->textCursor();
+    bool accepted = false;
+    const QString newName = QInputDialog::getText(
+        this,
+        QString::fromUtf8("إعادة تسمية الرمز"),
+        QString::fromUtf8("الاسم الجديد:"),
+        QLineEdit::Normal,
+        cursor.selectedText(),
+        &accepted);
+    if (!accepted || newName.trimmed().isEmpty()) {
+        return;
+    }
+
+    syncCurrentEditorToLanguageServer(false);
+    if (!lspClient.isRunning() || !lspDocumentOpen) {
+        setStatus(QString::fromUtf8("خادم اللغة غير جاهز لإعادة التسمية"));
+        return;
+    }
+
+    QString error;
+    const LspWorkspaceEdit edit = lspClient.requestRename(
+        lspDocumentUri,
+        cursor.blockNumber(),
+        cursor.position() - cursor.block().position(),
+        newName.trimmed(),
+        1000,
+        &error);
+    if (!error.isEmpty()) {
+        setStatus(error);
+        return;
+    }
+    if (!applyWorkspaceEdit(edit, &error) && !error.isEmpty()) {
+        setStatus(error);
+    }
+}
+
+void MainWindow::requestLanguageServerSemanticTokens()
+{
+    if (!editor) {
+        return;
+    }
+    if (!lspClient.isRunning() || !lspDocumentOpen || !lspClient.initializeResult().semanticTokensProvider) {
+        editor->setSemanticTokens({});
+        return;
+    }
+
+    QString error;
+    const QVector<LspSemanticToken> lspTokens = lspClient.requestSemanticTokens(lspDocumentUri, 500, &error);
+    if (!error.isEmpty()) {
+        return;
+    }
+
+    QVector<EditorSemanticToken> editorTokens;
+    editorTokens.reserve(lspTokens.size());
+    for (const LspSemanticToken &token : lspTokens) {
+        editorTokens.append({token.line, token.startCharacter, token.length, token.tokenType});
+    }
+    editor->setSemanticTokens(editorTokens);
+}
+
+void MainWindow::requestLanguageServerDocumentSymbols()
+{
+    if (!editor) {
+        return;
+    }
+    if (!lspClient.isRunning() || !lspDocumentOpen || !lspClient.initializeResult().documentSymbolProvider) {
+        if (outlinePanel) {
+            outlinePanel->clear();
+        }
+        return;
+    }
+
+    QString error;
+    const QVector<LspSymbol> symbols = lspClient.requestDocumentSymbols(lspDocumentUri, 500, &error);
+    if (error.isEmpty()) {
+        renderOutline(symbols);
+    }
+}
+
+void MainWindow::requestLanguageServerWorkspaceSymbols()
+{
+    if (!editor) {
+        return;
+    }
+
+    syncCurrentEditorToLanguageServer(false);
+    if (!lspClient.isRunning() || !lspClient.initializeResult().workspaceSymbolProvider) {
+        setStatus(QString::fromUtf8("خادم اللغة غير جاهز لرموز المشروع"));
+        return;
+    }
+
+    bool accepted = false;
+    const QString query = QInputDialog::getText(
+        this,
+        QString::fromUtf8("انتقال إلى رمز في المشروع"),
+        QString::fromUtf8("اسم الرمز:"),
+        QLineEdit::Normal,
+        QString(),
+        &accepted);
+    if (!accepted) {
+        return;
+    }
+
+    QString error;
+    const QVector<LspSymbol> symbols = lspClient.requestWorkspaceSymbols(query.trimmed(), 1000, &error);
+    if (!error.isEmpty()) {
+        setStatus(error);
+        return;
+    }
+    openWorkspaceSymbolPicker(symbols);
+}
+
+void MainWindow::continueDebugSession()
+{
+    if (!editor) {
+        return;
+    }
+    if (!outputDock->isVisible()) {
+        outputDock->show();
+    }
+    if (bottomPanelTabs && debugContainerPanel) {
+        bottomPanelTabs->setCurrentWidget(debugContainerPanel);
+    }
+    outputDock->raise();
+
+    if (!debugSessionActive || !dapClient.isRunning()) {
+        debugSessionActive = false;
+        debugSessionPaused = false;
+        activeDebugThreadId = 0;
+        startDebugSession();
+        return;
+    }
+
+    QString error;
+    if (!debugSessionPaused) {
+        setStatus(QString::fromUtf8("التصحيح قيد التشغيل"));
+        return;
+    }
+    if (!dapClient.continueExecution(activeDebugThreadId, 5000, &error)) {
+        setStatus(error);
+        return;
+    }
+    debugSessionPaused = false;
+    debugPanel->appendPlainText(QString::fromUtf8("متابعة التنفيذ"));
+    setStatus(QString::fromUtf8("متابعة التصحيح"));
+}
+
+void MainWindow::stepOverDebugSession()
+{
+    if (!debugSessionActive || !debugSessionPaused) {
+        return;
+    }
+    QString error;
+    if (!dapClient.isRunning()) {
+        setStatus(QString::fromUtf8("لا توجد جلسة تصحيح نشطة"));
+        return;
+    }
+    if (!dapClient.stepOver(activeDebugThreadId, 5000, &error)) {
+        setStatus(error);
+        return;
+    }
+    debugPanel->appendPlainText(QString::fromUtf8("خطوة فوق"));
+    setStatus(QString::fromUtf8("خطوة فوق"));
+}
+
+void MainWindow::stepIntoDebugSession()
+{
+    if (!debugSessionActive || !debugSessionPaused) {
+        return;
+    }
+    QString error;
+    if (!dapClient.isRunning()) {
+        setStatus(QString::fromUtf8("لا توجد جلسة تصحيح نشطة"));
+        return;
+    }
+    if (!dapClient.stepInto(activeDebugThreadId, 5000, &error)) {
+        setStatus(error);
+        return;
+    }
+    debugPanel->appendPlainText(QString::fromUtf8("خطوة داخل"));
+    setStatus(QString::fromUtf8("خطوة داخل"));
+}
+
+void MainWindow::stepOutDebugSession()
+{
+    if (!debugSessionActive || !debugSessionPaused) {
+        return;
+    }
+    QString error;
+    if (!dapClient.isRunning()) {
+        setStatus(QString::fromUtf8("لا توجد جلسة تصحيح نشطة"));
+        return;
+    }
+    if (!dapClient.stepOut(activeDebugThreadId, 5000, &error)) {
+        setStatus(error);
+        return;
+    }
+    debugPanel->appendPlainText(QString::fromUtf8("خروج من الدالة"));
+    setStatus(QString::fromUtf8("خروج من الدالة"));
+}
+
+void MainWindow::refreshDebugInspection(int threadId)
+{
+    if (!dapClient.isRunning()) {
+        return;
+    }
+
+    QString error;
+    const QVector<DapStackFrame> frames = dapClient.stackTrace(threadId, 3000, &error);
+    if (!error.isEmpty()) {
+        setStatus(error);
+        return;
+    }
+    renderDebugCallStack(frames);
+
+    if (frames.isEmpty()) {
+        activeDebugFrameId = 0;
+        renderDebugVariables({});
+        refreshDebugWatches();
+        return;
+    }
+
+    activeDebugFrameId = frames.first().id;
+    const QVector<DapScope> scopes = dapClient.scopes(activeDebugFrameId, 3000, &error);
+    if (!error.isEmpty()) {
+        setStatus(error);
+        return;
+    }
+
+    QVector<DapVariable> collectedVariables;
+    for (const DapScope &scope : scopes) {
+        if (scope.expensive || scope.variablesReference <= 0) {
+            continue;
+        }
+        const QVector<DapVariable> scopeVariables = dapClient.variables(scope.variablesReference, 3000, &error);
+        if (!error.isEmpty()) {
+            setStatus(error);
+            return;
+        }
+        collectedVariables += scopeVariables;
+    }
+    renderDebugVariables(collectedVariables);
+    refreshDebugWatches();
+}
+
+void MainWindow::renderDebugVariables(const QVector<DapVariable> &variables)
+{
+    if (!debugVariablesPanel) {
+        return;
+    }
+    debugVariablesPanel->clear();
+    for (const DapVariable &variable : variables) {
+        const QString typeSuffix = variable.type.isEmpty() ? QString() : QStringLiteral(" : %1").arg(variable.type);
+        auto *item = new QListWidgetItem(QStringLiteral("%1 = %2%3").arg(variable.name, variable.value, typeSuffix));
+        item->setData(Qt::UserRole, variable.name);
+        item->setData(Qt::UserRole + 1, variable.value);
+        item->setData(Qt::UserRole + 2, variable.type);
+        debugVariablesPanel->addItem(item);
+    }
+}
+
+void MainWindow::renderDebugCallStack(const QVector<DapStackFrame> &frames)
+{
+    if (!debugCallStackPanel) {
+        return;
+    }
+    debugCallStackPanel->clear();
+    for (const DapStackFrame &frame : frames) {
+        const QString fileName = frame.sourcePath.isEmpty()
+            ? QStringLiteral("--")
+            : QFileInfo(frame.sourcePath).fileName();
+        auto *item = new QListWidgetItem(QStringLiteral("%1  %2:%3").arg(frame.name, fileName).arg(frame.line));
+        item->setData(Qt::UserRole, frame.sourcePath);
+        item->setData(Qt::UserRole + 1, frame.line);
+        item->setData(Qt::UserRole + 2, frame.id);
+        debugCallStackPanel->addItem(item);
+    }
+    if (debugCallStackPanel->count() > 0) {
+        debugCallStackPanel->setCurrentRow(0);
+    }
+}
+
+void MainWindow::addSelectedDebugVariableToWatch()
+{
+    if (!debugVariablesPanel || !debugVariablesPanel->currentItem()) {
+        return;
+    }
+    addWatchExpression(debugVariablesPanel->currentItem()->data(Qt::UserRole).toString());
+}
+
+void MainWindow::addWatchExpression(const QString &expression)
+{
+    const QString trimmed = expression.trimmed();
+    if (trimmed.isEmpty() || debugWatchExpressions.contains(trimmed)) {
+        return;
+    }
+    debugWatchExpressions.append(trimmed);
+    refreshDebugWatches();
+}
+
+void MainWindow::refreshDebugWatches()
+{
+    if (!debugWatchPanel) {
+        return;
+    }
+    debugWatchPanel->clear();
+    for (const QString &expression : debugWatchExpressions) {
+        QString displayValue = QStringLiteral("--");
+        QString displayType;
+        if (dapClient.isRunning() && activeDebugFrameId > 0) {
+            QString error;
+            const DapVariable value = dapClient.evaluate(expression, activeDebugFrameId, QStringLiteral("watch"), 3000, &error);
+            if (error.isEmpty()) {
+                displayValue = value.value;
+                displayType = value.type;
+            } else {
+                displayValue = error;
+            }
+        }
+        const QString typeSuffix = displayType.isEmpty() ? QString() : QStringLiteral(" : %1").arg(displayType);
+        debugWatchPanel->addItem(QStringLiteral("%1 = %2%3").arg(expression, displayValue, typeSuffix));
+    }
+}
+
 void MainWindow::updateStatusIndicators()
 {
     if (!statusEncodingLabel || !statusLineEndingLabel || !statusIndentationLabel || !statusLanguageModeLabel || !statusRuntimeLabel || !statusGitLabel) {
@@ -3066,6 +4427,30 @@ void MainWindow::showSearchResultsPanel()
     }
     if (bottomPanels) {
         bottomPanels->showSearchResultsPanel();
+    }
+    outputDock->raise();
+    resizeDocks({outputDock}, {190}, Qt::Vertical);
+}
+
+void MainWindow::showReferencesPanel()
+{
+    if (!outputDock->isVisible()) {
+        outputDock->show();
+    }
+    if (bottomPanels) {
+        bottomPanels->showReferencesPanel();
+    }
+    outputDock->raise();
+    resizeDocks({outputDock}, {190}, Qt::Vertical);
+}
+
+void MainWindow::showOutlinePanel()
+{
+    if (!outputDock->isVisible()) {
+        outputDock->show();
+    }
+    if (bottomPanels) {
+        bottomPanels->showOutlinePanel();
     }
     outputDock->raise();
     resizeDocks({outputDock}, {190}, Qt::Vertical);
@@ -3323,9 +4708,97 @@ void MainWindow::renderOutputTranscript()
     outputPanel->setPlainText(outputTranscript.render(outputFilter));
 }
 
-void MainWindow::restoreWorkbenchSession()
+void MainWindow::refreshTerminalProfiles()
 {
-    const SavedWorkbenchSession session = settings.savedWorkbenchSession();
+    if (!terminalProfilePicker) {
+        return;
+    }
+
+    const QString workingDirectory = projectRoot.isEmpty() ? runtimeWorkingDirectory() : projectRoot;
+    const QString currentId = workspaceSettings.terminalProfileId.isEmpty()
+        ? terminalProfilePicker->currentData().toString()
+        : workspaceSettings.terminalProfileId;
+
+    terminalProfiles = {
+        TerminalProfileModel::defaultPowerShellProfile(workingDirectory),
+        TerminalProfileModel::defaultCmdProfile(workingDirectory),
+    };
+    if (!QStandardPaths::findExecutable(QStringLiteral("wsl.exe")).isEmpty()) {
+        terminalProfiles.append(TerminalProfileModel::defaultWslBashProfile(workingDirectory));
+    }
+
+    QSignalBlocker blocker(terminalProfilePicker);
+    terminalProfilePicker->clear();
+    int selectedIndex = 0;
+    for (int i = 0; i < terminalProfiles.size(); ++i) {
+        const TerminalProfile &profile = terminalProfiles.at(i);
+        terminalProfilePicker->addItem(profile.name, profile.id);
+        if (profile.id == currentId) {
+            selectedIndex = i;
+        }
+    }
+    terminalProfilePicker->setCurrentIndex(selectedIndex);
+}
+
+TerminalProfile MainWindow::selectedTerminalProfile() const
+{
+    const QString selectedId = terminalProfilePicker ? terminalProfilePicker->currentData().toString() : QString();
+    for (const TerminalProfile &profile : terminalProfiles) {
+        if (profile.id == selectedId) {
+            return profile;
+        }
+    }
+
+    const QString workingDirectory = projectRoot.isEmpty() ? runtimeWorkingDirectory() : projectRoot;
+    return TerminalProfileModel::defaultPowerShellProfile(workingDirectory);
+}
+
+void MainWindow::appendTerminalOutput(const QString &text)
+{
+    if (!terminalPanel || text.isEmpty()) {
+        return;
+    }
+
+    QTextCursor cursor = terminalPanel->textCursor();
+    cursor.movePosition(QTextCursor::End);
+    terminalPanel->setTextCursor(cursor);
+    terminalPanel->insertPlainText(text);
+    terminalPanel->ensureCursorVisible();
+}
+
+void MainWindow::updateTerminalControls()
+{
+    const bool running = terminalBackend.isRunning();
+    if (terminalProfilePicker) {
+        terminalProfilePicker->setEnabled(!running);
+    }
+    if (terminalInput) {
+        terminalInput->setEnabled(workspaceSettings.trusted && running);
+    }
+    if (terminalSendButton) {
+        terminalSendButton->setEnabled(workspaceSettings.trusted && running);
+    }
+    if (terminalStopButton) {
+        terminalStopButton->setEnabled(running);
+    }
+}
+
+void MainWindow::restoreWorkbenchSession(bool promptForDraftRecovery)
+{
+    SavedWorkbenchSession session = settings.savedWorkbenchSession();
+    if (promptForDraftRecovery && !session.untitledDrafts.isEmpty()) {
+        const QMessageBox::StandardButton choice = QMessageBox::question(
+            this,
+            QString::fromUtf8("استعادة المسودات"),
+            QString::fromUtf8("تم العثور على مسودات غير محفوظة من جلسة لم تغلق بشكل طبيعي. هل تريد استعادتها؟"),
+            QMessageBox::Yes | QMessageBox::No,
+            QMessageBox::Yes);
+        if (choice != QMessageBox::Yes) {
+            session.untitledDrafts.clear();
+            settings.saveWorkbenchSession(session);
+        }
+    }
+
     if (!session.projectRoot.isEmpty() && QFileInfo(session.projectRoot).isDir()) {
         loadProject(session.projectRoot);
     }
@@ -3398,6 +4871,29 @@ void MainWindow::saveWorkbenchSession()
     settings.saveWorkbenchSession(session);
 }
 
+bool MainWindow::hasDirtyUntitledDraft() const
+{
+    if (!editorTabs) {
+        return false;
+    }
+
+    for (int i = 0; i < editorTabs->count(); ++i) {
+        const auto *surface = qobject_cast<EditorSurface *>(editorTabs->widget(i));
+        if (surface && surface->currentFilePath().isEmpty() && surface->isDirty()) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void MainWindow::scheduleUntitledDraftAutosave()
+{
+    if (!untitledDraftAutosaveTimer || !hasDirtyUntitledDraft() || untitledDraftAutosaveTimer->isActive()) {
+        return;
+    }
+    untitledDraftAutosaveTimer->start();
+}
+
 void MainWindow::closeEvent(QCloseEvent *event)
 {
     if (!confirmUnsavedDocuments(UnsavedChangesOperation::Exit)) {
@@ -3406,6 +4902,7 @@ void MainWindow::closeEvent(QCloseEvent *event)
     }
 
     saveWorkbenchSession();
+    settings.markWorkbenchSessionClosedGracefully();
     QMainWindow::closeEvent(event);
 }
 

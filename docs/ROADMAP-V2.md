@@ -16,7 +16,7 @@ V2 crosses Lisan Studio from "good multi-cursor text editor" to "real IDE." The 
 - LSP foundation: lsp-framework client, apython translation shim, document sync, completion, hover
 - LSP advanced: go-to-definition, find-references, rename, semantic highlighting, outline, workspace symbols
 - Debugger: debugpy DAP client, breakpoints, step, locals, watch, call stack
-- Terminal: QTermWidget + Windows ConPTY backend, multi-shell picker
+- Terminal: Lisan-owned Windows terminal backend, text-backed terminal UI, multi-shell picker
 
 **V2 IS NOT:**
 - Git source-control UI (V3)
@@ -65,11 +65,11 @@ Four ADRs precede the implementation slices in their respective themes. Each ADR
 
 | Option | Tradeoff |
 |---|---|
-| **QTermWidget (lxqt) + Windows ConPTY adapter** ✓ | Established Qt 6.6+ widget; Unicode-ready; ConPTY backend additional work since QTermWidget is Linux-first |
+| **Lisan-owned terminal backend + text-backed UI** ✓ | Validated in the current Windows/Qt toolchain; keeps backend and renderer replaceable |
 | Contour embedded | Modern; better bidi; bigger dependency footprint |
-| Roll-your-own + ConPTY | Full control; large effort |
+| QTermWidget + ConPTY | Established Qt widget and native Windows terminal direction; command input/rendering still needs proof in this toolchain |
 
-**Decision: QTermWidget + ConPTY adapter.** Defer Contour to V3 if QTermWidget proves insufficient on Windows bidi.
+**Decision: Lisan-owned terminal backend + text-backed UI for V2.** Keep QTermWidget, ConPTY, and Contour as upgrade candidates after Windows input/rendering proof.
 
 ## Phase structure & dependency graph
 
@@ -391,36 +391,36 @@ Highest architectural risk. Pushed last unless reprioritized.
 **Dependencies:** none
 **Blocks:** V2-F1
 
-**Change.** Commit `docs/adr/0014-terminal-widget.md` locking QTermWidget + ConPTY adapter.
+**Change.** Commit `docs/adr/0014-terminal-widget.md` locking a Lisan-owned terminal backend, trust gate, and deferred ConPTY/QTermWidget upgrade path.
 
-### V2-F1 — Windows ConPTY backend
+### V2-F1 — Windows terminal backend
 
 **Status:** planned
 **Target release:** none (foundation)
 **Dependencies:** V2-F0
 **Blocks:** V2-F2
 
-**Change.** Win32 ConPTY API integration in `src/ConPtyBackend.{h,cpp}`. Spawn cmd.exe / PowerShell / WSL bash as backing process via `CreatePseudoConsole` + `CreateProcess`. PTY I/O pump using QSocketNotifier on the pipe handles.
+**Change.** Validated process-backed terminal execution in `src/TerminalBackend.{h,cpp}`. Spawn cmd.exe / PowerShell with explicit program/argument lists, write stdin, read merged output, and emit process exit. Raw ConPTY remains deferred until its stdin path is reproducible in the Windows/Qt toolchain.
 
 **Acceptance.**
-1. Test that spawning cmd.exe and writing "echo hello\r\n" produces "hello" in the pty read buffer.
+1. Test that spawning cmd.exe and writing "echo hello\r\n" produces "hello" in the backend output buffer.
 2. Test multi-line input/output.
 3. Test process exit propagates as a signal.
-4. `validate.ps1` 13/13 (new `acs_conpty_backend_tests` binary).
+4. `validate.ps1` 13/13 (new `acs_terminal_backend_tests` binary).
 
-### V2-F2 — QTermWidget integration + multi-shell picker
+### V2-F2 — Terminal UI integration + multi-shell picker
 
 **Status:** planned
 **Target release:** v0.5.0-beta (closes phase F and V2)
 **Dependencies:** V2-F1
 **Blocks:** nothing — V2 closes
 
-**Change.** Vendor QTermWidget as a submodule under `third_party/qtermwidget`. Wire ConPtyBackend behind QTermWidget's input/output streams. UI: shell-picker dropdown in the terminal panel (cmd / PowerShell / WSL bash, configured per-workspace).
+**Change.** Wire `TerminalBackend` into the existing terminal panel. UI: shell-picker dropdown in the terminal panel (cmd / PowerShell / WSL bash when available, configured per-workspace). QTermWidget/ConPTY remains an upgrade path, not a V2 blocker.
 
 **Acceptance.**
 1. Manual QA: open terminal panel; pick PowerShell; type `Get-Process`; see output.
 2. Shell-picker persists choice per workspace.
-3. Bidi/Arabic text in terminal output renders correctly (acceptance test on QTermWidget's bidi handling).
+3. Bidi/Arabic text in terminal output renders acceptably in the text-backed terminal surface.
 4. Replaces the placeholder `terminal.openPowerShell` command from V1.
 5. **v0.5.0-beta cut** closes V2.
 

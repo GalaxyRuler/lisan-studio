@@ -2,6 +2,7 @@
 
 #include "DocumentFileIO.h"
 
+#include <QAbstractItemView>
 #include <QPainter>
 #include <QFontDatabase>
 #include <QKeyEvent>
@@ -9,6 +10,7 @@
 #include <QPaintEvent>
 #include <QTextBlock>
 #include <QTextOption>
+#include <QToolTip>
 
 #include <algorithm>
 #include <memory>
@@ -140,6 +142,25 @@ static bool containsStrongRtlText(const QString &text)
     return false;
 }
 
+static bool isPlainPrintableKey(const QKeyEvent *event)
+{
+    const Qt::KeyboardModifiers modifiers = event->modifiers();
+    const bool printableModifiers = modifiers == Qt::NoModifier
+        || modifiers == Qt::KeypadModifier
+        || modifiers == Qt::ShiftModifier
+        || modifiers == (Qt::ShiftModifier | Qt::KeypadModifier);
+    return printableModifiers
+        && !event->text().isEmpty()
+        && event->text().at(0).category() != QChar::Other_Control
+        && event->key() != Qt::Key_Return
+        && event->key() != Qt::Key_Enter;
+}
+
+static bool isIdentifierCharacter(QChar ch)
+{
+    return ch == QLatin1Char('_') || ch.isLetterOrNumber();
+}
+
 static QString returnIndentForCursor(const QTextCursor &cursor)
 {
     const QTextBlock block = cursor.block();
@@ -159,6 +180,67 @@ static QString returnIndentForCursor(const QTextCursor &cursor)
         indent.append(QStringLiteral("    "));
     }
     return indent;
+}
+
+static QColor semanticTokenColor(const QString &tokenType)
+{
+    if (tokenType == QStringLiteral("function") || tokenType == QStringLiteral("method")) {
+        return QColor(QStringLiteral("#7BDFF2"));
+    }
+    if (tokenType == QStringLiteral("class") || tokenType == QStringLiteral("type") || tokenType == QStringLiteral("interface")) {
+        return QColor(QStringLiteral("#B8E986"));
+    }
+    if (tokenType == QStringLiteral("keyword")) {
+        return QColor(QStringLiteral("#F6D365"));
+    }
+    if (tokenType == QStringLiteral("string")) {
+        return QColor(QStringLiteral("#F5A97F"));
+    }
+    if (tokenType == QStringLiteral("number")) {
+        return QColor(QStringLiteral("#C792EA"));
+    }
+    return QColor(QStringLiteral("#AEC6FF"));
+}
+
+static void indentBlockByOneLevel(QTextDocument *document, int blockNumber)
+{
+    const QTextBlock block = document->findBlockByNumber(blockNumber);
+    if (!block.isValid()) {
+        return;
+    }
+
+    QTextCursor cursor(block);
+    cursor.setPosition(block.position());
+    cursor.insertText(QStringLiteral("    "));
+}
+
+static void dedentBlockByOneLevel(QTextDocument *document, int blockNumber)
+{
+    const QTextBlock block = document->findBlockByNumber(blockNumber);
+    if (!block.isValid()) {
+        return;
+    }
+
+    const QString line = block.text();
+    int spacesToRemove = 0;
+    while (spacesToRemove < 4
+        && spacesToRemove < line.size()
+        && line.at(spacesToRemove) == QLatin1Char(' ')) {
+        ++spacesToRemove;
+    }
+
+    QTextCursor cursor(block);
+    cursor.setPosition(block.position());
+    if (spacesToRemove > 0) {
+        cursor.setPosition(block.position() + spacesToRemove, QTextCursor::KeepAnchor);
+        cursor.removeSelectedText();
+        return;
+    }
+
+    if (!line.isEmpty() && line.at(0) == QLatin1Char('\t')) {
+        cursor.setPosition(block.position() + 1, QTextCursor::KeepAnchor);
+        cursor.removeSelectedText();
+    }
 }
 
 class LineNumberArea final : public QWidget
@@ -183,6 +265,11 @@ protected:
         editorSurface->lineNumberAreaPaintEvent(event);
     }
 
+    void mousePressEvent(QMouseEvent *event) override
+    {
+        editorSurface->lineNumberAreaMousePressEvent(event);
+    }
+
 private:
     EditorSurface *editorSurface = nullptr;
 };
@@ -193,6 +280,7 @@ EditorSurface::EditorSurface(QWidget *parent)
     setLayoutDirection(Qt::RightToLeft);
     setLineWrapMode(QPlainTextEdit::NoWrap);
     setUndoRedoEnabled(true);
+    setMouseTracking(true);
     setTabStopDistance(fontMetrics().horizontalAdvance(' ') * 4);
     emptyPlaceholderText = QString::fromUtf8("اكتب كود لغة الثعبان هنا");
     setPlaceholderText(QString());
@@ -210,6 +298,23 @@ EditorSurface::EditorSurface(QWidget *parent)
 
     lineNumberArea = new LineNumberArea(this);
     updateLineNumberAreaWidth(blockCount());
+
+    completionPopup = new QListWidget(viewport());
+    completionPopup->setObjectName(QStringLiteral("lspCompletionPopup"));
+    completionPopup->setFocusPolicy(Qt::NoFocus);
+    completionPopup->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    completionPopup->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
+    completionPopup->hide();
+
+    completionRequestTimer.setSingleShot(true);
+    completionRequestTimer.setInterval(120);
+    connect(&completionRequestTimer, &QTimer::timeout, this, &EditorSurface::requestCompletionAtPrimaryCursor);
+
+    hoverRequestTimer.setSingleShot(true);
+    hoverRequestTimer.setInterval(250);
+    connect(&hoverRequestTimer, &QTimer::timeout, this, [this]() {
+        requestHoverAtViewportPosition(pendingHoverViewportPosition);
+    });
 
     highlighter = new ApyHighlighter(document());
 
@@ -755,6 +860,44 @@ int EditorSurface::lineNumberAreaWidth() const
     return 12 + fontMetrics().horizontalAdvance(QLatin1Char('9')) * digits;
 }
 
+bool EditorSurface::hasBreakpointAtLine(int line) const
+{
+    return breakpointLines.contains(line);
+}
+
+bool EditorSurface::setBreakpointAtLine(int line, bool enabled)
+{
+    if (line < 1 || line > blockCount()) {
+        return false;
+    }
+    const bool currentlyEnabled = breakpointLines.contains(line);
+    if (currentlyEnabled == enabled) {
+        return false;
+    }
+    if (enabled) {
+        breakpointLines.insert(line);
+    } else {
+        breakpointLines.remove(line);
+    }
+    if (lineNumberArea) {
+        lineNumberArea->update();
+    }
+    emit breakpointToggled(line, enabled);
+    return true;
+}
+
+bool EditorSurface::toggleBreakpointAtLine(int line)
+{
+    return setBreakpointAtLine(line, !hasBreakpointAtLine(line));
+}
+
+QVector<int> EditorSurface::breakpointLinesForTest() const
+{
+    QVector<int> lines = breakpointLines.values().toVector();
+    std::sort(lines.begin(), lines.end());
+    return lines;
+}
+
 QMenu *EditorSurface::createEditorContextMenu(QWidget *parent)
 {
     auto *menu = new QMenu(parent ? parent : this);
@@ -803,6 +946,81 @@ QMenu *EditorSurface::createEditorContextMenu(QWidget *parent)
     return menu;
 }
 
+void EditorSurface::showCompletionItems(const QVector<EditorCompletionItem> &items)
+{
+    completionPopup->clear();
+    if (items.isEmpty()) {
+        completionPopup->hide();
+        return;
+    }
+
+    for (const EditorCompletionItem &item : items) {
+        auto *listItem = new QListWidgetItem(item.detail.isEmpty()
+                ? item.label
+                : QStringLiteral("%1  %2").arg(item.label, item.detail),
+            completionPopup);
+        listItem->setData(Qt::UserRole, item.insertText.isEmpty() ? item.label : item.insertText);
+        listItem->setData(Qt::UserRole + 1, item.label);
+    }
+
+    const QRect caret = cursorRect();
+    const int width = qMin(360, qMax(180, viewport()->width() - 12));
+    const int rowHeight = qMax(completionPopup->sizeHintForRow(0), fontMetrics().height() + 8);
+    const int height = qMin(rowHeight * qMin(items.size(), 6) + 4, qMax(64, viewport()->height() / 2));
+    const int left = qBound(4, caret.left(), qMax(4, viewport()->width() - width - 4));
+    int top = caret.bottom() + 4;
+    if (top + height > viewport()->height()) {
+        top = qMax(4, caret.top() - height - 4);
+    }
+    completionPopup->setGeometry(left, top, width, height);
+    completionPopup->setCurrentRow(0);
+    completionPopup->show();
+    completionPopup->raise();
+}
+
+void EditorSurface::showHoverMarkdown(const QString &markdown, const QPoint &viewportPosition)
+{
+    lastHoverMarkdown = markdown;
+    if (markdown.trimmed().isEmpty()) {
+        QToolTip::hideText();
+        return;
+    }
+    QToolTip::showText(viewport()->mapToGlobal(viewportPosition), markdown, viewport());
+}
+
+void EditorSurface::setSemanticTokens(const QVector<EditorSemanticToken> &tokens)
+{
+    semanticTokens = tokens;
+    updateEditorExtraSelections();
+}
+
+bool EditorSurface::isCompletionPopupVisibleForTest() const
+{
+    return completionPopup && completionPopup->isVisible();
+}
+
+QStringList EditorSurface::completionLabelsForTest() const
+{
+    QStringList labels;
+    if (!completionPopup) {
+        return labels;
+    }
+    for (int i = 0; i < completionPopup->count(); ++i) {
+        labels.append(completionPopup->item(i)->data(Qt::UserRole + 1).toString());
+    }
+    return labels;
+}
+
+QString EditorSurface::visibleHoverTextForTest() const
+{
+    return lastHoverMarkdown;
+}
+
+int EditorSurface::semanticTokenSelectionCountForTest() const
+{
+    return semanticTokenSelectionCount;
+}
+
 void EditorSurface::lineNumberAreaPaintEvent(QPaintEvent *event)
 {
     QPainter painter(lineNumberArea);
@@ -817,6 +1035,15 @@ void EditorSurface::lineNumberAreaPaintEvent(QPaintEvent *event)
     while (block.isValid() && top <= event->rect().bottom()) {
         if (block.isVisible() && bottom >= event->rect().top()) {
             const QString number = QString::number(blockNumber + 1);
+            if (breakpointLines.contains(blockNumber + 1)) {
+                const int diameter = qMin(10, qMax(6, fontMetrics().height() - 4));
+                const QRect markerRect(4, top + (fontMetrics().height() - diameter) / 2, diameter, diameter);
+                painter.setPen(Qt::NoPen);
+                painter.setBrush(QColor(QStringLiteral("#D84F4F")));
+                painter.drawEllipse(markerRect);
+                painter.setBrush(Qt::NoBrush);
+                painter.setPen(QColor(173, 181, 189));
+            }
             painter.drawText(
                 0,
                 top,
@@ -831,6 +1058,40 @@ void EditorSurface::lineNumberAreaPaintEvent(QPaintEvent *event)
         bottom = top + qRound(blockBoundingRect(block).height());
         ++blockNumber;
     }
+}
+
+void EditorSurface::lineNumberAreaMousePressEvent(QMouseEvent *event)
+{
+    if (!event || event->button() != Qt::LeftButton) {
+        if (event) {
+            event->ignore();
+        }
+        return;
+    }
+    const int line = lineNumberForViewportY(event->pos().y());
+    if (line >= 1) {
+        toggleBreakpointAtLine(line);
+        event->accept();
+        return;
+    }
+    event->ignore();
+}
+
+int EditorSurface::lineNumberForViewportY(int y) const
+{
+    QTextBlock block = firstVisibleBlock();
+    int top = qRound(blockBoundingGeometry(block).translated(contentOffset()).top());
+    int bottom = top + qRound(blockBoundingRect(block).height());
+
+    while (block.isValid() && top <= viewport()->rect().bottom()) {
+        if (block.isVisible() && y >= top && y <= bottom) {
+            return block.blockNumber() + 1;
+        }
+        block = block.next();
+        top = bottom;
+        bottom = top + qRound(blockBoundingRect(block).height());
+    }
+    return -1;
 }
 
 QString EditorSurface::unicodeName(QChar ch)
@@ -905,6 +1166,7 @@ void EditorSurface::updateEditorExtraSelections()
 
     findHighlightSelectionCount = selections.size();
     bracketMatchSelectionCount = 0;
+    semanticTokenSelectionCount = 0;
     const QVector<int> delimiterPositions = matchingDelimiterPositions();
     for (const int position : delimiterPositions) {
         QTextCursor cursor(document());
@@ -917,6 +1179,32 @@ void EditorSurface::updateEditorExtraSelections()
         selection.format.setForeground(QColor(QStringLiteral("#FFFFFF")));
         selections.push_back(selection);
         ++bracketMatchSelectionCount;
+    }
+
+    for (const EditorSemanticToken &token : semanticTokens) {
+        const QTextBlock block = document()->findBlockByNumber(token.line);
+        if (!block.isValid() || token.startCharacter < 0 || token.length <= 0) {
+            continue;
+        }
+        const QString line = block.text();
+        if (token.startCharacter >= line.size()) {
+            continue;
+        }
+
+        QTextCursor cursor(block);
+        const int start = block.position() + token.startCharacter;
+        const int end = qMin(start + token.length, block.position() + line.size());
+        cursor.setPosition(start);
+        cursor.setPosition(end, QTextCursor::KeepAnchor);
+
+        QTextEdit::ExtraSelection selection;
+        selection.cursor = cursor;
+        selection.format.setForeground(semanticTokenColor(token.tokenType));
+        if (token.tokenType == QStringLiteral("function") || token.tokenType == QStringLiteral("method")) {
+            selection.format.setFontWeight(QFont::DemiBold);
+        }
+        selections.push_back(selection);
+        ++semanticTokenSelectionCount;
     }
 
     setExtraSelections(selections);
@@ -1085,6 +1373,10 @@ void EditorSurface::contextMenuEvent(QContextMenuEvent *event)
 
 void EditorSurface::mousePressEvent(QMouseEvent *event)
 {
+    if (completionPopup->isVisible()) {
+        completionPopup->hide();
+    }
+
     if (event->button() == Qt::LeftButton && event->modifiers() == Qt::AltModifier) {
         inAltColumnDrag = true;
         altColumnDragAnchor = cursorForPosition(event->pos());
@@ -1094,12 +1386,19 @@ void EditorSurface::mousePressEvent(QMouseEvent *event)
 
     if (event->button() == Qt::LeftButton && event->modifiers() == Qt::ControlModifier) {
         const QTextCursor cursor = cursorForPosition(event->pos());
-        addCursorAtPosition(cursor.position());
+        emit definitionRequested(cursor.blockNumber(), cursor.position() - cursor.block().position());
         event->accept();
         return;
     }
 
     QPlainTextEdit::mousePressEvent(event);
+}
+
+void EditorSurface::mouseMoveEvent(QMouseEvent *event)
+{
+    QPlainTextEdit::mouseMoveEvent(event);
+    pendingHoverViewportPosition = event->pos();
+    hoverRequestTimer.start();
 }
 
 void EditorSurface::mouseReleaseEvent(QMouseEvent *event)
@@ -1117,6 +1416,32 @@ void EditorSurface::mouseReleaseEvent(QMouseEvent *event)
 
 void EditorSurface::keyPressEvent(QKeyEvent *event)
 {
+    if (completionPopup->isVisible()) {
+        if (event->key() == Qt::Key_Escape) {
+            completionPopup->hide();
+            event->accept();
+            return;
+        }
+        if (event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter || event->key() == Qt::Key_Tab) {
+            insertSelectedCompletion();
+            event->accept();
+            return;
+        }
+        if (event->key() == Qt::Key_Down || event->key() == Qt::Key_Up) {
+            const int direction = event->key() == Qt::Key_Down ? 1 : -1;
+            const int nextRow = qBound(0, completionPopup->currentRow() + direction, completionPopup->count() - 1);
+            completionPopup->setCurrentRow(nextRow);
+            event->accept();
+            return;
+        }
+    }
+
+    if (event->key() == Qt::Key_Space && event->modifiers() == Qt::ControlModifier) {
+        requestCompletionAtPrimaryCursor();
+        event->accept();
+        return;
+    }
+
     if (event->key() == Qt::Key_Escape && !secondaryCursors.isEmpty()) {
         collapseToSinglePrimaryCursor();
         event->accept();
@@ -1127,7 +1452,11 @@ void EditorSurface::keyPressEvent(QKeyEvent *event)
     const bool plainReturn = event->modifiers() == Qt::NoModifier || event->modifiers() == Qt::KeypadModifier;
     if (secondaryCursors.isEmpty()) {
         if (!isReturn || !plainReturn) {
+            const bool shouldRequestCompletion = isPlainPrintableKey(event);
             QPlainTextEdit::keyPressEvent(event);
+            if (shouldRequestCompletion) {
+                scheduleCompletionRequest();
+            }
             return;
         }
 
@@ -1145,6 +1474,9 @@ void EditorSurface::keyPressEvent(QKeyEvent *event)
         || modifiers == (Qt::ShiftModifier | Qt::KeypadModifier);
     const bool isBackspace = event->key() == Qt::Key_Backspace && plainKey;
     const bool isDelete = event->key() == Qt::Key_Delete && plainKey;
+    const bool isTabIndent = event->key() == Qt::Key_Tab && plainKey;
+    const bool isTabDedent = event->key() == Qt::Key_Backtab
+        || (event->key() == Qt::Key_Tab && modifiers == Qt::ShiftModifier);
     const bool isArrow = plainKey
         && (event->key() == Qt::Key_Left
             || event->key() == Qt::Key_Right
@@ -1154,6 +1486,32 @@ void EditorSurface::keyPressEvent(QKeyEvent *event)
         && !event->text().isEmpty()
         && event->text().at(0).category() != QChar::Other_Control
         && !isReturn;
+    if (isTabIndent || isTabDedent) {
+        QVector<int> blockNumbers;
+        blockNumbers.reserve(totalCursorCount());
+        blockNumbers.append(textCursor().blockNumber());
+        for (const QTextCursor &cursor : secondaryCursors) {
+            blockNumbers.append(cursor.blockNumber());
+        }
+        std::sort(blockNumbers.begin(), blockNumbers.end(), std::greater<int>());
+        blockNumbers.erase(std::unique(blockNumbers.begin(), blockNumbers.end()), blockNumbers.end());
+
+        QTextCursor editBlockCursor = textCursor();
+        editBlockCursor.beginEditBlock();
+        for (const int blockNumber : blockNumbers) {
+            if (isTabIndent) {
+                indentBlockByOneLevel(document(), blockNumber);
+            } else {
+                dedentBlockByOneLevel(document(), blockNumber);
+            }
+        }
+        editBlockCursor.endEditBlock();
+
+        viewport()->update();
+        event->accept();
+        return;
+    }
+
     if (!isPrintableInsert && !isBackspace && !isDelete && !isArrow && !(isReturn && plainReturn)) {
         // Slice-9 limitation: complex editor commands still apply only to the primary cursor.
         QPlainTextEdit::keyPressEvent(event);
@@ -1228,14 +1586,111 @@ void EditorSurface::keyPressEvent(QKeyEvent *event)
     event->accept();
 }
 
-void EditorSurface::inputMethodEvent(QInputMethodEvent *event)
+void EditorSurface::requestCompletionAtPrimaryCursor()
 {
-    if (!secondaryCursors.isEmpty()) {
-        emit multiCursorImeRejected();
-        event->ignore();
+    const QTextCursor cursor = textCursor();
+    emit completionRequested(cursor.blockNumber(), cursor.position() - cursor.block().position());
+}
+
+void EditorSurface::scheduleCompletionRequest()
+{
+    completionRequestTimer.start();
+}
+
+void EditorSurface::requestHoverAtViewportPosition(const QPoint &position)
+{
+    const QTextCursor cursor = cursorForPosition(position);
+    emit hoverRequested(cursor.blockNumber(), cursor.position() - cursor.block().position(), position);
+}
+
+void EditorSurface::insertSelectedCompletion()
+{
+    if (!completionPopup || !completionPopup->isVisible() || !completionPopup->currentItem()) {
         return;
     }
-    QPlainTextEdit::inputMethodEvent(event);
+    const QString insertText = completionPopup->currentItem()->data(Qt::UserRole).toString();
+    completionPopup->hide();
+    if (insertText.isEmpty()) {
+        return;
+    }
+
+    QTextCursor cursor = textCursor();
+    const QTextBlock block = cursor.block();
+    const QString line = block.text();
+    const int column = qBound(0, cursor.position() - block.position(), line.size());
+    int prefixStartColumn = column;
+    while (prefixStartColumn > 0 && isIdentifierCharacter(line.at(prefixStartColumn - 1))) {
+        --prefixStartColumn;
+    }
+    if (prefixStartColumn < column) {
+        cursor.setPosition(block.position() + prefixStartColumn);
+        cursor.setPosition(block.position() + column, QTextCursor::KeepAnchor);
+    }
+    cursor.insertText(insertText);
+    setTextCursor(cursor);
+}
+
+void EditorSurface::inputMethodEvent(QInputMethodEvent *event)
+{
+    if (secondaryCursors.isEmpty()) {
+        QPlainTextEdit::inputMethodEvent(event);
+        return;
+    }
+
+    const QString committedText = event->commitString();
+    if (committedText.isEmpty()) {
+        event->accept();
+        return;
+    }
+
+    struct CursorEditItem
+    {
+        QTextCursor cursor;
+        int secondaryIndex = -1;
+        bool primary = false;
+    };
+
+    QVector<CursorEditItem> items;
+    items.reserve(totalCursorCount());
+    items.push_back({textCursor(), -1, true});
+    for (int i = 0; i < secondaryCursors.size(); ++i) {
+        items.push_back({secondaryCursors.at(i), i, false});
+    }
+    std::sort(items.begin(), items.end(), [event](const CursorEditItem &left, const CursorEditItem &right) {
+        return left.cursor.position() + event->replacementStart()
+            > right.cursor.position() + event->replacementStart();
+    });
+
+    QVector<QTextCursor> updatedSecondaries = secondaryCursors;
+    QTextCursor updatedPrimary = textCursor();
+    QTextCursor editBlockCursor = textCursor();
+    editBlockCursor.beginEditBlock();
+    for (CursorEditItem &item : items) {
+        QTextCursor cursor = item.cursor;
+        if (event->replacementStart() != 0 || event->replacementLength() > 0) {
+            const int replacementStart = qBound(0,
+                cursor.position() + event->replacementStart(),
+                document()->characterCount() - 1);
+            const int replacementEnd = qBound(0,
+                replacementStart + event->replacementLength(),
+                document()->characterCount() - 1);
+            cursor.setPosition(replacementStart);
+            cursor.setPosition(replacementEnd, QTextCursor::KeepAnchor);
+        }
+        cursor.insertText(committedText);
+
+        if (item.primary) {
+            updatedPrimary = cursor;
+        } else if (item.secondaryIndex >= 0 && item.secondaryIndex < updatedSecondaries.size()) {
+            updatedSecondaries[item.secondaryIndex] = cursor;
+        }
+    }
+    editBlockCursor.endEditBlock();
+
+    secondaryCursors = updatedSecondaries;
+    setTextCursor(updatedPrimary);
+    viewport()->update();
+    event->accept();
 }
 
 void EditorSurface::paintEvent(QPaintEvent *event)

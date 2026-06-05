@@ -31,5 +31,7 @@ class TerminalProfileModel final
 {
 public:
     static TerminalProfile defaultPowerShellProfile(const QString &workingDirectory);
+    static TerminalProfile defaultCmdProfile(const QString &workingDirectory);
+    static TerminalProfile defaultWslBashProfile(const QString &workingDirectory);
     static TerminalLaunchPlan buildLaunchPlan(const TerminalProfile &profile, bool workspaceTrusted);
 };

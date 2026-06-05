@@ -6,9 +6,13 @@
 
 #include <QContextMenuEvent>
 #include <QInputMethodEvent>
+#include <QListWidget>
 #include <QMenu>
 #include <QMouseEvent>
 #include <QPlainTextEdit>
+#include <QSet>
+#include <QStringList>
+#include <QTimer>
 #include <QVector>
 
 class LineNumberArea;
@@ -18,6 +22,21 @@ struct HiddenBidiFinding
     int position = 0;
     QString character;
     QString unicodeName;
+};
+
+struct EditorCompletionItem
+{
+    QString label;
+    QString detail;
+    QString insertText;
+};
+
+struct EditorSemanticToken
+{
+    int line = 0;
+    int startCharacter = 0;
+    int length = 0;
+    QString tokenType;
 };
 
 class EditorSurface final : public QPlainTextEdit
@@ -65,14 +84,29 @@ public:
     void collapseToSinglePrimaryCursor();
     int lineNumberAreaWidth() const;
     void lineNumberAreaPaintEvent(QPaintEvent *event);
+    void lineNumberAreaMousePressEvent(QMouseEvent *event);
+    bool hasBreakpointAtLine(int line) const;
+    bool setBreakpointAtLine(int line, bool enabled);
+    bool toggleBreakpointAtLine(int line);
+    QVector<int> breakpointLinesForTest() const;
     QMenu *createEditorContextMenu(QWidget *parent = nullptr);
+    void showCompletionItems(const QVector<EditorCompletionItem> &items);
+    void showHoverMarkdown(const QString &markdown, const QPoint &viewportPosition);
+    void setSemanticTokens(const QVector<EditorSemanticToken> &tokens);
+    bool isCompletionPopupVisibleForTest() const;
+    QStringList completionLabelsForTest() const;
+    QString visibleHoverTextForTest() const;
+    int semanticTokenSelectionCountForTest() const;
 
 signals:
     void filePathChanged(const QString &path);
     void dirtyStateChanged(bool dirty);
     void cursorSoftCapReached(int totalCursors);
     void cursorCountChanged(int totalCursors);
-    void multiCursorImeRejected();
+    void completionRequested(int line, int character);
+    void hoverRequested(int line, int character, QPoint viewportPosition);
+    void definitionRequested(int line, int character);
+    void breakpointToggled(int line, bool enabled);
 
 private:
     QString filePath;
@@ -89,8 +123,16 @@ private:
     DocumentLineEnding saveLineEnding = DocumentLineEnding::None;
     ApyHighlighter *highlighter = nullptr;
     LineNumberArea *lineNumberArea = nullptr;
+    QListWidget *completionPopup = nullptr;
+    QTimer completionRequestTimer;
+    QTimer hoverRequestTimer;
     QVector<QTextCursor> secondaryCursors;
+    QVector<EditorSemanticToken> semanticTokens;
+    QSet<int> breakpointLines;
     QTextCursor altColumnDragAnchor;
+    QPoint pendingHoverViewportPosition;
+    QString lastHoverMarkdown;
+    int semanticTokenSelectionCount = 0;
 
     static QString unicodeName(QChar ch);
     void setCurrentFilePath(const QString &path);
@@ -98,6 +140,7 @@ private:
     void refreshFindMatches(bool selectFirst = true);
     void updateEditorExtraSelections();
     QVector<int> matchingDelimiterPositions() const;
+    int lineNumberForViewportY(int y) const;
     void paintIndentationGuides(QPainter *painter);
     void paintSecondaryCarets(QPainter *painter);
     QVector<QTextCursor> allCursorsInDocumentOrderDescending() const;
@@ -105,8 +148,13 @@ private:
     bool selectFindMatch(int index);
     void updateLineNumberAreaWidth(int blockCount);
     void updateLineNumberArea(const QRect &rect, int dy);
+    void requestCompletionAtPrimaryCursor();
+    void scheduleCompletionRequest();
+    void requestHoverAtViewportPosition(const QPoint &position);
+    void insertSelectedCompletion();
     void contextMenuEvent(QContextMenuEvent *event) override;
     void mousePressEvent(QMouseEvent *event) override;
+    void mouseMoveEvent(QMouseEvent *event) override;
     void mouseReleaseEvent(QMouseEvent *event) override;
     void keyPressEvent(QKeyEvent *event) override;
     void inputMethodEvent(QInputMethodEvent *event) override;
