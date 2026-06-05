@@ -1513,12 +1513,14 @@ void TestMainWindow::terminalCommandRequiresTrustedWorkspace()
 
     auto *terminalPanel = window.findChild<QPlainTextEdit *>(QStringLiteral("terminalPanel"));
     QVERIFY(terminalPanel != nullptr);
+    auto *terminalContainer = window.findChild<QWidget *>(QStringLiteral("terminalContainerPanel"));
+    QVERIFY(terminalContainer != nullptr);
     auto *tabs = window.findChild<QTabWidget *>(QStringLiteral("bottomPanelTabs"));
     QVERIFY(tabs != nullptr);
 
     QVERIFY(QMetaObject::invokeMethod(&window, "openPowerShellTerminal", Qt::DirectConnection));
 
-    QCOMPARE(tabs->currentWidget(), terminalPanel);
+    QCOMPARE(tabs->currentWidget(), terminalContainer);
     QVERIFY2(terminalPanel->toPlainText().contains(QString::fromUtf8("الثقة")), qPrintable(terminalPanel->toPlainText()));
     QVERIFY2(!terminalPanel->toPlainText().contains(QStringLiteral("powershell.exe -NoLogo")), qPrintable(terminalPanel->toPlainText()));
 }
@@ -1533,6 +1535,10 @@ void TestMainWindow::trustWorkspaceCommandPersistsAndUnblocksTerminalReadiness()
 
     auto *terminalPanel = window.findChild<QPlainTextEdit *>(QStringLiteral("terminalPanel"));
     QVERIFY(terminalPanel != nullptr);
+    auto *terminalProfilePicker = window.findChild<QComboBox *>(QStringLiteral("terminalProfilePicker"));
+    QVERIFY(terminalProfilePicker != nullptr);
+    auto *terminalInput = window.findChild<QLineEdit *>(QStringLiteral("terminalInput"));
+    QVERIFY(terminalInput != nullptr);
 
     QVERIFY(QMetaObject::invokeMethod(&window, "openPowerShellTerminal", Qt::DirectConnection));
     QVERIFY(terminalPanel->toPlainText().contains(QString::fromUtf8("الثقة")));
@@ -1555,9 +1561,20 @@ void TestMainWindow::trustWorkspaceCommandPersistsAndUnblocksTerminalReadiness()
     QVERIFY2(error.isEmpty(), qPrintable(error));
     QVERIFY(settings.trusted);
 
+    const int cmdIndex = terminalProfilePicker->findData(QStringLiteral("cmd"));
+    QVERIFY(cmdIndex >= 0);
+    terminalProfilePicker->setCurrentIndex(cmdIndex);
+    QCOMPARE(store.load().terminalProfileId, QStringLiteral("cmd"));
+
     QVERIFY(QMetaObject::invokeMethod(&window, "openPowerShellTerminal", Qt::DirectConnection));
-    QVERIFY2(terminalPanel->toPlainText().contains(QString::fromUtf8("جاهزة")), qPrintable(terminalPanel->toPlainText()));
+    QVERIFY2(terminalPanel->toPlainText().contains(QString::fromUtf8("بدء طرفية")), qPrintable(terminalPanel->toPlainText()));
     QVERIFY2(!terminalPanel->toPlainText().contains(QString::fromUtf8("الثقة")), qPrintable(terminalPanel->toPlainText()));
+    QVERIFY(terminalInput->isEnabled());
+
+    terminalInput->setText(QStringLiteral("echo ui-terminal"));
+    QVERIFY(QMetaObject::invokeMethod(&window, "sendTerminalInput", Qt::DirectConnection));
+    QTRY_VERIFY2(terminalPanel->toPlainText().contains(QStringLiteral("ui-terminal")), qPrintable(terminalPanel->toPlainText()));
+    QVERIFY(QMetaObject::invokeMethod(&window, "stopTerminalProcess", Qt::DirectConnection));
 }
 
 void TestMainWindow::untrustWorkspaceCommandPersistsAndBlocksTerminalAgain()

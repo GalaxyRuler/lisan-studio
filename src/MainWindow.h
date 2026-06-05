@@ -16,6 +16,7 @@
 #include "SearchService.h"
 #include "SettingsDialogModel.h"
 #include "SettingsStore.h"
+#include "TerminalBackend.h"
 #include "TerminalProfileModel.h"
 #include "UnsavedChangesGuard.h"
 #include "WorkbenchState.h"
@@ -24,6 +25,7 @@
 #include <QFileSystemModel>
 #include <QAction>
 #include <QCloseEvent>
+#include <QComboBox>
 #include <QDockWidget>
 #include <QFutureWatcher>
 #include <QLabel>
@@ -78,6 +80,9 @@ private slots:
     void showOnlyStderrOutput();
     void showOnlySystemOutput();
     void openPowerShellTerminal();
+    void sendTerminalInput();
+    void stopTerminalProcess();
+    void persistSelectedTerminalProfile();
     void trustCurrentWorkspace();
     void untrustCurrentWorkspace();
     void openCommandPalette();
@@ -120,6 +125,11 @@ private:
     QLineEdit *projectReplaceInput = nullptr;
     QPushButton *projectReplacePreviewButton = nullptr;
     QPushButton *projectReplaceApplyButton = nullptr;
+    QWidget *terminalContainerPanel = nullptr;
+    QComboBox *terminalProfilePicker = nullptr;
+    QLineEdit *terminalInput = nullptr;
+    QPushButton *terminalSendButton = nullptr;
+    QPushButton *terminalStopButton = nullptr;
     QPlainTextEdit *outputPanel = nullptr;
     QPlainTextEdit *terminalPanel = nullptr;
     QListWidget *problemsPanel = nullptr;
@@ -157,6 +167,7 @@ private:
     RuntimeOrchestrator runtimeOrchestrator;
     DapClient dapClient;
     LspClient lspClient;
+    TerminalBackend terminalBackend;
     CommandRegistry commandRegistry;
     DocumentRegistry documentRegistry;
     DocumentChangePoller documentChangePoller;
@@ -164,6 +175,7 @@ private:
     WorkspaceSettings workspaceSettings;
     OutputTranscript outputTranscript;
     OutputTranscriptFilter outputFilter;
+    QVector<TerminalProfile> terminalProfiles;
     QString lspDocumentUri;
     int lspDocumentVersion = 0;
     bool lspDocumentOpen = false;
@@ -253,6 +265,10 @@ private:
     void appendRuntimeOutput(OutputTranscriptChannel channel, const QString &label, const QString &text);
     void setOutputFilter(const OutputTranscriptFilter &filter);
     void renderOutputTranscript();
+    void refreshTerminalProfiles();
+    TerminalProfile selectedTerminalProfile() const;
+    void appendTerminalOutput(const QString &text);
+    void updateTerminalControls();
     void restoreWorkbenchSession(bool promptForDraftRecovery = false);
     void saveWorkbenchSession();
     bool hasDirtyUntitledDraft() const;

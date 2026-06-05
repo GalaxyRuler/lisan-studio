@@ -656,6 +656,12 @@ void TestProjectSearchRuntime::terminalProfileModelBuildsExplicitPowerShellProfi
     QCOMPARE(profile.workingDirectory, QStringLiteral("C:/project"));
     QVERIFY(profile.requiresTrustedWorkspace);
     QVERIFY(!profile.arguments.join(QLatin1Char(' ')).contains(QStringLiteral("&&")));
+
+    const TerminalProfile cmd = TerminalProfileModel::defaultCmdProfile(QStringLiteral("C:/project"));
+    QCOMPARE(cmd.id, QStringLiteral("cmd"));
+    QCOMPARE(cmd.program, QStringLiteral("cmd.exe"));
+    QVERIFY(cmd.arguments.isEmpty());
+    QCOMPARE(cmd.workingDirectory, QStringLiteral("C:/project"));
 }
 
 void TestProjectSearchRuntime::terminalProfileModelRequiresWorkspaceTrustForLaunch()
@@ -1008,6 +1014,7 @@ void TestProjectSearchRuntime::workspaceSettingsStoreDefaultsWhenMissingOrInvali
     QVERIFY(!settings.trusted);
     QVERIFY(!settings.trimTrailingWhitespaceOnSave);
     QVERIFY(settings.defaultRunWorkingDirectory.isEmpty());
+    QVERIFY(settings.terminalProfileId.isEmpty());
 
     QFile invalid(store.settingsFilePath());
     QVERIFY(QDir().mkpath(QFileInfo(invalid).absolutePath()));
@@ -1020,6 +1027,7 @@ void TestProjectSearchRuntime::workspaceSettingsStoreDefaultsWhenMissingOrInvali
     QVERIFY(!settings.trusted);
     QVERIFY(!settings.trimTrailingWhitespaceOnSave);
     QVERIFY(settings.defaultRunWorkingDirectory.isEmpty());
+    QVERIFY(settings.terminalProfileId.isEmpty());
 }
 
 void TestProjectSearchRuntime::workspaceSettingsStorePersistsTrustAndEditorPreferences()
@@ -1032,6 +1040,7 @@ void TestProjectSearchRuntime::workspaceSettingsStorePersistsTrustAndEditorPrefe
     settings.trusted = true;
     settings.trimTrailingWhitespaceOnSave = true;
     settings.defaultRunWorkingDirectory = QStringLiteral("src");
+    settings.terminalProfileId = QStringLiteral("cmd");
 
     QString error;
     QVERIFY2(store.save(settings, &error), qPrintable(error));
@@ -1042,6 +1051,7 @@ void TestProjectSearchRuntime::workspaceSettingsStorePersistsTrustAndEditorPrefe
     QVERIFY(loaded.trusted);
     QVERIFY(loaded.trimTrailingWhitespaceOnSave);
     QCOMPARE(loaded.defaultRunWorkingDirectory, QStringLiteral("src"));
+    QCOMPARE(loaded.terminalProfileId, QStringLiteral("cmd"));
 }
 
 void TestProjectSearchRuntime::settingsDialogModelBuildsUiStateFromStoreAndDiagnostics()

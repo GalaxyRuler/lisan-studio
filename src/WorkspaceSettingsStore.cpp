@@ -58,6 +58,9 @@ WorkspaceSettings WorkspaceSettingsStore::load(QString *error) const
     const QJsonObject runtime = root.value(QStringLiteral("runtime")).toObject();
     settings.defaultRunWorkingDirectory = runtime.value(QStringLiteral("defaultRunWorkingDirectory")).toString();
     settings.defaultRunWorkingDirectory = QDir::fromNativeSeparators(settings.defaultRunWorkingDirectory);
+
+    const QJsonObject terminal = root.value(QStringLiteral("terminal")).toObject();
+    settings.terminalProfileId = terminal.value(QStringLiteral("defaultProfileId")).toString();
     return settings;
 }
 
@@ -81,10 +84,14 @@ bool WorkspaceSettingsStore::save(const WorkspaceSettings &settings, QString *er
     QJsonObject runtime;
     runtime.insert(QStringLiteral("defaultRunWorkingDirectory"), QDir::fromNativeSeparators(settings.defaultRunWorkingDirectory));
 
+    QJsonObject terminal;
+    terminal.insert(QStringLiteral("defaultProfileId"), settings.terminalProfileId);
+
     QJsonObject root;
     root.insert(QStringLiteral("trusted"), settings.trusted);
     root.insert(QStringLiteral("editor"), editor);
     root.insert(QStringLiteral("runtime"), runtime);
+    root.insert(QStringLiteral("terminal"), terminal);
 
     QSaveFile file(settingsFilePath());
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {

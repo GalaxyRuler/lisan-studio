@@ -42,6 +42,7 @@
 #include <QPushButton>
 #include <QSplitter>
 #include <QSaveFile>
+#include <QSignalBlocker>
 #include <QStatusBar>
 #include <QStyle>
 #include <QSpinBox>
@@ -1048,12 +1049,56 @@ void MainWindow::buildUi()
     outputPanel->setToolTip(QString::fromUtf8("انقر نقرا مزدوجا على مسار ملف لفتحه."));
     arabicOutputPanel->setArabicPlaceholderText(QString::fromUtf8("المخرجات ستظهر هنا"));
 
-    auto *arabicTerminalPanel = new ArabicPlaceholderPlainTextEdit(bottomPanelTabs);
+    terminalContainerPanel = new QWidget(bottomPanelTabs);
+    terminalContainerPanel->setObjectName(QStringLiteral("terminalContainerPanel"));
+    terminalContainerPanel->setLayoutDirection(Qt::RightToLeft);
+    auto *terminalLayout = new QVBoxLayout(terminalContainerPanel);
+    terminalLayout->setContentsMargins(6, 6, 6, 6);
+    terminalLayout->setSpacing(6);
+
+    auto *terminalToolbar = new QWidget(terminalContainerPanel);
+    terminalToolbar->setObjectName(QStringLiteral("terminalToolbar"));
+    auto *terminalToolbarLayout = new QHBoxLayout(terminalToolbar);
+    terminalToolbarLayout->setContentsMargins(0, 0, 0, 0);
+    terminalToolbarLayout->setSpacing(6);
+    terminalProfilePicker = new QComboBox(terminalToolbar);
+    terminalProfilePicker->setObjectName(QStringLiteral("terminalProfilePicker"));
+    terminalProfilePicker->setMinimumWidth(130);
+    terminalInput = new QLineEdit(terminalToolbar);
+    terminalInput->setObjectName(QStringLiteral("terminalInput"));
+    terminalInput->setPlaceholderText(QString::fromUtf8("أدخل أمر الطرفية"));
+    terminalInput->setLayoutDirection(Qt::LeftToRight);
+    terminalSendButton = new QPushButton(QString::fromUtf8("إرسال"), terminalToolbar);
+    terminalSendButton->setObjectName(QStringLiteral("terminalSendButton"));
+    terminalStopButton = new QPushButton(QString::fromUtf8("إيقاف"), terminalToolbar);
+    terminalStopButton->setObjectName(QStringLiteral("terminalStopButton"));
+    terminalToolbarLayout->addWidget(terminalProfilePicker);
+    terminalToolbarLayout->addWidget(terminalInput, 1);
+    terminalToolbarLayout->addWidget(terminalSendButton);
+    terminalToolbarLayout->addWidget(terminalStopButton);
+
+    auto *arabicTerminalPanel = new ArabicPlaceholderPlainTextEdit(terminalContainerPanel);
     terminalPanel = arabicTerminalPanel;
     terminalPanel->setObjectName(QStringLiteral("terminalPanel"));
     terminalPanel->setReadOnly(true);
-    terminalPanel->setLayoutDirection(Qt::RightToLeft);
+    terminalPanel->setLayoutDirection(Qt::LeftToRight);
+    QTextOption terminalOption = terminalPanel->document()->defaultTextOption();
+    terminalOption.setTextDirection(Qt::LeftToRight);
+    terminalOption.setAlignment(Qt::AlignLeft);
+    terminalPanel->document()->setDefaultTextOption(terminalOption);
     arabicTerminalPanel->setArabicPlaceholderText(QString::fromUtf8("الطرفية ستظهر هنا"));
+    terminalLayout->addWidget(terminalToolbar);
+    terminalLayout->addWidget(terminalPanel, 1);
+    connect(terminalSendButton, &QPushButton::clicked, this, &MainWindow::sendTerminalInput);
+    connect(terminalInput, &QLineEdit::returnPressed, this, &MainWindow::sendTerminalInput);
+    connect(terminalStopButton, &QPushButton::clicked, this, &MainWindow::stopTerminalProcess);
+    connect(terminalProfilePicker, qOverload<int>(&QComboBox::currentIndexChanged), this, &MainWindow::persistSelectedTerminalProfile);
+    connect(&terminalBackend, &TerminalBackend::outputReceived, this, &MainWindow::appendTerminalOutput);
+    connect(&terminalBackend, &TerminalBackend::processExited, this, [this](int exitCode) {
+        appendTerminalOutput(QString::fromUtf8("\n[انتهت الطرفية: %1]\n").arg(exitCode));
+        setStatus(QString::fromUtf8("انتهت الطرفية"));
+        updateTerminalControls();
+    });
 
     problemsPanel = new QListWidget(bottomPanelTabs);
     problemsPanel->setObjectName(QStringLiteral("problemsPanel"));
@@ -1161,7 +1206,10 @@ void MainWindow::buildUi()
     debugInspectorTabs->addTab(debugCallStackPanel, QString::fromUtf8("المكدس"));
     debugLayout->addWidget(debugInspectorTabs);
 
-    bottomPanelTabs->addTab(terminalPanel, QString::fromUtf8("الطرفية"));
+    refreshTerminalProfiles();
+    updateTerminalControls();
+
+    bottomPanelTabs->addTab(terminalContainerPanel, QString::fromUtf8("الطرفية"));
     bottomPanelTabs->addTab(outputPanel, QString::fromUtf8("الإخراج"));
     bottomPanelTabs->addTab(problemsPanel, QString::fromUtf8("المشاكل"));
     bottomPanelTabs->addTab(searchResultsPanel, QString::fromUtf8("نتائج البحث"));
@@ -1171,7 +1219,7 @@ void MainWindow::buildUi()
     bottomPanels = std::make_unique<BottomPanelController>(
         bottomPanelTabs,
         outputPanel,
-        terminalPanel,
+        terminalContainerPanel,
         problemsPanel,
         searchResultsPanel,
         referencesPanel,
@@ -2229,20 +2277,76 @@ void MainWindow::showOnlySystemOutput()
 
 void MainWindow::openPowerShellTerminal()
 {
-    const QString workingDirectory = projectRoot.isEmpty() ? runtimeWorkingDirectory() : projectRoot;
-    const TerminalProfile profile = TerminalProfileModel::defaultPowerShellProfile(workingDirectory);
+    refreshTerminalProfiles();
+    const TerminalProfile profile = selectedTerminalProfile();
     const TerminalLaunchPlan plan = TerminalProfileModel::buildLaunchPlan(profile, workspaceSettings.trusted);
 
     showTerminalPanel();
     if (!plan.allowed) {
         terminalPanel->setPlainText(plan.reason);
         setStatus(plan.reason);
+        updateTerminalControls();
+        return;
+    }
+    if (terminalBackend.isRunning()) {
+        setStatus(QString::fromUtf8("الطرفية تعمل بالفعل"));
         return;
     }
 
-    terminalPanel->setPlainText(QString::fromUtf8("طرفية %1 جاهزة في %2. تنفيذ الطرفية سيضاف في شريحة لاحقة.")
+    terminalPanel->setPlainText(QString::fromUtf8("بدء طرفية %1 في %2\n")
         .arg(profile.name, QDir::toNativeSeparators(plan.command.workingDirectory)));
-    setStatus(QString::fromUtf8("تم تجهيز الطرفية"));
+    QString error;
+    if (!terminalBackend.start(plan.command, &error)) {
+        terminalPanel->appendPlainText(error);
+        setStatus(error);
+        updateTerminalControls();
+        return;
+    }
+    setStatus(QString::fromUtf8("بدأت الطرفية: %1").arg(profile.name));
+    updateTerminalControls();
+}
+
+void MainWindow::sendTerminalInput()
+{
+    if (!terminalInput || !terminalBackend.isRunning()) {
+        return;
+    }
+    const QString command = terminalInput->text();
+    if (command.isEmpty()) {
+        return;
+    }
+
+    QString error;
+    if (!terminalBackend.writeInput(command + QStringLiteral("\r\n"), &error)) {
+        setStatus(error);
+        appendTerminalOutput(QString::fromUtf8("\n%1\n").arg(error));
+        return;
+    }
+    terminalInput->clear();
+}
+
+void MainWindow::stopTerminalProcess()
+{
+    terminalBackend.close();
+    updateTerminalControls();
+    setStatus(QString::fromUtf8("تم إيقاف الطرفية"));
+}
+
+void MainWindow::persistSelectedTerminalProfile()
+{
+    if (!terminalProfilePicker || projectRoot.isEmpty()) {
+        return;
+    }
+    const QString profileId = terminalProfilePicker->currentData().toString();
+    if (profileId.isEmpty() || workspaceSettings.terminalProfileId == profileId) {
+        return;
+    }
+
+    workspaceSettings.terminalProfileId = profileId;
+    QString error;
+    if (!WorkspaceSettingsStore(projectRoot).save(workspaceSettings, &error)) {
+        setStatus(error);
+    }
 }
 
 void MainWindow::trustCurrentWorkspace()
@@ -2278,6 +2382,7 @@ void MainWindow::trustCurrentWorkspace()
         return;
     }
 
+    updateTerminalControls();
     setStatus(QString::fromUtf8("تمت الثقة بمساحة العمل"));
 }
 
@@ -2299,6 +2404,10 @@ void MainWindow::untrustCurrentWorkspace()
         return;
     }
 
+    if (terminalBackend.isRunning()) {
+        terminalBackend.close();
+    }
+    updateTerminalControls();
     setStatus(QString::fromUtf8("ألغيت الثقة بمساحة العمل"));
 }
 
@@ -3430,6 +3539,8 @@ bool MainWindow::loadProject(const QString &path)
     if (editorTabsController) {
         editorTabsController->applyWorkspaceSettings(workspaceSettings);
     }
+    refreshTerminalProfiles();
+    updateTerminalControls();
     settings.addRecentProject(projectRoot);
     setStatus(QString::fromUtf8("المشروع: %1").arg(projectRoot));
     return true;
@@ -4595,6 +4706,81 @@ void MainWindow::renderOutputTranscript()
     }
 
     outputPanel->setPlainText(outputTranscript.render(outputFilter));
+}
+
+void MainWindow::refreshTerminalProfiles()
+{
+    if (!terminalProfilePicker) {
+        return;
+    }
+
+    const QString workingDirectory = projectRoot.isEmpty() ? runtimeWorkingDirectory() : projectRoot;
+    const QString currentId = workspaceSettings.terminalProfileId.isEmpty()
+        ? terminalProfilePicker->currentData().toString()
+        : workspaceSettings.terminalProfileId;
+
+    terminalProfiles = {
+        TerminalProfileModel::defaultPowerShellProfile(workingDirectory),
+        TerminalProfileModel::defaultCmdProfile(workingDirectory),
+    };
+    if (!QStandardPaths::findExecutable(QStringLiteral("wsl.exe")).isEmpty()) {
+        terminalProfiles.append(TerminalProfileModel::defaultWslBashProfile(workingDirectory));
+    }
+
+    QSignalBlocker blocker(terminalProfilePicker);
+    terminalProfilePicker->clear();
+    int selectedIndex = 0;
+    for (int i = 0; i < terminalProfiles.size(); ++i) {
+        const TerminalProfile &profile = terminalProfiles.at(i);
+        terminalProfilePicker->addItem(profile.name, profile.id);
+        if (profile.id == currentId) {
+            selectedIndex = i;
+        }
+    }
+    terminalProfilePicker->setCurrentIndex(selectedIndex);
+}
+
+TerminalProfile MainWindow::selectedTerminalProfile() const
+{
+    const QString selectedId = terminalProfilePicker ? terminalProfilePicker->currentData().toString() : QString();
+    for (const TerminalProfile &profile : terminalProfiles) {
+        if (profile.id == selectedId) {
+            return profile;
+        }
+    }
+
+    const QString workingDirectory = projectRoot.isEmpty() ? runtimeWorkingDirectory() : projectRoot;
+    return TerminalProfileModel::defaultPowerShellProfile(workingDirectory);
+}
+
+void MainWindow::appendTerminalOutput(const QString &text)
+{
+    if (!terminalPanel || text.isEmpty()) {
+        return;
+    }
+
+    QTextCursor cursor = terminalPanel->textCursor();
+    cursor.movePosition(QTextCursor::End);
+    terminalPanel->setTextCursor(cursor);
+    terminalPanel->insertPlainText(text);
+    terminalPanel->ensureCursorVisible();
+}
+
+void MainWindow::updateTerminalControls()
+{
+    const bool running = terminalBackend.isRunning();
+    if (terminalProfilePicker) {
+        terminalProfilePicker->setEnabled(!running);
+    }
+    if (terminalInput) {
+        terminalInput->setEnabled(workspaceSettings.trusted && running);
+    }
+    if (terminalSendButton) {
+        terminalSendButton->setEnabled(workspaceSettings.trusted && running);
+    }
+    if (terminalStopButton) {
+        terminalStopButton->setEnabled(running);
+    }
 }
 
 void MainWindow::restoreWorkbenchSession(bool promptForDraftRecovery)
