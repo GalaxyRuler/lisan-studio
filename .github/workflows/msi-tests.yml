@@ -38,10 +38,13 @@ jobs:
           if ($LASTEXITCODE -ne 0) { $missing += 'setuptools' }
           python -c "import wheel" *> $null
           if ($LASTEXITCODE -ne 0) { $missing += 'wheel' }
-          python -c "import debugpy; raise SystemExit(0 if debugpy.__version__ == '1.8.20' else 1)" *> $null
-          if ($LASTEXITCODE -ne 0) { $missing += 'debugpy==1.8.20' }
           if ($missing.Count -gt 0) {
             python -m pip install --quiet --disable-pip-version-check --prefer-binary @missing
+          }
+          $runtimePython = "C:\Users\codexqa\AppData\Local\Programs\Python\Python313\python.exe"
+          & $runtimePython -c "import debugpy; raise SystemExit(0 if debugpy.__version__ == '1.8.20' else 1)" *> $null
+          if ($LASTEXITCODE -ne 0) {
+            & $runtimePython -m pip install --quiet --disable-pip-version-check --prefer-binary debugpy==1.8.20
           }
 
       - name: Prepare apython runtime metadata
@@ -58,7 +61,7 @@ jobs:
         run: |
           .\scripts\build.ps1
           .\scripts\package.ps1 `
-            -ProductVersion 0.3.2 `
+            -ProductVersion 0.4.0 `
             -BuildId $env:GITHUB_SHA `
             -ApythonRoot "${{ github.workspace }}\apython-src" `
             -PythonRoot "C:\Users\codexqa\AppData\Local\Programs\Python\Python313"
@@ -66,7 +69,7 @@ jobs:
       - name: Install MSI and assert HKLM uninstall state
         shell: powershell
         run: |
-          $msiPath = Join-Path $PWD 'artifacts\LisanStudio-0.3.2-beta.msi'
+          $msiPath = Join-Path $PWD 'artifacts\LisanStudio-0.4.0-beta.msi'
           .\scripts\msi-smoke.ps1 -MsiPath $msiPath
 
       - name: Upload evidence
@@ -75,7 +78,7 @@ jobs:
         with:
           name: msi-install-evidence-${{ github.run_id }}
           path: |
-            artifacts/LisanStudio-0.3.2-beta.msi
+            artifacts/LisanStudio-0.4.0-beta.msi
             artifacts/SIGNING_STATUS.txt
             artifacts/msi-smoke/**
 
@@ -105,10 +108,13 @@ jobs:
           if ($LASTEXITCODE -ne 0) { $missing += 'setuptools' }
           python -c "import wheel" *> $null
           if ($LASTEXITCODE -ne 0) { $missing += 'wheel' }
-          python -c "import debugpy; raise SystemExit(0 if debugpy.__version__ == '1.8.20' else 1)" *> $null
-          if ($LASTEXITCODE -ne 0) { $missing += 'debugpy==1.8.20' }
           if ($missing.Count -gt 0) {
             python -m pip install --quiet --disable-pip-version-check --prefer-binary @missing
+          }
+          $runtimePython = "C:\Users\codexqa\AppData\Local\Programs\Python\Python313\python.exe"
+          & $runtimePython -c "import debugpy; raise SystemExit(0 if debugpy.__version__ == '1.8.20' else 1)" *> $null
+          if ($LASTEXITCODE -ne 0) {
+            & $runtimePython -m pip install --quiet --disable-pip-version-check --prefer-binary debugpy==1.8.20
           }
 
       - name: Prepare apython runtime metadata
@@ -137,7 +143,7 @@ jobs:
         run: |
           .\scripts\build.ps1
           .\scripts\package.ps1 `
-            -ProductVersion 0.3.2 `
+            -ProductVersion 0.4.0 `
             -BuildId $env:GITHUB_SHA `
             -ApythonRoot "${{ github.workspace }}\apython-src" `
             -PythonRoot "C:\Users\codexqa\AppData\Local\Programs\Python\Python313"
@@ -146,12 +152,12 @@ jobs:
         shell: powershell
         run: |
           $earlierMsiPath = Join-Path $env:GITHUB_WORKSPACE 'msi-fixtures\LisanStudio-0.1.0-beta.msi'
-          $replacementMsiPath = Join-Path $PWD 'artifacts\LisanStudio-0.3.2-beta.msi'
+          $replacementMsiPath = Join-Path $PWD 'artifacts\LisanStudio-0.4.0-beta.msi'
           .\scripts\msi-upgrade-smoke.ps1 `
             -EarlierMsiPath $earlierMsiPath `
             -ReplacementMsiPath $replacementMsiPath `
             -ExpectedEarlierVersion 0.1.0 `
-            -ExpectedReplacementVersion 0.3.2 `
+            -ExpectedReplacementVersion 0.4.0 `
             -AllowMutation `
             -IUnderstandThisRunsMsiUpgrade
 
@@ -162,6 +168,6 @@ jobs:
           name: msi-upgrade-evidence-${{ github.run_id }}
           path: |
             msi-fixtures/LisanStudio-0.1.0-beta.msi
-            artifacts/LisanStudio-0.3.2-beta.msi
+            artifacts/LisanStudio-0.4.0-beta.msi
             artifacts/SIGNING_STATUS.txt
             artifacts/msi-upgrade-smoke/**

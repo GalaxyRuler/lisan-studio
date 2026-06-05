@@ -1,3 +1,42 @@
+# v0.4.0-beta (2026-06-05)
+
+Phase E V2 release: debugger launch, breakpoints, and run control.
+
+## Added
+
+- Line-number gutter breakpoints for editor buffers, with click-to-toggle
+  behavior and persistent visual markers while the file is open.
+- Debug command bindings: Continue/Start Debugging on F5, Step Over on F10,
+  Step Into on F11, and Step Out on Shift+F11.
+- A live `debugpy.adapter` launch path from the bundled runtime. The debugger
+  launches `arabicpython.cli` as a module, sends current editor breakpoints,
+  completes DAP configuration, and tracks stopped/continued/terminated events
+  in the Debug bottom panel.
+- DAP client support for debugpy's `initialized` event sequence, async launch
+  completion, module launches, breakpoints, configurationDone, continue, next,
+  stepIn, and stepOut.
+- MSI packaging now stages `debugpy 1.8.20` into the bundled Python runtime
+  and import-checks both `debugpy` and `debugpy.adapter`.
+
+## Changed
+
+- Run Current File moved to Ctrl+F5 so F5 can start or continue a debug
+  session. Rerun Last Runtime Action moved to Ctrl+Shift+F5.
+- GitHub MSI workflows now prepare the pinned debugpy dependency before
+  packaging `LisanStudio-0.4.0-beta.msi`.
+- `acs_dap_client_tests` now models debugpy's launch handshake, including the
+  `initialized` event before launch response.
+
+## Known v0.4.0-beta limitations
+
+- Locals, watch expressions, and call-stack frame switching are deferred to
+  V2-E3 / `v0.4.1-beta`.
+- Breakpoints are tracked for the active editor buffer; a richer multi-file
+  DebugController surface is deferred to later debugger polish.
+- Manual installed-app QA, GitHub Actions MSI runs, tag creation, release
+  publication, and Authenticode signing remain operator-owned public
+  distribution gates after this in-repo release prep.
+
 # v0.3.2-beta (2026-06-05)
 
 Phase D V2 release: advanced LSP navigation and refactor surfaces.
