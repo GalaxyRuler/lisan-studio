@@ -133,7 +133,7 @@ This is the source of truth for "where are we in V2." Update on every state tran
 | V2-E1 | DAP client transport + initialize + launch | V2-E0, V2-C2 | ◕ | c628664 | — | Shared Content-Length JSON framing extracted; DapClient initialize/launch round-trip tests landed; validate.ps1 passes 12/12 |
 | V2-E2 | Breakpoints + step + continue | V2-E1 | ◕ | fc0fcdd | — | Editor breakpoints, F5/F10/F11 run control, live debugpy adapter launch, staged-runtime debugpy copy/import check, and staged DAP smoke passed; validate.ps1 passes 12/12 |
 | V2-E3 | Locals + watch + call stack | V2-E2 | □ | — | — | New Variables panel in BottomPanelController |
-| — | **v0.4.0-beta cut** + **v0.4.1-beta cut** | V2-E2 / V2-E3 | □ | — | — | Two release-cuts: E2 cuts 0.4.0, E3 cuts 0.4.1 |
+| — | **v0.4.0-beta cut** + **v0.4.1-beta cut** | V2-E2 / V2-E3 | ◕ / □ | aed2764 | v0.4.0-beta | E2 release prep landed; local MSI artifact built (`27D6991A4B161F56C96749B1C9CDDCC3579D4324BF04F19FC237CA8464CAC0A5`, 69,165,576 bytes); signing/GHA/tag/publish/manual QA still pending. E3 still pending for v0.4.1-beta |
 
 ### Phase F — Terminal
 
