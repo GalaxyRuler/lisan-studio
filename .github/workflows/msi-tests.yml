@@ -45,9 +45,24 @@ jobs:
             python -m pip install --quiet --disable-pip-version-check --prefer-binary @missing
           }
           $runtimePython = "C:\Users\codexqa\AppData\Local\Programs\Python\Python313\python.exe"
-          & $runtimePython -c "import debugpy; raise SystemExit(0 if debugpy.__version__ == '1.8.20' else 1)" *> $null
-          if ($LASTEXITCODE -ne 0) {
-            & $runtimePython -m pip install --quiet --disable-pip-version-check --prefer-binary debugpy==1.8.20
+          $debugpyVersion = '1.8.20'
+          $needDebugpy = $true
+          $previousErrorActionPreference = $ErrorActionPreference
+          try {
+            $ErrorActionPreference = 'Continue'
+            $v = & $runtimePython -c "import debugpy, sys; sys.stdout.write(debugpy.__version__)" 2>$null
+            if ($LASTEXITCODE -eq 0 -and $v -eq $debugpyVersion) { $needDebugpy = $false }
+          } catch {
+            $needDebugpy = $true
+          } finally {
+            $ErrorActionPreference = $previousErrorActionPreference
+          }
+          if ($needDebugpy) {
+            & $runtimePython -m pip install --quiet --disable-pip-version-check --prefer-binary debugpy==$debugpyVersion
+            $v = & $runtimePython -c "import debugpy, sys; sys.stdout.write(debugpy.__version__)" 2>$null
+            if ($LASTEXITCODE -ne 0 -or $v -ne $debugpyVersion) {
+              throw "debugpy $debugpyVersion installation failed for bundled runtime python"
+            }
           }
 
       - name: Prepare apython runtime metadata
@@ -115,9 +130,24 @@ jobs:
             python -m pip install --quiet --disable-pip-version-check --prefer-binary @missing
           }
           $runtimePython = "C:\Users\codexqa\AppData\Local\Programs\Python\Python313\python.exe"
-          & $runtimePython -c "import debugpy; raise SystemExit(0 if debugpy.__version__ == '1.8.20' else 1)" *> $null
-          if ($LASTEXITCODE -ne 0) {
-            & $runtimePython -m pip install --quiet --disable-pip-version-check --prefer-binary debugpy==1.8.20
+          $debugpyVersion = '1.8.20'
+          $needDebugpy = $true
+          $previousErrorActionPreference = $ErrorActionPreference
+          try {
+            $ErrorActionPreference = 'Continue'
+            $v = & $runtimePython -c "import debugpy, sys; sys.stdout.write(debugpy.__version__)" 2>$null
+            if ($LASTEXITCODE -eq 0 -and $v -eq $debugpyVersion) { $needDebugpy = $false }
+          } catch {
+            $needDebugpy = $true
+          } finally {
+            $ErrorActionPreference = $previousErrorActionPreference
+          }
+          if ($needDebugpy) {
+            & $runtimePython -m pip install --quiet --disable-pip-version-check --prefer-binary debugpy==$debugpyVersion
+            $v = & $runtimePython -c "import debugpy, sys; sys.stdout.write(debugpy.__version__)" 2>$null
+            if ($LASTEXITCODE -ne 0 -or $v -ne $debugpyVersion) {
+              throw "debugpy $debugpyVersion installation failed for bundled runtime python"
+            }
           }
 
       - name: Prepare apython runtime metadata
