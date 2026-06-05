@@ -38,6 +38,7 @@ public:
     QString rootPath() const;
     QString currentBranch(QString *error = nullptr) const;
     QVector<GitStatusEntry> statusEntries(QString *error = nullptr) const;
+    QString diffForFile(const QString &relativePath, QString *error = nullptr) const;
     bool hasChanges(QString *error = nullptr) const;
 
     static bool isRepository(const QString &path);

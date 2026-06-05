@@ -1140,6 +1140,36 @@ void MainWindow::buildUi()
     connect(outlinePanel, &QListWidget::itemActivated, this, &MainWindow::openOutlineResult);
     connect(outlinePanel, &QListWidget::itemDoubleClicked, this, &MainWindow::openOutlineResult);
 
+    gitContainerPanel = new QWidget(bottomPanelTabs);
+    gitContainerPanel->setObjectName(QStringLiteral("gitContainerPanel"));
+    gitContainerPanel->setLayoutDirection(Qt::RightToLeft);
+    auto *gitLayout = new QVBoxLayout(gitContainerPanel);
+    gitLayout->setContentsMargins(6, 6, 6, 6);
+    gitLayout->setSpacing(6);
+    gitStatusPanel = new QListWidget(gitContainerPanel);
+    gitStatusPanel->setObjectName(QStringLiteral("gitStatusPanel"));
+    gitStatusPanel->setLayoutDirection(Qt::RightToLeft);
+    gitStatusPanel->setWordWrap(true);
+    gitStatusPanel->setMaximumHeight(120);
+    gitStatusPanel->setToolTip(QString::fromUtf8("ملفات Git المتغيرة. اختر ملفا لعرض الفرق."));
+    gitDiffPanel = new QPlainTextEdit(gitContainerPanel);
+    gitDiffPanel->setObjectName(QStringLiteral("gitDiffPanel"));
+    gitDiffPanel->setReadOnly(true);
+    gitDiffPanel->setLayoutDirection(Qt::LeftToRight);
+    gitDiffPanel->setToolTip(QString::fromUtf8("فرق Git الموحد للملف المحدد."));
+    gitLayout->addWidget(gitStatusPanel);
+    gitLayout->addWidget(gitDiffPanel, 1);
+    connect(gitStatusPanel, &QListWidget::itemClicked, this, [this](QListWidgetItem *item) {
+        if (item) {
+            renderGitDiffForPath(item->data(Qt::UserRole).toString());
+        }
+    });
+    connect(gitStatusPanel, &QListWidget::itemActivated, this, [this](QListWidgetItem *item) {
+        if (item) {
+            renderGitDiffForPath(item->data(Qt::UserRole).toString());
+        }
+    });
+
     debugContainerPanel = new QWidget(bottomPanelTabs);
     debugContainerPanel->setObjectName(QStringLiteral("debugContainerPanel"));
     debugContainerPanel->setLayoutDirection(Qt::RightToLeft);
@@ -1215,6 +1245,7 @@ void MainWindow::buildUi()
     bottomPanelTabs->addTab(searchResultsPanel, QString::fromUtf8("نتائج البحث"));
     bottomPanelTabs->addTab(referencesPanel, QString::fromUtf8("المراجع"));
     bottomPanelTabs->addTab(outlinePanel, QString::fromUtf8("المخطط"));
+    bottomPanelTabs->addTab(gitContainerPanel, QStringLiteral("Git"));
     bottomPanelTabs->addTab(debugContainerPanel, QString::fromUtf8("التصحيح"));
     bottomPanels = std::make_unique<BottomPanelController>(
         bottomPanelTabs,
@@ -1224,6 +1255,7 @@ void MainWindow::buildUi()
         searchResultsPanel,
         referencesPanel,
         outlinePanel,
+        gitContainerPanel,
         debugContainerPanel);
 
     outputDock = new QDockWidget(QString::fromUtf8("اللوحة السفلية"), this);
@@ -4393,6 +4425,82 @@ void MainWindow::updateStatusIndicators()
         }
     }
     statusGitLabel->setText(gitStatusText);
+    renderGitStatusPanel();
+}
+
+void MainWindow::renderGitStatusPanel()
+{
+    if (!gitStatusPanel || !gitDiffPanel) {
+        return;
+    }
+    gitStatusPanel->clear();
+    gitDiffPanel->clear();
+    if (!gitRepository.isOpen()) {
+        gitDiffPanel->setPlainText(QStringLiteral("Git: --"));
+        return;
+    }
+
+    QString error;
+    const QVector<GitStatusEntry> entries = gitRepository.statusEntries(&error);
+    if (!error.isEmpty()) {
+        gitDiffPanel->setPlainText(error);
+        return;
+    }
+    if (entries.isEmpty()) {
+        gitDiffPanel->setPlainText(QString::fromUtf8("لا توجد تغييرات Git."));
+        return;
+    }
+
+    for (const GitStatusEntry &entry : entries) {
+        QString marker = QStringLiteral("M");
+        switch (entry.state) {
+        case GitFileState::Added:
+            marker = QStringLiteral("A");
+            break;
+        case GitFileState::Deleted:
+            marker = QStringLiteral("D");
+            break;
+        case GitFileState::Renamed:
+            marker = QStringLiteral("R");
+            break;
+        case GitFileState::TypeChanged:
+            marker = QStringLiteral("T");
+            break;
+        case GitFileState::Untracked:
+            marker = QStringLiteral("?");
+            break;
+        case GitFileState::Conflicted:
+            marker = QStringLiteral("!");
+            break;
+        case GitFileState::Modified:
+            marker = QStringLiteral("M");
+            break;
+        }
+        if (entry.staged) {
+            marker.prepend(QStringLiteral("+"));
+        }
+        auto *item = new QListWidgetItem(QStringLiteral("%1  %2").arg(marker, entry.relativePath), gitStatusPanel);
+        item->setData(Qt::UserRole, entry.relativePath);
+        item->setData(Qt::UserRole + 1, entry.staged);
+    }
+
+    gitStatusPanel->setCurrentRow(0);
+    renderGitDiffForPath(gitStatusPanel->item(0)->data(Qt::UserRole).toString());
+}
+
+void MainWindow::renderGitDiffForPath(const QString &relativePath)
+{
+    if (!gitDiffPanel) {
+        return;
+    }
+    if (!gitRepository.isOpen() || relativePath.isEmpty()) {
+        gitDiffPanel->clear();
+        return;
+    }
+
+    QString error;
+    const QString diff = gitRepository.diffForFile(relativePath, &error);
+    gitDiffPanel->setPlainText(error.isEmpty() ? diff : error);
 }
 
 void MainWindow::writeOutput(const QString &title, const QString &text)

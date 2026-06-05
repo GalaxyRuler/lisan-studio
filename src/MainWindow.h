@@ -137,6 +137,9 @@ private:
     QListWidget *searchResultsPanel = nullptr;
     QListWidget *referencesPanel = nullptr;
     QListWidget *outlinePanel = nullptr;
+    QWidget *gitContainerPanel = nullptr;
+    QListWidget *gitStatusPanel = nullptr;
+    QPlainTextEdit *gitDiffPanel = nullptr;
     QPlainTextEdit *debugPanel = nullptr;
     QWidget *debugContainerPanel = nullptr;
     QListWidget *debugVariablesPanel = nullptr;
@@ -245,6 +248,8 @@ private:
     void renderReferencesForTest(const QVector<LspLocation> &locations) { renderReferences(locations); }
     void renderOutline(const QVector<LspSymbol> &symbols);
     void renderOutlineForTest(const QVector<LspSymbol> &symbols) { renderOutline(symbols); }
+    void renderGitStatusPanel();
+    void renderGitDiffForPath(const QString &relativePath);
     void openWorkspaceSymbolPicker(const QVector<LspSymbol> &symbols);
     void openWorkspaceSymbolPickerForTest(const QVector<LspSymbol> &symbols) { openWorkspaceSymbolPicker(symbols); }
     void renderRenamePreview(const LspWorkspaceEdit &edit);

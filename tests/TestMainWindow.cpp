@@ -57,6 +57,7 @@ private slots:
     void usesSingleRtlTopCommandBarWithMenuButtons();
     void exposesLisanLogoAssetInShell();
     void exposesPremiumFutureBottomPanelTabs();
+    void gitStatusPanelListsDirtyFilesAndShowsDiff();
     void debugInspectorPanelsExistInsideDebugTab();
     void debugInspectorRendersVariablesWatchAndCallStack();
     void enforcesRtlDirectionAcrossShellContainers();
@@ -720,14 +721,44 @@ void TestMainWindow::exposesPremiumFutureBottomPanelTabs()
     auto *tabs = window.findChild<QTabWidget *>(QStringLiteral("bottomPanelTabs"));
     QVERIFY(tabs != nullptr);
     QCOMPARE(tabs->layoutDirection(), Qt::RightToLeft);
-    QCOMPARE(tabs->count(), 7);
+    QCOMPARE(tabs->count(), 8);
     QCOMPARE(tabs->tabText(0), QString::fromUtf8("الطرفية"));
     QCOMPARE(tabs->tabText(1), QString::fromUtf8("الإخراج"));
     QCOMPARE(tabs->tabText(2), QString::fromUtf8("المشاكل"));
     QCOMPARE(tabs->tabText(3), QString::fromUtf8("نتائج البحث"));
     QCOMPARE(tabs->tabText(4), QString::fromUtf8("المراجع"));
     QCOMPARE(tabs->tabText(5), QString::fromUtf8("المخطط"));
-    QCOMPARE(tabs->tabText(6), QString::fromUtf8("التصحيح"));
+    QCOMPARE(tabs->tabText(6), QStringLiteral("Git"));
+    QCOMPARE(tabs->tabText(7), QString::fromUtf8("التصحيح"));
+}
+
+void TestMainWindow::gitStatusPanelListsDirtyFilesAndShowsDiff()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    QDir root(temp.path());
+    runGit(root, {QStringLiteral("init"), QStringLiteral("-b"), QStringLiteral("main")});
+    runGit(root, {QStringLiteral("config"), QStringLiteral("user.name"), QStringLiteral("Lisan Tester")});
+    runGit(root, {QStringLiteral("config"), QStringLiteral("user.email"), QStringLiteral("tester@example.invalid")});
+    const QString filePath = writeFile(root, QStringLiteral("src/برنامج.apy"), QString::fromUtf8("اطبع(\"أول\")\n"));
+    runGit(root, {QStringLiteral("add"), QStringLiteral(".")});
+    runGit(root, {QStringLiteral("commit"), QStringLiteral("-m"), QStringLiteral("initial")});
+    writeFile(root, QStringLiteral("src/برنامج.apy"), QString::fromUtf8("اطبع(\"تعديل\")\n"));
+
+    MainWindow window;
+    QVERIFY(window.openPath(root.absolutePath()));
+
+    auto *statusPanel = window.findChild<QListWidget *>(QStringLiteral("gitStatusPanel"));
+    auto *diffPanel = window.findChild<QPlainTextEdit *>(QStringLiteral("gitDiffPanel"));
+    QVERIFY(statusPanel != nullptr);
+    QVERIFY(diffPanel != nullptr);
+    QCOMPARE(statusPanel->count(), 1);
+    QVERIFY(statusPanel->item(0)->text().contains(QString::fromUtf8("src/برنامج.apy")));
+    QCOMPARE(statusPanel->item(0)->data(Qt::UserRole).toString(), QString::fromUtf8("src/برنامج.apy"));
+    QVERIFY(diffPanel->toPlainText().contains(QString::fromUtf8("+اطبع(\"تعديل\")")));
+
+    QVERIFY(window.openPath(filePath));
+    QVERIFY(diffPanel->toPlainText().contains(QString::fromUtf8("-اطبع(\"أول\")")));
 }
 
 void TestMainWindow::debugInspectorPanelsExistInsideDebugTab()

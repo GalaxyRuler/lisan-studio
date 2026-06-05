@@ -60,6 +60,7 @@ QString deltaPath(const git_diff_delta *delta)
     const char *path = delta->new_file.path ? delta->new_file.path : delta->old_file.path;
     return path ? QString::fromUtf8(path) : QString();
 }
+
 }
 
 GitRepository::GitRepository()
@@ -210,6 +211,68 @@ QVector<GitStatusEntry> GitRepository::statusEntries(QString *error) const
         return left.staged && !right.staged;
     });
     return entries;
+}
+
+QString GitRepository::diffForFile(const QString &relativePath, QString *error) const
+{
+    if (error) {
+        error->clear();
+    }
+    if (!repository) {
+        if (error) {
+            *error = QStringLiteral("لا يوجد مستودع Git مفتوح.");
+        }
+        return QString();
+    }
+
+    const QString comparablePath = QDir::fromNativeSeparators(relativePath);
+
+    git_diff_options options = GIT_DIFF_OPTIONS_INIT;
+    options.flags = GIT_DIFF_INCLUDE_UNTRACKED
+        | GIT_DIFF_RECURSE_UNTRACKED_DIRS
+        | GIT_DIFF_SHOW_UNTRACKED_CONTENT;
+
+    git_diff *diff = nullptr;
+    if (git_diff_index_to_workdir(&diff, repository, nullptr, &options) != 0) {
+        if (error) {
+            *error = lastError(QStringLiteral("تعذر قراءة فرق Git."));
+        }
+        return QString();
+    }
+
+    QString diffText;
+    const size_t deltaCount = git_diff_num_deltas(diff);
+    for (size_t i = 0; i < deltaCount; ++i) {
+        const git_diff_delta *delta = git_diff_get_delta(diff, i);
+        if (deltaPath(delta) != comparablePath) {
+            continue;
+        }
+
+        git_patch *patch = nullptr;
+        if (git_patch_from_diff(&patch, diff, i) != 0) {
+            if (error) {
+                *error = lastError(QStringLiteral("تعذر عرض فرق Git."));
+            }
+            git_diff_free(diff);
+            return QString();
+        }
+
+        git_buf buffer = {};
+        if (git_patch_to_buf(&buffer, patch) != 0) {
+            if (error) {
+                *error = lastError(QStringLiteral("تعذر عرض فرق Git."));
+            }
+            git_patch_free(patch);
+            git_diff_free(diff);
+            return QString();
+        }
+        diffText = QString::fromUtf8(buffer.ptr, qsizetype(buffer.size));
+        git_buf_dispose(&buffer);
+        git_patch_free(patch);
+        break;
+    }
+    git_diff_free(diff);
+    return diffText;
 }
 
 bool GitRepository::hasChanges(QString *error) const

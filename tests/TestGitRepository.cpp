@@ -14,6 +14,7 @@ class TestGitRepository : public QObject
 private slots:
     void reportsCurrentBranchForCleanRepository();
     void reportsUtf8DirtyAndUntrackedFiles();
+    void returnsUnifiedDiffForModifiedUtf8File();
 };
 
 static void runGit(const QDir &root, const QStringList &arguments)
@@ -90,6 +91,27 @@ void TestGitRepository::reportsUtf8DirtyAndUntrackedFiles()
             && !entry.staged;
     }));
     QVERIFY(repository.hasChanges());
+}
+
+void TestGitRepository::returnsUnifiedDiffForModifiedUtf8File()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    QDir root(temp.path());
+    createInitialCommit(root);
+    writeFile(root, QStringLiteral("src/برنامج.apy"), QString::fromUtf8("اطبع(\"تعديل\")\n"));
+
+    GitRepository repository;
+    QString error;
+    QVERIFY2(repository.open(root.absolutePath(), &error), qPrintable(error));
+
+    const QString diff = repository.diffForFile(QString::fromUtf8("src/برنامج.apy"), &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error));
+    QVERIFY2(diff.contains(QStringLiteral("diff --git")), qPrintable(diff));
+    QVERIFY2(diff.contains(QStringLiteral("--- ")), qPrintable(diff));
+    QVERIFY2(diff.contains(QStringLiteral("+++ ")), qPrintable(diff));
+    QVERIFY2(diff.contains(QString::fromUtf8("-اطبع(\"أول\")")), qPrintable(diff));
+    QVERIFY2(diff.contains(QString::fromUtf8("+اطبع(\"تعديل\")")), qPrintable(diff));
 }
 
 QTEST_MAIN(TestGitRepository)
