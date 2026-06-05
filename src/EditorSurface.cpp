@@ -161,6 +161,47 @@ static QString returnIndentForCursor(const QTextCursor &cursor)
     return indent;
 }
 
+static void indentBlockByOneLevel(QTextDocument *document, int blockNumber)
+{
+    const QTextBlock block = document->findBlockByNumber(blockNumber);
+    if (!block.isValid()) {
+        return;
+    }
+
+    QTextCursor cursor(block);
+    cursor.setPosition(block.position());
+    cursor.insertText(QStringLiteral("    "));
+}
+
+static void dedentBlockByOneLevel(QTextDocument *document, int blockNumber)
+{
+    const QTextBlock block = document->findBlockByNumber(blockNumber);
+    if (!block.isValid()) {
+        return;
+    }
+
+    const QString line = block.text();
+    int spacesToRemove = 0;
+    while (spacesToRemove < 4
+        && spacesToRemove < line.size()
+        && line.at(spacesToRemove) == QLatin1Char(' ')) {
+        ++spacesToRemove;
+    }
+
+    QTextCursor cursor(block);
+    cursor.setPosition(block.position());
+    if (spacesToRemove > 0) {
+        cursor.setPosition(block.position() + spacesToRemove, QTextCursor::KeepAnchor);
+        cursor.removeSelectedText();
+        return;
+    }
+
+    if (!line.isEmpty() && line.at(0) == QLatin1Char('\t')) {
+        cursor.setPosition(block.position() + 1, QTextCursor::KeepAnchor);
+        cursor.removeSelectedText();
+    }
+}
+
 class LineNumberArea final : public QWidget
 {
 public:
@@ -1145,6 +1186,9 @@ void EditorSurface::keyPressEvent(QKeyEvent *event)
         || modifiers == (Qt::ShiftModifier | Qt::KeypadModifier);
     const bool isBackspace = event->key() == Qt::Key_Backspace && plainKey;
     const bool isDelete = event->key() == Qt::Key_Delete && plainKey;
+    const bool isTabIndent = event->key() == Qt::Key_Tab && plainKey;
+    const bool isTabDedent = event->key() == Qt::Key_Backtab
+        || (event->key() == Qt::Key_Tab && modifiers == Qt::ShiftModifier);
     const bool isArrow = plainKey
         && (event->key() == Qt::Key_Left
             || event->key() == Qt::Key_Right
@@ -1154,6 +1198,32 @@ void EditorSurface::keyPressEvent(QKeyEvent *event)
         && !event->text().isEmpty()
         && event->text().at(0).category() != QChar::Other_Control
         && !isReturn;
+    if (isTabIndent || isTabDedent) {
+        QVector<int> blockNumbers;
+        blockNumbers.reserve(totalCursorCount());
+        blockNumbers.append(textCursor().blockNumber());
+        for (const QTextCursor &cursor : secondaryCursors) {
+            blockNumbers.append(cursor.blockNumber());
+        }
+        std::sort(blockNumbers.begin(), blockNumbers.end(), std::greater<int>());
+        blockNumbers.erase(std::unique(blockNumbers.begin(), blockNumbers.end()), blockNumbers.end());
+
+        QTextCursor editBlockCursor = textCursor();
+        editBlockCursor.beginEditBlock();
+        for (const int blockNumber : blockNumbers) {
+            if (isTabIndent) {
+                indentBlockByOneLevel(document(), blockNumber);
+            } else {
+                dedentBlockByOneLevel(document(), blockNumber);
+            }
+        }
+        editBlockCursor.endEditBlock();
+
+        viewport()->update();
+        event->accept();
+        return;
+    }
+
     if (!isPrintableInsert && !isBackspace && !isDelete && !isArrow && !(isReturn && plainReturn)) {
         // Slice-9 limitation: complex editor commands still apply only to the primary cursor.
         QPlainTextEdit::keyPressEvent(event);
