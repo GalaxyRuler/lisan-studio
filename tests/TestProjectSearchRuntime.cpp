@@ -898,6 +898,10 @@ void TestProjectSearchRuntime::settingsStorePersistsWorkbenchSession()
 
     SavedWorkbenchSession session;
     session.projectRoot = QString::fromUtf8("C:/مشروع");
+    session.projectRoots = {
+        QString::fromUtf8("C:/مشروع"),
+        QString::fromUtf8("D:/حزمة"),
+    };
     session.openFiles = {
         QString::fromUtf8("C:/مشروع/main.apy"),
         QString::fromUtf8("C:/مشروع/src/ثانوي.apy"),
@@ -913,6 +917,7 @@ void TestProjectSearchRuntime::settingsStorePersistsWorkbenchSession()
     SettingsStore reloaded(temp.path() + QStringLiteral("/settings.ini"));
     const SavedWorkbenchSession loaded = reloaded.savedWorkbenchSession();
     QCOMPARE(loaded.projectRoot, QString::fromUtf8("C:/مشروع"));
+    QCOMPARE(loaded.projectRoots, session.projectRoots);
     QCOMPARE(loaded.openFiles, session.openFiles);
     QCOMPARE(loaded.untitledDrafts, session.untitledDrafts);
     QCOMPARE(loaded.activeFileIndex, 1);

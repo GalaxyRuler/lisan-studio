@@ -5,11 +5,61 @@
 void WorkbenchState::setProjectRoot(const QString &path)
 {
     rootPath = QDir::fromNativeSeparators(path);
+    if (rootPath.isEmpty()) {
+        rootPaths.clear();
+    } else if (!rootPaths.contains(rootPath, Qt::CaseInsensitive)) {
+        rootPaths.prepend(rootPath);
+    }
 }
 
 QString WorkbenchState::projectRoot() const
 {
     return rootPath;
+}
+
+void WorkbenchState::setProjectRoots(const QStringList &paths)
+{
+    rootPaths.clear();
+    for (const QString &path : paths) {
+        addProjectRoot(path);
+    }
+    if (rootPath.isEmpty() && !rootPaths.isEmpty()) {
+        rootPath = rootPaths.first();
+    }
+}
+
+QStringList WorkbenchState::projectRoots() const
+{
+    return rootPaths;
+}
+
+bool WorkbenchState::addProjectRoot(const QString &path)
+{
+    const QString normalized = QDir::fromNativeSeparators(path);
+    if (normalized.isEmpty() || rootPaths.contains(normalized, Qt::CaseInsensitive)) {
+        return false;
+    }
+    rootPaths.append(normalized);
+    if (rootPath.isEmpty()) {
+        rootPath = normalized;
+    }
+    return true;
+}
+
+bool WorkbenchState::removeProjectRoot(const QString &path)
+{
+    const QString normalized = QDir::fromNativeSeparators(path);
+    for (int i = 0; i < rootPaths.size(); ++i) {
+        if (rootPaths.at(i).compare(normalized, Qt::CaseInsensitive) != 0) {
+            continue;
+        }
+        rootPaths.removeAt(i);
+        if (rootPath.compare(normalized, Qt::CaseInsensitive) == 0) {
+            rootPath = rootPaths.isEmpty() ? QString() : rootPaths.first();
+        }
+        return true;
+    }
+    return false;
 }
 
 int WorkbenchState::currentSearchGeneration() const

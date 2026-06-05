@@ -16,6 +16,7 @@ class TestWorkbenchState : public QObject
 private slots:
     void searchGenerationsAdvanceAndRejectStaleResults();
     void projectRootIsStoredWithQtSeparators();
+    void projectRootsTrackMultipleNormalizedRoots();
     void editorSessionsTrackCurrentPathAndDirtyState();
     void editorSessionsFindExistingFilesWithNormalizedPaths();
     void documentRegistryOpensTracksAndFindsDocuments();
@@ -57,6 +58,25 @@ void TestWorkbenchState::projectRootIsStoredWithQtSeparators()
 
     state.setProjectRoot(QString());
     QCOMPARE(state.projectRoot(), QString());
+}
+
+void TestWorkbenchState::projectRootsTrackMultipleNormalizedRoots()
+{
+    WorkbenchState state;
+    state.setProjectRoot(QStringLiteral("C:\\Users\\Admin\\مشروع"));
+    QVERIFY(state.addProjectRoot(QStringLiteral("D:\\Modules\\حزمة")));
+    QVERIFY(!state.addProjectRoot(QStringLiteral("D:/Modules/حزمة")));
+
+    QCOMPARE(state.projectRoot(), QStringLiteral("C:/Users/Admin/مشروع"));
+    QCOMPARE(state.projectRoots(), QStringList({
+        QStringLiteral("C:/Users/Admin/مشروع"),
+        QStringLiteral("D:/Modules/حزمة"),
+    }));
+
+    QVERIFY(!state.removeProjectRoot(QStringLiteral("D:/missing")));
+    QVERIFY(state.removeProjectRoot(QStringLiteral("C:/Users/Admin/مشروع")));
+    QCOMPARE(state.projectRoot(), QStringLiteral("D:/Modules/حزمة"));
+    QCOMPARE(state.projectRoots(), QStringList({QStringLiteral("D:/Modules/حزمة")}));
 }
 
 void TestWorkbenchState::editorSessionsTrackCurrentPathAndDirtyState()

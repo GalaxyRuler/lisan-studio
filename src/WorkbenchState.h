@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QString>
+#include <QStringList>
 #include <QVector>
 
 struct EditorSessionState
@@ -14,6 +15,10 @@ class WorkbenchState final
 public:
     void setProjectRoot(const QString &path);
     QString projectRoot() const;
+    void setProjectRoots(const QStringList &paths);
+    QStringList projectRoots() const;
+    bool addProjectRoot(const QString &path);
+    bool removeProjectRoot(const QString &path);
 
     int currentSearchGeneration() const;
     int nextSearchGeneration();
@@ -35,6 +40,7 @@ public:
 
 private:
     QString rootPath;
+    QStringList rootPaths;
     int searchGeneration = 0;
     QVector<EditorSessionState> sessions;
     int currentSessionIndex = -1;

@@ -120,11 +120,17 @@ private slots:
     void createGitBranch();
     void mergeSelectedGitBranch();
     void deleteSelectedGitBranch();
+    void addWorkspaceRoot();
+    void removeSelectedWorkspaceRoot();
+    void switchSelectedWorkspaceRoot();
 
 private:
     EditorSurface *editor = nullptr;
     QTabWidget *editorTabs = nullptr;
     QTreeView *projectTree = nullptr;
+    QListWidget *workspaceRootsPanel = nullptr;
+    QPushButton *workspaceAddRootButton = nullptr;
+    QPushButton *workspaceRemoveRootButton = nullptr;
     QFileSystemModel *fileSystemModel = nullptr;
     QWidget *inFileFindPanel = nullptr;
     QLineEdit *inFileFindInput = nullptr;
@@ -217,12 +223,17 @@ private:
     std::unique_ptr<ProjectTreeController> projectTreeController;
     std::unique_ptr<BottomPanelController> bottomPanels;
     QString projectRoot;
+    QStringList workspaceRoots;
+    QString activeWorkspaceTreeRoot;
 
     void buildUi();
     void registerWorkbenchCommands();
     void setStatus(const QString &text);
     bool loadProject(const QString &path);
     bool openEditorFile(const QString &path);
+    bool addWorkspaceRootPath(const QString &path);
+    bool switchWorkspaceRootPath(const QString &path);
+    bool removeWorkspaceRootPath(const QString &path);
     bool requestCloseEditorTab(int index);
     void clearEditorsForDeletedPath(const QString &path);
     void applyThemePreference();
@@ -279,6 +290,7 @@ private:
     void updateCurrentEditorBlame();
     QString selectedGitRelativePath() const;
     void refreshGitBranches();
+    void renderWorkspaceRootsPanel();
     void openWorkspaceSymbolPicker(const QVector<LspSymbol> &symbols);
     void openWorkspaceSymbolPickerForTest(const QVector<LspSymbol> &symbols) { openWorkspaceSymbolPicker(symbols); }
     void renderRenamePreview(const LspWorkspaceEdit &edit);

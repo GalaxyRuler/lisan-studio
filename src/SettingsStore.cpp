@@ -100,6 +100,14 @@ SavedWorkbenchSession SettingsStore::savedWorkbenchSession() const
     QSettings settings(path, QSettings::IniFormat);
     SavedWorkbenchSession session;
     session.projectRoot = QDir::fromNativeSeparators(settings.value(QStringLiteral("session/projectRoot")).toString());
+    session.projectRoots = settings.value(QStringLiteral("session/projectRoots")).toStringList();
+    for (QString &root : session.projectRoots) {
+        root = QDir::fromNativeSeparators(root);
+    }
+    session.projectRoots.removeAll(QString());
+    if (session.projectRoots.isEmpty() && !session.projectRoot.isEmpty()) {
+        session.projectRoots.append(session.projectRoot);
+    }
     session.openFiles = settings.value(QStringLiteral("session/openFiles")).toStringList();
     for (QString &openFile : session.openFiles) {
         openFile = QDir::fromNativeSeparators(openFile);
@@ -116,6 +124,12 @@ SavedWorkbenchSession SettingsStore::savedWorkbenchSession() const
 
 void SettingsStore::saveWorkbenchSession(const SavedWorkbenchSession &session)
 {
+    QStringList projectRoots = session.projectRoots;
+    for (QString &root : projectRoots) {
+        root = QDir::fromNativeSeparators(root);
+    }
+    projectRoots.removeAll(QString());
+
     QStringList openFiles = session.openFiles;
     for (QString &openFile : openFiles) {
         openFile = QDir::fromNativeSeparators(openFile);
@@ -128,6 +142,7 @@ void SettingsStore::saveWorkbenchSession(const SavedWorkbenchSession &session)
 
     QSettings settings(path, QSettings::IniFormat);
     settings.setValue(QStringLiteral("session/projectRoot"), QDir::fromNativeSeparators(session.projectRoot));
+    settings.setValue(QStringLiteral("session/projectRoots"), projectRoots);
     settings.setValue(QStringLiteral("session/openFiles"), openFiles);
     if (session.untitledDrafts.isEmpty()) {
         settings.remove(QStringLiteral("session/untitledDrafts"));

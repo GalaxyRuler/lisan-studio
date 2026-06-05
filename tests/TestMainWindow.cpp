@@ -45,6 +45,7 @@ private slots:
     void init();
     void opensProjectAndFileFromPath();
     void restoresSavedWorkbenchSession();
+    void restoresSavedMultiRootWorkspace();
     void restoresUntitledDraftsFromWorkbenchSession();
     void savesWorkbenchSessionOnClose();
     void savesUntitledDraftsOnEditorChange();
@@ -98,6 +99,7 @@ private slots:
     void projectTreeOpenActionOpensSelectedFile();
     void mainWindowOpensFileFromTreeAfterRefactor();
     void projectTreeCopyPathActionCopiesSelectedPath();
+    void workspaceRootsPanelAddsSwitchesAndRemovesSecondaryRoot();
     void outputPanelActionsCopyAndClearTranscript();
     void outputPanelActionSavesTranscriptToUtf8File();
     void outputPanelLinkAtCursorOpensEditorLocation();
@@ -338,6 +340,30 @@ void TestMainWindow::restoresSavedWorkbenchSession()
     QVERIFY(bottomTabs != nullptr);
     QVERIFY(problems != nullptr);
     QCOMPARE(bottomTabs->currentWidget(), problems);
+}
+
+void TestMainWindow::restoresSavedMultiRootWorkspace()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    QDir primary(temp.filePath(QStringLiteral("primary")));
+    QDir secondary(temp.filePath(QStringLiteral("secondary")));
+    QVERIFY(QDir().mkpath(primary.absolutePath()));
+    QVERIFY(QDir().mkpath(secondary.absolutePath()));
+    const QString settingsPath = temp.filePath(QStringLiteral("settings.ini"));
+
+    SettingsStore store(settingsPath);
+    SavedWorkbenchSession session;
+    session.projectRoot = primary.absolutePath();
+    session.projectRoots = {primary.absolutePath(), secondary.absolutePath()};
+    store.saveWorkbenchSession(session);
+
+    MainWindow window(nullptr, settingsPath);
+
+    auto *rootsPanel = window.findChild<QListWidget *>(QStringLiteral("workspaceRootsPanel"));
+    QVERIFY(rootsPanel != nullptr);
+    QCOMPARE(rootsPanel->count(), 2);
+    QCOMPARE(QDir::toNativeSeparators(rootsPanel->item(1)->data(Qt::UserRole).toString()), QDir::toNativeSeparators(secondary.absolutePath()));
 }
 
 void TestMainWindow::restoresUntitledDraftsFromWorkbenchSession()
@@ -2425,6 +2451,39 @@ void TestMainWindow::projectTreeCopyPathActionCopiesSelectedPath()
     copyPath->trigger();
 
     QCOMPARE(QApplication::clipboard()->text(), QDir::toNativeSeparators(filePath));
+}
+
+void TestMainWindow::workspaceRootsPanelAddsSwitchesAndRemovesSecondaryRoot()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    QDir primary(temp.filePath(QStringLiteral("primary")));
+    QDir secondary(temp.filePath(QStringLiteral("secondary")));
+    QVERIFY(QDir().mkpath(primary.absolutePath()));
+    QVERIFY(QDir().mkpath(secondary.absolutePath()));
+    writeFile(primary, QStringLiteral("main.apy"), QString::fromUtf8("اطبع(\"أول\")\n"));
+    writeFile(secondary, QStringLiteral("module.apy"), QString::fromUtf8("اطبع(\"ثان\")\n"));
+
+    MainWindow window;
+    QVERIFY(window.openPath(primary.absolutePath()));
+    QVERIFY(window.addWorkspaceRootPath(secondary.absolutePath()));
+
+    auto *rootsPanel = window.findChild<QListWidget *>(QStringLiteral("workspaceRootsPanel"));
+    auto *tree = window.findChild<QTreeView *>(QStringLiteral("projectTree"));
+    auto *model = qobject_cast<QFileSystemModel *>(tree ? tree->model() : nullptr);
+    QVERIFY(rootsPanel != nullptr);
+    QVERIFY(model != nullptr);
+    QCOMPARE(rootsPanel->count(), 2);
+    QCOMPARE(QDir::toNativeSeparators(model->rootPath()), QDir::toNativeSeparators(secondary.absolutePath()));
+
+    rootsPanel->setCurrentRow(0);
+    QCOMPARE(QDir::toNativeSeparators(model->rootPath()), QDir::toNativeSeparators(primary.absolutePath()));
+
+    rootsPanel->setCurrentRow(1);
+    QVERIFY(window.removeWorkspaceRootPath(secondary.absolutePath()));
+    QCOMPARE(rootsPanel->count(), 1);
+    QCOMPARE(QDir::toNativeSeparators(model->rootPath()), QDir::toNativeSeparators(primary.absolutePath()));
+    QCOMPARE(window.currentProjectRoot(), primary.absolutePath());
 }
 
 void TestMainWindow::projectSearchShowsClickableResultRows()

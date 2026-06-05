@@ -835,7 +835,31 @@ void MainWindow::buildUi()
     fileSystemModel->setNameFilters({QStringLiteral("*.apy"), QStringLiteral("*.py"), QStringLiteral("*.md"), QStringLiteral("*.txt")});
     fileSystemModel->setNameFilterDisables(false);
 
-    projectTree = new QTreeView(splitter);
+    auto *projectSidebar = new QWidget(splitter);
+    projectSidebar->setObjectName(QStringLiteral("projectSidebar"));
+    projectSidebar->setLayoutDirection(Qt::RightToLeft);
+    auto *projectSidebarLayout = new QVBoxLayout(projectSidebar);
+    projectSidebarLayout->setContentsMargins(0, 0, 0, 0);
+    projectSidebarLayout->setSpacing(6);
+
+    auto *workspaceRootToolbar = new QWidget(projectSidebar);
+    workspaceRootToolbar->setObjectName(QStringLiteral("workspaceRootToolbar"));
+    auto *workspaceRootToolbarLayout = new QHBoxLayout(workspaceRootToolbar);
+    workspaceRootToolbarLayout->setContentsMargins(0, 0, 0, 0);
+    workspaceRootToolbarLayout->setSpacing(6);
+    workspaceAddRootButton = new QPushButton(QString::fromUtf8("إضافة جذر"), workspaceRootToolbar);
+    workspaceAddRootButton->setObjectName(QStringLiteral("workspaceAddRootButton"));
+    workspaceRemoveRootButton = new QPushButton(QString::fromUtf8("إزالة"), workspaceRootToolbar);
+    workspaceRemoveRootButton->setObjectName(QStringLiteral("workspaceRemoveRootButton"));
+    workspaceRootToolbarLayout->addWidget(workspaceAddRootButton, 1);
+    workspaceRootToolbarLayout->addWidget(workspaceRemoveRootButton);
+    workspaceRootsPanel = new QListWidget(projectSidebar);
+    workspaceRootsPanel->setObjectName(QStringLiteral("workspaceRootsPanel"));
+    workspaceRootsPanel->setLayoutDirection(Qt::RightToLeft);
+    workspaceRootsPanel->setMaximumHeight(96);
+    workspaceRootsPanel->setToolTip(QString::fromUtf8("جذور مساحة العمل. اختر جذرا لتصفحه في شجرة المشروع."));
+
+    projectTree = new QTreeView(projectSidebar);
     projectTree->setObjectName(QStringLiteral("projectTree"));
     projectTreeController = std::make_unique<ProjectTreeController>(projectTree, fileSystemModel, this);
     projectTreeController->setDeleteConfirmationCallback([this](const QString &path, bool isDirectory) {
@@ -879,6 +903,22 @@ void MainWindow::buildUi()
     connect(projectTreeController.get(), &ProjectTreeController::errorMessage, this, [this](const QString &title, const QString &body) {
         QMessageBox::warning(this, title, body);
     });
+    connect(workspaceAddRootButton, &QPushButton::clicked, this, &MainWindow::addWorkspaceRoot);
+    connect(workspaceRemoveRootButton, &QPushButton::clicked, this, &MainWindow::removeSelectedWorkspaceRoot);
+    connect(workspaceRootsPanel, &QListWidget::currentItemChanged, this, [this](QListWidgetItem *current) {
+        if (current) {
+            switchWorkspaceRootPath(current->data(Qt::UserRole).toString());
+        }
+    });
+    connect(workspaceRootsPanel, &QListWidget::itemActivated, this, [this](QListWidgetItem *item) {
+        if (item) {
+            switchWorkspaceRootPath(item->data(Qt::UserRole).toString());
+        }
+    });
+
+    projectSidebarLayout->addWidget(workspaceRootToolbar);
+    projectSidebarLayout->addWidget(workspaceRootsPanel);
+    projectSidebarLayout->addWidget(projectTree, 1);
 
     auto *editorColumn = new QWidget(splitter);
     editorColumn->setObjectName(QStringLiteral("editorColumn"));
@@ -1025,7 +1065,7 @@ void MainWindow::buildUi()
     editorTabsController->createUntitled(QString::fromUtf8("ملف جديد"));
     editorColumnLayout->addWidget(editorTabs, 1);
 
-    splitter->addWidget(projectTree);
+    splitter->addWidget(projectSidebar);
     splitter->addWidget(editorColumn);
     splitter->setStretchFactor(0, 0);
     splitter->setStretchFactor(1, 1);
@@ -1474,6 +1514,34 @@ void MainWindow::openFolder()
     if (!path.isEmpty()) {
         loadProject(path);
     }
+}
+
+void MainWindow::addWorkspaceRoot()
+{
+    const QString path = QFileDialog::getExistingDirectory(
+        this,
+        QString::fromUtf8("إضافة جذر لمساحة العمل"),
+        projectRoot.isEmpty() ? QDir::homePath() : projectRoot);
+    if (!path.isEmpty()) {
+        addWorkspaceRootPath(path);
+    }
+}
+
+void MainWindow::removeSelectedWorkspaceRoot()
+{
+    if (!workspaceRootsPanel || !workspaceRootsPanel->currentItem()) {
+        setStatus(QString::fromUtf8("لا يوجد جذر محدد"));
+        return;
+    }
+    removeWorkspaceRootPath(workspaceRootsPanel->currentItem()->data(Qt::UserRole).toString());
+}
+
+void MainWindow::switchSelectedWorkspaceRoot()
+{
+    if (!workspaceRootsPanel || !workspaceRootsPanel->currentItem()) {
+        return;
+    }
+    switchWorkspaceRootPath(workspaceRootsPanel->currentItem()->data(Qt::UserRole).toString());
 }
 
 void MainWindow::runCurrentFile()
@@ -3648,10 +3716,15 @@ bool MainWindow::loadProject(const QString &path)
     }
 
     projectRoot = requestedRoot;
+    workspaceRoots = {projectRoot};
+    activeWorkspaceTreeRoot = projectRoot;
+    workbenchState.setProjectRoot(projectRoot);
+    workbenchState.setProjectRoots(workspaceRoots);
     workspaceSettings = WorkspaceSettingsStore(projectRoot).load();
     if (projectTreeController) {
-        projectTreeController->setProjectRoot(projectRoot);
+        projectTreeController->setProjectRoot(activeWorkspaceTreeRoot);
     }
+    renderWorkspaceRootsPanel();
     if (editorTabsController) {
         editorTabsController->applyWorkspaceSettings(workspaceSettings);
     }
@@ -3665,6 +3738,93 @@ bool MainWindow::loadProject(const QString &path)
     updateStatusIndicators();
     setStatus(QString::fromUtf8("المشروع: %1").arg(projectRoot));
     return true;
+}
+
+bool MainWindow::addWorkspaceRootPath(const QString &path)
+{
+    const QFileInfo info(path);
+    if (!info.exists() || !info.isDir()) {
+        setStatus(QString::fromUtf8("جذر مساحة العمل غير صالح"));
+        return false;
+    }
+
+    const QString rootPath = info.absoluteFilePath();
+    if (projectRoot.isEmpty()) {
+        return loadProject(rootPath);
+    }
+
+    for (const QString &existing : workspaceRoots) {
+        if (QDir::cleanPath(existing).compare(QDir::cleanPath(rootPath), Qt::CaseInsensitive) == 0) {
+            switchWorkspaceRootPath(existing);
+            return false;
+        }
+    }
+
+    workspaceRoots.append(rootPath);
+    workbenchState.addProjectRoot(rootPath);
+    renderWorkspaceRootsPanel();
+    switchWorkspaceRootPath(rootPath);
+    saveWorkbenchSession();
+    setStatus(QString::fromUtf8("أضيف جذر مساحة العمل: %1").arg(rootPath));
+    return true;
+}
+
+bool MainWindow::switchWorkspaceRootPath(const QString &path)
+{
+    const QString requestedRoot = QFileInfo(path).absoluteFilePath();
+    const bool known = std::any_of(workspaceRoots.cbegin(), workspaceRoots.cend(), [&requestedRoot](const QString &root) {
+        return QDir::cleanPath(root).compare(QDir::cleanPath(requestedRoot), Qt::CaseInsensitive) == 0;
+    });
+    if (!known || !QFileInfo(requestedRoot).isDir()) {
+        return false;
+    }
+
+    activeWorkspaceTreeRoot = requestedRoot;
+    if (projectTreeController) {
+        projectTreeController->setProjectRoot(activeWorkspaceTreeRoot);
+    }
+
+    QString gitError;
+    if (!gitRepository.open(activeWorkspaceTreeRoot, &gitError)) {
+        gitRepository.close();
+    }
+    renderWorkspaceRootsPanel();
+    updateStatusIndicators();
+    setStatus(QString::fromUtf8("الجذر النشط: %1").arg(activeWorkspaceTreeRoot));
+    return true;
+}
+
+bool MainWindow::removeWorkspaceRootPath(const QString &path)
+{
+    const QString requestedRoot = QFileInfo(path).absoluteFilePath();
+    if (projectRoot.isEmpty() || QDir::cleanPath(requestedRoot).compare(QDir::cleanPath(projectRoot), Qt::CaseInsensitive) == 0) {
+        setStatus(QString::fromUtf8("لا يمكن إزالة الجذر الأساسي"));
+        return false;
+    }
+
+    for (int i = 0; i < workspaceRoots.size(); ++i) {
+        if (QDir::cleanPath(workspaceRoots.at(i)).compare(QDir::cleanPath(requestedRoot), Qt::CaseInsensitive) != 0) {
+            continue;
+        }
+        workspaceRoots.removeAt(i);
+        workbenchState.removeProjectRoot(requestedRoot);
+        if (QDir::cleanPath(activeWorkspaceTreeRoot).compare(QDir::cleanPath(requestedRoot), Qt::CaseInsensitive) == 0) {
+            activeWorkspaceTreeRoot = projectRoot;
+            if (projectTreeController) {
+                projectTreeController->setProjectRoot(activeWorkspaceTreeRoot);
+            }
+            QString gitError;
+            if (!gitRepository.open(activeWorkspaceTreeRoot, &gitError)) {
+                gitRepository.close();
+            }
+        }
+        renderWorkspaceRootsPanel();
+        updateStatusIndicators();
+        saveWorkbenchSession();
+        setStatus(QString::fromUtf8("أزيل جذر مساحة العمل"));
+        return true;
+    }
+    return false;
 }
 
 bool MainWindow::openEditorFile(const QString &path)
@@ -4638,13 +4798,13 @@ void MainWindow::updateCurrentEditorBlame()
     if (!editor) {
         return;
     }
-    if (!gitRepository.isOpen() || projectRoot.isEmpty() || editor->currentFilePath().isEmpty()) {
+    if (!gitRepository.isOpen() || gitRepository.rootPath().isEmpty() || editor->currentFilePath().isEmpty()) {
         editor->clearBlameAnnotations();
         return;
     }
 
-    const QString editorPath = QDir::cleanPath(QFileInfo(editor->currentFilePath()).absoluteFilePath());
-    const QString rootPath = QDir::cleanPath(QFileInfo(projectRoot).absoluteFilePath());
+    const QString editorPath = QDir::cleanPath(QDir::fromNativeSeparators(QFileInfo(editor->currentFilePath()).absoluteFilePath()));
+    const QString rootPath = QDir::cleanPath(QDir::fromNativeSeparators(QFileInfo(gitRepository.rootPath()).absoluteFilePath()));
     if (editorPath != rootPath && !editorPath.startsWith(rootPath + QLatin1Char('/'), Qt::CaseInsensitive)) {
         editor->clearBlameAnnotations();
         return;
@@ -4704,6 +4864,34 @@ void MainWindow::refreshGitBranches()
         const int selectedIndex = gitBranchPicker->findText(selected);
         if (selectedIndex >= 0) {
             gitBranchPicker->setCurrentIndex(selectedIndex);
+        }
+    }
+}
+
+void MainWindow::renderWorkspaceRootsPanel()
+{
+    if (!workspaceRootsPanel) {
+        return;
+    }
+
+    QSignalBlocker blocker(workspaceRootsPanel);
+    workspaceRootsPanel->clear();
+    for (const QString &root : workspaceRoots) {
+        const QFileInfo info(root);
+        const QString label = root == projectRoot
+            ? QString::fromUtf8("%1  أساسي").arg(info.fileName().isEmpty() ? root : info.fileName())
+            : (info.fileName().isEmpty() ? root : info.fileName());
+        auto *item = new QListWidgetItem(label, workspaceRootsPanel);
+        item->setData(Qt::UserRole, root);
+        item->setToolTip(QDir::toNativeSeparators(root));
+    }
+
+    const QString selected = activeWorkspaceTreeRoot.isEmpty() ? projectRoot : activeWorkspaceTreeRoot;
+    for (int row = 0; row < workspaceRootsPanel->count(); ++row) {
+        if (QDir::cleanPath(workspaceRootsPanel->item(row)->data(Qt::UserRole).toString())
+                .compare(QDir::cleanPath(selected), Qt::CaseInsensitive) == 0) {
+            workspaceRootsPanel->setCurrentRow(row);
+            break;
         }
     }
 }
@@ -5293,6 +5481,17 @@ void MainWindow::restoreWorkbenchSession(bool promptForDraftRecovery)
 
     if (!session.projectRoot.isEmpty() && QFileInfo(session.projectRoot).isDir()) {
         loadProject(session.projectRoot);
+        for (const QString &root : session.projectRoots) {
+            const QString absoluteRoot = QFileInfo(root).absoluteFilePath();
+            if (!QFileInfo(absoluteRoot).isDir()
+                || QDir::cleanPath(absoluteRoot).compare(QDir::cleanPath(projectRoot), Qt::CaseInsensitive) == 0
+                || workspaceRoots.contains(absoluteRoot, Qt::CaseInsensitive)) {
+                continue;
+            }
+            workspaceRoots.append(absoluteRoot);
+            workbenchState.addProjectRoot(absoluteRoot);
+        }
+        renderWorkspaceRootsPanel();
     }
 
     bool openedAnyFile = false;
@@ -5349,6 +5548,7 @@ void MainWindow::saveWorkbenchSession()
 
     SavedWorkbenchSession session;
     session.projectRoot = projectRoot;
+    session.projectRoots = workspaceRoots;
     if (editorTabsController) {
         session.openFiles = editorTabsController->openFilePaths();
         session.untitledDrafts = editorTabsController->untitledDrafts();
