@@ -55,6 +55,9 @@ private slots:
     void multiCursorIndentIsSingleUndoStep();
     void arabicImeCompositionProducesIdenticalCommittedTextAtEveryCursor();
     void imeCompositionWithSecondaryCursorsPreservesSingleUndoStep();
+    void completionRequestSignalReportsCursorPosition();
+    void completionPopupDisplaysItemsAndAcceptsSelection();
+    void hoverTooltipSurfaceStoresMarkdown();
     void selectAllFindMatchesAsCursorsConvertsFindHighlights();
     void altColumnDragGeneratesOneCursorPerLineInRectangle();
     void altColumnDragWithZeroWidthColumnsGeneratesZeroWidthCursors();
@@ -1007,6 +1010,61 @@ void TestEditorSurface::imeCompositionWithSecondaryCursorsPreservesSingleUndoSte
     QTest::keyClick(&editor, Qt::Key_Z, Qt::ControlModifier);
     QCOMPARE(editor.toPlainText(), original);
     QVERIFY(!editor.document()->isModified());
+}
+
+void TestEditorSurface::completionRequestSignalReportsCursorPosition()
+{
+    EditorSurface editor;
+    editor.setPlainText(QString::fromUtf8("س = اط\n"));
+    editor.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&editor));
+
+    QTextCursor cursor = cursorAtLineColumn(editor, 0, 6);
+    editor.setTextCursor(cursor);
+
+    QSignalSpy spy(&editor, &EditorSurface::completionRequested);
+    QTest::keyClick(&editor, Qt::Key_Space, Qt::ControlModifier);
+
+    QCOMPARE(spy.size(), 1);
+    QCOMPARE(spy.at(0).at(0).toInt(), 0);
+    QCOMPARE(spy.at(0).at(1).toInt(), 6);
+}
+
+void TestEditorSurface::completionPopupDisplaysItemsAndAcceptsSelection()
+{
+    EditorSurface editor;
+    editor.setPlainText(QString::fromUtf8("س = اط"));
+    editor.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&editor));
+
+    QTextCursor cursor = cursorAtLineColumn(editor, 0, 6);
+    editor.setTextCursor(cursor);
+
+    QVector<EditorCompletionItem> items;
+    items.append({QString::fromUtf8("اطبع"), QStringLiteral("print(value)"), QString::fromUtf8("اطبع")});
+    items.append({QString::fromUtf8("اذا"), QStringLiteral("conditional"), QString::fromUtf8("اذا")});
+
+    editor.showCompletionItems(items);
+
+    QVERIFY(editor.isCompletionPopupVisibleForTest());
+    QCOMPARE(editor.completionLabelsForTest(), QStringList({QString::fromUtf8("اطبع"), QString::fromUtf8("اذا")}));
+
+    QTest::keyClick(&editor, Qt::Key_Return);
+
+    QVERIFY(!editor.isCompletionPopupVisibleForTest());
+    QCOMPARE(editor.toPlainText(), QString::fromUtf8("س = اطبع"));
+}
+
+void TestEditorSurface::hoverTooltipSurfaceStoresMarkdown()
+{
+    EditorSurface editor;
+    editor.setPlainText(QString::fromUtf8("اطبع(\"مرحبا\")\n"));
+    editor.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&editor));
+
+    editor.showHoverMarkdown(QStringLiteral("**اطبع** -> `print(value)`"), QPoint(8, 8));
+
+    QCOMPARE(editor.visibleHoverTextForTest(), QStringLiteral("**اطبع** -> `print(value)`"));
 }
 
 void TestEditorSurface::selectAllFindMatchesAsCursorsConvertsFindHighlights()

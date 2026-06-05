@@ -28,6 +28,53 @@ bool parseBooleanProvider(const QJsonValue &value)
     }
     return value.isObject();
 }
+
+QJsonObject positionObject(int line, int character)
+{
+    QJsonObject object;
+    object.insert(QStringLiteral("line"), line);
+    object.insert(QStringLiteral("character"), character);
+    return object;
+}
+
+QJsonObject textDocumentPositionParams(const QString &uri, int line, int character)
+{
+    QJsonObject params;
+    params.insert(QStringLiteral("textDocument"), textDocumentIdentifier(uri));
+    params.insert(QStringLiteral("position"), positionObject(line, character));
+    return params;
+}
+
+QString documentationText(const QJsonValue &value)
+{
+    if (value.isString()) {
+        return value.toString();
+    }
+    if (value.isObject()) {
+        return value.toObject().value(QStringLiteral("value")).toString();
+    }
+    return {};
+}
+
+QString hoverContentsText(const QJsonValue &value)
+{
+    if (value.isString() || value.isObject()) {
+        return documentationText(value);
+    }
+    if (!value.isArray()) {
+        return {};
+    }
+
+    QStringList parts;
+    const QJsonArray array = value.toArray();
+    for (const QJsonValue &item : array) {
+        const QString part = hoverContentsText(item).trimmed();
+        if (!part.isEmpty()) {
+            parts.append(part);
+        }
+    }
+    return parts.join(QStringLiteral("\n\n"));
+}
 }
 
 LspClient::LspClient(QObject *parent)
@@ -154,6 +201,88 @@ void LspClient::closeDocument(const QString &uri)
     QJsonObject params;
     params.insert(QStringLiteral("textDocument"), textDocumentIdentifier(uri));
     sendNotification(QStringLiteral("textDocument/didClose"), params);
+}
+
+QVector<LspCompletionItem> LspClient::requestCompletion(const QString &uri, int line, int character, int timeoutMs, QString *error)
+{
+    if (error) {
+        error->clear();
+    }
+    if (process.state() == QProcess::NotRunning) {
+        if (error) {
+            *error = QStringLiteral("LSP server is not running.");
+        }
+        return {};
+    }
+
+    const int requestId = sendRequest(QStringLiteral("textDocument/completion"), textDocumentPositionParams(uri, line, character));
+    QJsonObject response;
+    if (!waitForResponse(requestId, &response, timeoutMs, error)) {
+        return {};
+    }
+    if (response.contains(QStringLiteral("error"))) {
+        if (error) {
+            *error = response.value(QStringLiteral("error")).toObject().value(QStringLiteral("message")).toString();
+        }
+        return {};
+    }
+
+    QJsonArray rawItems;
+    const QJsonValue result = response.value(QStringLiteral("result"));
+    if (result.isArray()) {
+        rawItems = result.toArray();
+    } else if (result.isObject()) {
+        rawItems = result.toObject().value(QStringLiteral("items")).toArray();
+    }
+
+    QVector<LspCompletionItem> items;
+    items.reserve(rawItems.size());
+    for (const QJsonValue &value : rawItems) {
+        if (!value.isObject()) {
+            continue;
+        }
+        const QJsonObject object = value.toObject();
+        LspCompletionItem item;
+        item.label = object.value(QStringLiteral("label")).toString();
+        item.detail = object.value(QStringLiteral("detail")).toString();
+        item.documentation = documentationText(object.value(QStringLiteral("documentation")));
+        item.insertText = object.value(QStringLiteral("insertText")).toString(item.label);
+        if (!item.label.isEmpty()) {
+            items.append(item);
+        }
+    }
+    return items;
+}
+
+LspHoverResult LspClient::requestHover(const QString &uri, int line, int character, int timeoutMs, QString *error)
+{
+    if (error) {
+        error->clear();
+    }
+    LspHoverResult hover;
+    if (process.state() == QProcess::NotRunning) {
+        if (error) {
+            *error = QStringLiteral("LSP server is not running.");
+        }
+        return hover;
+    }
+
+    const int requestId = sendRequest(QStringLiteral("textDocument/hover"), textDocumentPositionParams(uri, line, character));
+    QJsonObject response;
+    if (!waitForResponse(requestId, &response, timeoutMs, error)) {
+        return hover;
+    }
+    if (response.contains(QStringLiteral("error"))) {
+        if (error) {
+            *error = response.value(QStringLiteral("error")).toObject().value(QStringLiteral("message")).toString();
+        }
+        return hover;
+    }
+
+    const QJsonObject result = response.value(QStringLiteral("result")).toObject();
+    hover.markdown = hoverContentsText(result.value(QStringLiteral("contents")));
+    hover.hasContent = !hover.markdown.trimmed().isEmpty();
+    return hover;
 }
 
 void LspClient::shutdown(int timeoutMs)

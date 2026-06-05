@@ -176,6 +176,8 @@ private:
     void syncCurrentEditorToLanguageServer(bool reopenDocument);
     void notifyLanguageServerOfSave();
     void closeLanguageServerDocument();
+    void requestLanguageServerCompletion(int line, int character);
+    void requestLanguageServerHover(int line, int character, const QPoint &viewportPosition);
     void updateBreadcrumbBar();
     void updateStatusIndicators();
     // Test-only snapshot for verifying MainWindow's registry integration.

@@ -19,6 +19,8 @@ class TestLspClient : public QObject
 private slots:
     void initializeHandshakeReadsServerMetadataAndSendsInitialized();
     void documentSyncNotificationsReachMockServerInOrder();
+    void completionRequestParsesItemsAndStaysWithinBudget();
+    void hoverRequestParsesMarkdownAndStaysWithinBudget();
 };
 
 namespace {
@@ -86,6 +88,32 @@ while running:
         })
     elif method == "shutdown":
         write_message({"jsonrpc": "2.0", "id": message["id"], "result": None})
+    elif method == "textDocument/completion":
+        write_message({
+            "jsonrpc": "2.0",
+            "id": message["id"],
+            "result": {
+                "isIncomplete": False,
+                "items": [
+                    {
+                        "label": "اطبع",
+                        "detail": "print(value)",
+                        "documentation": {"kind": "markdown", "value": "**اطبع** -> `print`"},
+                        "insertText": "اطبع",
+                    },
+                    {
+                        "label": "اذا",
+                        "detail": "conditional",
+                    },
+                ],
+            },
+        })
+    elif method == "textDocument/hover":
+        write_message({
+            "jsonrpc": "2.0",
+            "id": message["id"],
+            "result": {"contents": {"kind": "markdown", "value": "**اطبع** -> `print(value)`"}},
+        })
     elif method == "exit":
         running = False
 )PY");
@@ -215,6 +243,70 @@ void TestLspClient::documentSyncNotificationsReachMockServerInOrder()
     const QJsonObject didChangeParams = messages.at(3).value(QStringLiteral("params")).toObject();
     QCOMPARE(didChangeParams.value(QStringLiteral("textDocument")).toObject().value(QStringLiteral("version")).toInt(), 2);
     QCOMPARE(didChangeParams.value(QStringLiteral("contentChanges")).toArray().first().toObject().value(QStringLiteral("text")).toString(), QString::fromUtf8("س = ٢\n"));
+}
+
+void TestLspClient::completionRequestParsesItemsAndStaysWithinBudget()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString logPath = dir.filePath(QStringLiteral("lsp-log.jsonl"));
+    const QString scriptPath = writeMockServer(dir);
+    QVERIFY(!scriptPath.isEmpty());
+
+    LspClient client;
+    client.setServerCommand(mockServerCommand(scriptPath, logPath));
+
+    QString error;
+    QVERIFY2(client.startAndInitialize(QStringLiteral("file:///workspace"), 5000, &error), qPrintable(error));
+
+    QElapsedTimer timer;
+    timer.start();
+    const QVector<LspCompletionItem> items = client.requestCompletion(QStringLiteral("file:///workspace/main.apy"), 1, 4, 5000, &error);
+    QVERIFY2(timer.elapsed() <= 200, qPrintable(QStringLiteral("completion round-trip took %1 ms").arg(timer.elapsed())));
+    QVERIFY2(error.isEmpty(), qPrintable(error));
+    QCOMPARE(items.size(), 2);
+    QCOMPARE(items.at(0).label, QString::fromUtf8("اطبع"));
+    QCOMPARE(items.at(0).detail, QStringLiteral("print(value)"));
+    QCOMPARE(items.at(0).documentation, QStringLiteral("**اطبع** -> `print`"));
+    QCOMPARE(items.at(0).insertText, QString::fromUtf8("اطبع"));
+    QCOMPARE(items.at(1).label, QString::fromUtf8("اذا"));
+
+    QVERIFY(waitForMethodCount(logPath, 3));
+    const QVector<QJsonObject> messages = readLogMessages(logPath);
+    QCOMPARE(messages.at(2).value(QStringLiteral("method")).toString(), QStringLiteral("textDocument/completion"));
+    const QJsonObject position = messages.at(2).value(QStringLiteral("params")).toObject().value(QStringLiteral("position")).toObject();
+    QCOMPARE(position.value(QStringLiteral("line")).toInt(), 1);
+    QCOMPARE(position.value(QStringLiteral("character")).toInt(), 4);
+}
+
+void TestLspClient::hoverRequestParsesMarkdownAndStaysWithinBudget()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString logPath = dir.filePath(QStringLiteral("lsp-log.jsonl"));
+    const QString scriptPath = writeMockServer(dir);
+    QVERIFY(!scriptPath.isEmpty());
+
+    LspClient client;
+    client.setServerCommand(mockServerCommand(scriptPath, logPath));
+
+    QString error;
+    QVERIFY2(client.startAndInitialize(QStringLiteral("file:///workspace"), 5000, &error), qPrintable(error));
+
+    QElapsedTimer timer;
+    timer.start();
+    const LspHoverResult hover = client.requestHover(QStringLiteral("file:///workspace/main.apy"), 2, 8, 5000, &error);
+    QVERIFY2(timer.elapsed() <= 100, qPrintable(QStringLiteral("hover round-trip took %1 ms").arg(timer.elapsed())));
+    QVERIFY2(error.isEmpty(), qPrintable(error));
+    QVERIFY(hover.hasContent);
+    QCOMPARE(hover.markdown, QStringLiteral("**اطبع** -> `print(value)`"));
+
+    QVERIFY(waitForMethodCount(logPath, 3));
+    const QVector<QJsonObject> messages = readLogMessages(logPath);
+    QCOMPARE(messages.at(2).value(QStringLiteral("method")).toString(), QStringLiteral("textDocument/hover"));
+    const QJsonObject position = messages.at(2).value(QStringLiteral("params")).toObject().value(QStringLiteral("position")).toObject();
+    QCOMPARE(position.value(QStringLiteral("line")).toInt(), 2);
+    QCOMPARE(position.value(QStringLiteral("character")).toInt(), 8);
 }
 
 QTEST_MAIN(TestLspClient)

@@ -885,6 +885,16 @@ void MainWindow::buildUi()
             connect(surface->document(), &QTextDocument::contentsChanged, this, [this]() {
                 syncCurrentEditorToLanguageServer(false);
             });
+            connect(surface, &EditorSurface::completionRequested, this, [this, surface](int line, int character) {
+                if (surface == editor) {
+                    requestLanguageServerCompletion(line, character);
+                }
+            });
+            connect(surface, &EditorSurface::hoverRequested, this, [this, surface](int line, int character, QPoint viewportPosition) {
+                if (surface == editor) {
+                    requestLanguageServerHover(line, character, viewportPosition);
+                }
+            });
         }
         if (!surface || surface->totalCursorCount() < EditorSurface::kSoftCursorCap) {
             multiCursorSoftCapNoticeShown = false;
@@ -3123,6 +3133,49 @@ void MainWindow::closeLanguageServerDocument()
     lspDocumentOpen = false;
     lspDocumentUri.clear();
     lspDocumentVersion = 0;
+}
+
+void MainWindow::requestLanguageServerCompletion(int line, int character)
+{
+    if (!editor) {
+        return;
+    }
+
+    syncCurrentEditorToLanguageServer(false);
+    if (!lspClient.isRunning() || !lspDocumentOpen || !lspClient.initializeResult().completionProvider) {
+        return;
+    }
+
+    QString error;
+    const QVector<LspCompletionItem> lspItems = lspClient.requestCompletion(lspDocumentUri, line, character, 200, &error);
+    if (!error.isEmpty()) {
+        return;
+    }
+
+    QVector<EditorCompletionItem> editorItems;
+    editorItems.reserve(lspItems.size());
+    for (const LspCompletionItem &item : lspItems) {
+        editorItems.append({item.label, item.detail, item.insertText});
+    }
+    editor->showCompletionItems(editorItems);
+}
+
+void MainWindow::requestLanguageServerHover(int line, int character, const QPoint &viewportPosition)
+{
+    if (!editor) {
+        return;
+    }
+
+    syncCurrentEditorToLanguageServer(false);
+    if (!lspClient.isRunning() || !lspDocumentOpen || !lspClient.initializeResult().hoverProvider) {
+        return;
+    }
+
+    QString error;
+    const LspHoverResult hover = lspClient.requestHover(lspDocumentUri, line, character, 100, &error);
+    if (error.isEmpty() && hover.hasContent) {
+        editor->showHoverMarkdown(hover.markdown, viewportPosition);
+    }
 }
 
 void MainWindow::updateStatusIndicators()

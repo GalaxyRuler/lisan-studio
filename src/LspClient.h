@@ -8,6 +8,7 @@
 #include <QProcessEnvironment>
 #include <QString>
 #include <QStringList>
+#include <QVector>
 
 struct LspServerCommand
 {
@@ -26,6 +27,20 @@ struct LspInitializeResult
     bool textDocumentSave = false;
     bool hoverProvider = false;
     bool completionProvider = false;
+};
+
+struct LspCompletionItem
+{
+    QString label;
+    QString detail;
+    QString documentation;
+    QString insertText;
+};
+
+struct LspHoverResult
+{
+    QString markdown;
+    bool hasContent = false;
 };
 
 class LspClient final : public QObject
@@ -47,6 +62,8 @@ public:
     void changeDocument(const QString &uri, int version, const QString &text);
     void saveDocument(const QString &uri, const QString &text = QString());
     void closeDocument(const QString &uri);
+    QVector<LspCompletionItem> requestCompletion(const QString &uri, int line, int character, int timeoutMs = 5000, QString *error = nullptr);
+    LspHoverResult requestHover(const QString &uri, int line, int character, int timeoutMs = 5000, QString *error = nullptr);
     void shutdown(int timeoutMs = 2000);
 
 private:

@@ -6,9 +6,12 @@
 
 #include <QContextMenuEvent>
 #include <QInputMethodEvent>
+#include <QListWidget>
 #include <QMenu>
 #include <QMouseEvent>
 #include <QPlainTextEdit>
+#include <QStringList>
+#include <QTimer>
 #include <QVector>
 
 class LineNumberArea;
@@ -18,6 +21,13 @@ struct HiddenBidiFinding
     int position = 0;
     QString character;
     QString unicodeName;
+};
+
+struct EditorCompletionItem
+{
+    QString label;
+    QString detail;
+    QString insertText;
 };
 
 class EditorSurface final : public QPlainTextEdit
@@ -66,12 +76,19 @@ public:
     int lineNumberAreaWidth() const;
     void lineNumberAreaPaintEvent(QPaintEvent *event);
     QMenu *createEditorContextMenu(QWidget *parent = nullptr);
+    void showCompletionItems(const QVector<EditorCompletionItem> &items);
+    void showHoverMarkdown(const QString &markdown, const QPoint &viewportPosition);
+    bool isCompletionPopupVisibleForTest() const;
+    QStringList completionLabelsForTest() const;
+    QString visibleHoverTextForTest() const;
 
 signals:
     void filePathChanged(const QString &path);
     void dirtyStateChanged(bool dirty);
     void cursorSoftCapReached(int totalCursors);
     void cursorCountChanged(int totalCursors);
+    void completionRequested(int line, int character);
+    void hoverRequested(int line, int character, QPoint viewportPosition);
 
 private:
     QString filePath;
@@ -88,8 +105,13 @@ private:
     DocumentLineEnding saveLineEnding = DocumentLineEnding::None;
     ApyHighlighter *highlighter = nullptr;
     LineNumberArea *lineNumberArea = nullptr;
+    QListWidget *completionPopup = nullptr;
+    QTimer completionRequestTimer;
+    QTimer hoverRequestTimer;
     QVector<QTextCursor> secondaryCursors;
     QTextCursor altColumnDragAnchor;
+    QPoint pendingHoverViewportPosition;
+    QString lastHoverMarkdown;
 
     static QString unicodeName(QChar ch);
     void setCurrentFilePath(const QString &path);
@@ -104,8 +126,13 @@ private:
     bool selectFindMatch(int index);
     void updateLineNumberAreaWidth(int blockCount);
     void updateLineNumberArea(const QRect &rect, int dy);
+    void requestCompletionAtPrimaryCursor();
+    void scheduleCompletionRequest();
+    void requestHoverAtViewportPosition(const QPoint &position);
+    void insertSelectedCompletion();
     void contextMenuEvent(QContextMenuEvent *event) override;
     void mousePressEvent(QMouseEvent *event) override;
+    void mouseMoveEvent(QMouseEvent *event) override;
     void mouseReleaseEvent(QMouseEvent *event) override;
     void keyPressEvent(QKeyEvent *event) override;
     void inputMethodEvent(QInputMethodEvent *event) override;
