@@ -24,6 +24,22 @@ struct GitStatusEntry
     bool staged = false;
 };
 
+struct GitCommitSummary
+{
+    QString id;
+    QString shortId;
+    QString summary;
+    QString authorName;
+};
+
+struct GitBlameLine
+{
+    int lineNumber = 0;
+    QString commitId;
+    QString shortId;
+    QString summary;
+};
+
 class GitRepository final
 {
 public:
@@ -51,6 +67,9 @@ public:
     bool checkoutBranch(const QString &branchName, QString *error = nullptr);
     bool deleteBranch(const QString &branchName, QString *error = nullptr);
     bool mergeFastForward(const QString &branchName, QString *error = nullptr);
+    QVector<GitCommitSummary> commitHistory(int maxCount = 50, QString *error = nullptr) const;
+    QVector<GitBlameLine> blameFile(const QString &relativePath, QString *error = nullptr) const;
+    QString diffForCommit(const QString &commitId, QString *error = nullptr) const;
     bool hasChanges(QString *error = nullptr) const;
 
     static bool isRepository(const QString &path);

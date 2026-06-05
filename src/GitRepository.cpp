@@ -6,8 +6,24 @@
 #include <QFileInfo>
 
 #include <algorithm>
+#include <memory>
 
 namespace {
+struct GitDiffDeleter
+{
+    void operator()(git_diff *diff) const { git_diff_free(diff); }
+};
+
+struct GitTreeDeleter
+{
+    void operator()(git_tree *tree) const { git_tree_free(tree); }
+};
+
+struct GitCommitDeleter
+{
+    void operator()(git_commit *commit) const { git_commit_free(commit); }
+};
+
 QString normalizeRootPath(const char *path)
 {
     if (!path || !*path) {
@@ -59,6 +75,61 @@ QString deltaPath(const git_diff_delta *delta)
     }
     const char *path = delta->new_file.path ? delta->new_file.path : delta->old_file.path;
     return path ? QString::fromUtf8(path) : QString();
+}
+
+QString oidToString(const git_oid *oid, qsizetype length = GIT_OID_HEXSZ)
+{
+    if (!oid) {
+        return QString();
+    }
+
+    char buffer[GIT_OID_HEXSZ + 1] = {};
+    git_oid_tostr(buffer, sizeof(buffer), oid);
+    return QString::fromLatin1(buffer).left(length);
+}
+
+QString commitSummary(git_commit *commit)
+{
+    if (!commit) {
+        return QString();
+    }
+    const char *summary = git_commit_summary(commit);
+    return summary ? QString::fromUtf8(summary) : QString();
+}
+
+QString commitAuthorName(git_commit *commit)
+{
+    if (!commit) {
+        return QString();
+    }
+    const git_signature *author = git_commit_author(commit);
+    return author && author->name ? QString::fromUtf8(author->name) : QString();
+}
+
+QString commitSummaryForOid(git_repository *repository, const git_oid *oid)
+{
+    if (!repository || !oid) {
+        return QString();
+    }
+
+    git_commit *commit = nullptr;
+    if (git_commit_lookup(&commit, repository, oid) != 0) {
+        return QString();
+    }
+    const QString summary = commitSummary(commit);
+    git_commit_free(commit);
+    return summary;
+}
+
+int appendDiffLine(const git_diff_delta *, const git_diff_hunk *, const git_diff_line *line, void *payload)
+{
+    auto *text = static_cast<QByteArray *>(payload);
+    if (!text || !line || !line->content) {
+        return 0;
+    }
+    text->append(line->origin);
+    text->append(line->content, static_cast<qsizetype>(line->content_len));
+    return 0;
 }
 
 }
@@ -803,6 +874,183 @@ bool GitRepository::mergeFastForward(const QString &branchName, QString *error)
     git_object_free(targetCommit);
     git_reference_free(branch);
     return ok;
+}
+
+QVector<GitCommitSummary> GitRepository::commitHistory(int maxCount, QString *error) const
+{
+    if (error) {
+        error->clear();
+    }
+    QVector<GitCommitSummary> history;
+    if (!repository) {
+        if (error) {
+            *error = QStringLiteral("لا يوجد مستودع Git مفتوح.");
+        }
+        return history;
+    }
+    if (maxCount <= 0) {
+        return history;
+    }
+
+    git_revwalk *walk = nullptr;
+    if (git_revwalk_new(&walk, repository) != 0) {
+        if (error) {
+            *error = lastError(QStringLiteral("تعذر قراءة سجل Git."));
+        }
+        return history;
+    }
+    git_revwalk_sorting(walk, GIT_SORT_TIME | GIT_SORT_TOPOLOGICAL);
+    if (git_revwalk_push_head(walk) != 0) {
+        if (error) {
+            *error = lastError(QStringLiteral("تعذر قراءة HEAD لسجل Git."));
+        }
+        git_revwalk_free(walk);
+        return history;
+    }
+
+    git_oid oid;
+    while (history.size() < maxCount && git_revwalk_next(&oid, walk) == 0) {
+        git_commit *commit = nullptr;
+        if (git_commit_lookup(&commit, repository, &oid) != 0) {
+            continue;
+        }
+        history.push_back({
+            oidToString(&oid),
+            oidToString(&oid, 7),
+            commitSummary(commit),
+            commitAuthorName(commit),
+        });
+        git_commit_free(commit);
+    }
+
+    git_revwalk_free(walk);
+    return history;
+}
+
+QVector<GitBlameLine> GitRepository::blameFile(const QString &relativePath, QString *error) const
+{
+    if (error) {
+        error->clear();
+    }
+    QVector<GitBlameLine> blameLines;
+    if (!repository) {
+        if (error) {
+            *error = QStringLiteral("لا يوجد مستودع Git مفتوح.");
+        }
+        return blameLines;
+    }
+
+    git_blame_options options = GIT_BLAME_OPTIONS_INIT;
+    git_blame *blame = nullptr;
+    const QByteArray pathUtf8 = QDir::fromNativeSeparators(relativePath).toUtf8();
+    if (git_blame_file(&blame, repository, pathUtf8.constData(), &options) != 0) {
+        if (error) {
+            *error = lastError(QStringLiteral("تعذر قراءة نسب أسطر Git."));
+        }
+        return blameLines;
+    }
+
+    const quint32 hunkCount = git_blame_get_hunk_count(blame);
+    for (quint32 hunkIndex = 0; hunkIndex < hunkCount; ++hunkIndex) {
+        const git_blame_hunk *hunk = git_blame_get_hunk_byindex(blame, hunkIndex);
+        if (!hunk) {
+            continue;
+        }
+        const QString id = oidToString(&hunk->final_commit_id);
+        const QString shortId = oidToString(&hunk->final_commit_id, 7);
+        const QString summary = commitSummaryForOid(repository, &hunk->final_commit_id);
+        for (quint16 offset = 0; offset < hunk->lines_in_hunk; ++offset) {
+            blameLines.push_back({
+                static_cast<int>(hunk->final_start_line_number + offset),
+                id,
+                shortId,
+                summary,
+            });
+        }
+    }
+
+    git_blame_free(blame);
+    return blameLines;
+}
+
+QString GitRepository::diffForCommit(const QString &commitId, QString *error) const
+{
+    if (error) {
+        error->clear();
+    }
+    if (!repository) {
+        if (error) {
+            *error = QStringLiteral("لا يوجد مستودع Git مفتوح.");
+        }
+        return QString();
+    }
+
+    git_oid oid;
+    const QByteArray commitUtf8 = commitId.toUtf8();
+    if (git_oid_fromstrp(&oid, commitUtf8.constData()) != 0) {
+        if (error) {
+            *error = QString::fromUtf8("معرف الالتزام غير صالح.");
+        }
+        return QString();
+    }
+
+    git_commit *commitRaw = nullptr;
+    if (git_commit_lookup(&commitRaw, repository, &oid) != 0) {
+        if (error) {
+            *error = lastError(QStringLiteral("تعذر قراءة التزام Git."));
+        }
+        return QString();
+    }
+    std::unique_ptr<git_commit, GitCommitDeleter> commit(commitRaw);
+
+    git_tree *commitTreeRaw = nullptr;
+    if (git_commit_tree(&commitTreeRaw, commit.get()) != 0) {
+        if (error) {
+            *error = lastError(QStringLiteral("تعذر قراءة شجرة الالتزام."));
+        }
+        return QString();
+    }
+    std::unique_ptr<git_tree, GitTreeDeleter> commitTree(commitTreeRaw);
+
+    std::unique_ptr<git_tree, GitTreeDeleter> parentTree;
+    if (git_commit_parentcount(commit.get()) > 0) {
+        git_commit *parentCommitRaw = nullptr;
+        if (git_commit_parent(&parentCommitRaw, commit.get(), 0) != 0) {
+            if (error) {
+                *error = lastError(QStringLiteral("تعذر قراءة الالتزام السابق."));
+            }
+            return QString();
+        }
+        std::unique_ptr<git_commit, GitCommitDeleter> parentCommit(parentCommitRaw);
+        git_tree *parentTreeRaw = nullptr;
+        if (git_commit_tree(&parentTreeRaw, parentCommit.get()) != 0) {
+            if (error) {
+                *error = lastError(QStringLiteral("تعذر قراءة شجرة الالتزام السابق."));
+            }
+            return QString();
+        }
+        parentTree.reset(parentTreeRaw);
+    }
+
+    git_diff_options options = GIT_DIFF_OPTIONS_INIT;
+    git_diff *diffRaw = nullptr;
+    if (git_diff_tree_to_tree(&diffRaw, repository, parentTree.get(), commitTree.get(), &options) != 0) {
+        if (error) {
+            *error = lastError(QStringLiteral("تعذر قراءة فرق الالتزام."));
+        }
+        return QString();
+    }
+    std::unique_ptr<git_diff, GitDiffDeleter> diff(diffRaw);
+
+    QByteArray text;
+    if (git_diff_print(diff.get(), GIT_DIFF_FORMAT_PATCH, appendDiffLine, &text) != 0) {
+        if (error) {
+            *error = lastError(QStringLiteral("تعذر عرض فرق الالتزام."));
+        }
+        return QString();
+    }
+
+    return QString::fromUtf8(text);
 }
 
 bool GitRepository::hasChanges(QString *error) const

@@ -61,6 +61,7 @@ private slots:
     void gitCommitWorkflowStagesAndCommitsSelectedFile();
     void gitRemoteControlsAreAvailableInGitPanel();
     void gitBranchControlsListAndSwitchBranches();
+    void gitHistoryPanelShowsCommitsAndHistoricalDiffs();
     void debugInspectorPanelsExistInsideDebugTab();
     void debugInspectorRendersVariablesWatchAndCallStack();
     void enforcesRtlDirectionAcrossShellContainers();
@@ -861,6 +862,37 @@ void TestMainWindow::gitBranchControlsListAndSwitchBranches()
     switchButton->click();
 
     QCOMPARE(git->text(), QStringLiteral("Git: feature/git-ui"));
+}
+
+void TestMainWindow::gitHistoryPanelShowsCommitsAndHistoricalDiffs()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    QDir root(temp.path());
+    runGit(root, {QStringLiteral("init"), QStringLiteral("-b"), QStringLiteral("main")});
+    runGit(root, {QStringLiteral("config"), QStringLiteral("user.name"), QStringLiteral("Lisan Tester")});
+    runGit(root, {QStringLiteral("config"), QStringLiteral("user.email"), QStringLiteral("tester@example.invalid")});
+    writeFile(root, QStringLiteral("src/برنامج.apy"), QString::fromUtf8("اطبع(\"أول\")\n"));
+    runGit(root, {QStringLiteral("add"), QStringLiteral(".")});
+    runGit(root, {QStringLiteral("commit"), QStringLiteral("-m"), QStringLiteral("initial")});
+    writeFile(root, QStringLiteral("src/برنامج.apy"), QString::fromUtf8("اطبع(\"ثان\")\n"));
+    runGit(root, {QStringLiteral("add"), QStringLiteral(".")});
+    runGit(root, {QStringLiteral("commit"), QStringLiteral("-m"), QStringLiteral("second")});
+
+    MainWindow window;
+    QVERIFY(window.openPath(root.absolutePath()));
+
+    auto *historyPanel = window.findChild<QListWidget *>(QStringLiteral("gitHistoryPanel"));
+    auto *diffPanel = window.findChild<QPlainTextEdit *>(QStringLiteral("gitDiffPanel"));
+    QVERIFY(historyPanel != nullptr);
+    QVERIFY(diffPanel != nullptr);
+    QVERIFY(historyPanel->count() >= 2);
+    QVERIFY(historyPanel->item(0)->text().contains(QStringLiteral("second")));
+
+    historyPanel->setCurrentRow(0);
+
+    QVERIFY2(diffPanel->toPlainText().contains(QString::fromUtf8("+اطبع(\"ثان\")")),
+        qPrintable(diffPanel->toPlainText()));
 }
 
 void TestMainWindow::debugInspectorPanelsExistInsideDebugTab()

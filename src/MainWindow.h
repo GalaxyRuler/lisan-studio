@@ -149,6 +149,7 @@ private:
     QListWidget *outlinePanel = nullptr;
     QWidget *gitContainerPanel = nullptr;
     QListWidget *gitStatusPanel = nullptr;
+    QListWidget *gitHistoryPanel = nullptr;
     QPlainTextEdit *gitDiffPanel = nullptr;
     QPushButton *gitStageButton = nullptr;
     QPushButton *gitUnstageButton = nullptr;
@@ -273,6 +274,9 @@ private:
     void renderOutlineForTest(const QVector<LspSymbol> &symbols) { renderOutline(symbols); }
     void renderGitStatusPanel();
     void renderGitDiffForPath(const QString &relativePath);
+    void renderGitHistoryPanel();
+    void renderGitDiffForCommit(const QString &commitId);
+    void updateCurrentEditorBlame();
     QString selectedGitRelativePath() const;
     void refreshGitBranches();
     void openWorkspaceSymbolPicker(const QVector<LspSymbol> &symbols);

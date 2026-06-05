@@ -1205,6 +1205,12 @@ void MainWindow::buildUi()
     gitStatusPanel->setWordWrap(true);
     gitStatusPanel->setMaximumHeight(120);
     gitStatusPanel->setToolTip(QString::fromUtf8("ملفات Git المتغيرة. اختر ملفا لعرض الفرق."));
+    gitHistoryPanel = new QListWidget(gitContainerPanel);
+    gitHistoryPanel->setObjectName(QStringLiteral("gitHistoryPanel"));
+    gitHistoryPanel->setLayoutDirection(Qt::RightToLeft);
+    gitHistoryPanel->setWordWrap(true);
+    gitHistoryPanel->setMaximumHeight(120);
+    gitHistoryPanel->setToolTip(QString::fromUtf8("سجل Git. اختر التزاما لعرض فرقه التاريخي."));
     gitDiffPanel = new QPlainTextEdit(gitContainerPanel);
     gitDiffPanel->setObjectName(QStringLiteral("gitDiffPanel"));
     gitDiffPanel->setReadOnly(true);
@@ -1213,6 +1219,7 @@ void MainWindow::buildUi()
     gitLayout->addWidget(gitToolbar);
     gitLayout->addWidget(gitBranchToolbar);
     gitLayout->addWidget(gitStatusPanel);
+    gitLayout->addWidget(gitHistoryPanel);
     gitLayout->addWidget(gitDiffPanel, 1);
     connect(gitStageButton, &QPushButton::clicked, this, &MainWindow::stageSelectedGitFile);
     connect(gitUnstageButton, &QPushButton::clicked, this, &MainWindow::unstageSelectedGitFile);
@@ -1234,6 +1241,16 @@ void MainWindow::buildUi()
     connect(gitStatusPanel, &QListWidget::itemActivated, this, [this](QListWidgetItem *item) {
         if (item) {
             renderGitDiffForPath(item->data(Qt::UserRole).toString());
+        }
+    });
+    connect(gitHistoryPanel, &QListWidget::currentItemChanged, this, [this](QListWidgetItem *current) {
+        if (current) {
+            renderGitDiffForCommit(current->data(Qt::UserRole).toString());
+        }
+    });
+    connect(gitHistoryPanel, &QListWidget::itemActivated, this, [this](QListWidgetItem *item) {
+        if (item) {
+            renderGitDiffForCommit(item->data(Qt::UserRole).toString());
         }
     });
 
@@ -4494,6 +4511,8 @@ void MainWindow::updateStatusIndicators()
     statusGitLabel->setText(gitStatusText);
     refreshGitBranches();
     renderGitStatusPanel();
+    renderGitHistoryPanel();
+    updateCurrentEditorBlame();
 }
 
 void MainWindow::renderGitStatusPanel()
@@ -4569,6 +4588,82 @@ void MainWindow::renderGitDiffForPath(const QString &relativePath)
     QString error;
     const QString diff = gitRepository.diffForFile(relativePath, &error);
     gitDiffPanel->setPlainText(error.isEmpty() ? diff : error);
+}
+
+void MainWindow::renderGitHistoryPanel()
+{
+    if (!gitHistoryPanel) {
+        return;
+    }
+
+    QSignalBlocker blocker(gitHistoryPanel);
+    gitHistoryPanel->clear();
+    if (!gitRepository.isOpen()) {
+        return;
+    }
+
+    QString error;
+    const QVector<GitCommitSummary> history = gitRepository.commitHistory(30, &error);
+    if (!error.isEmpty()) {
+        return;
+    }
+    for (const GitCommitSummary &commit : history) {
+        const QString author = commit.authorName.isEmpty()
+            ? QString()
+            : QStringLiteral("  %1").arg(commit.authorName);
+        auto *item = new QListWidgetItem(QStringLiteral("%1  %2%3").arg(commit.shortId, commit.summary, author), gitHistoryPanel);
+        item->setData(Qt::UserRole, commit.id);
+        item->setToolTip(commit.id);
+    }
+    gitHistoryPanel->setCurrentRow(-1);
+}
+
+void MainWindow::renderGitDiffForCommit(const QString &commitId)
+{
+    if (!gitDiffPanel) {
+        return;
+    }
+    if (!gitRepository.isOpen() || commitId.isEmpty()) {
+        gitDiffPanel->clear();
+        return;
+    }
+
+    QString error;
+    const QString diff = gitRepository.diffForCommit(commitId, &error);
+    gitDiffPanel->setPlainText(error.isEmpty() ? diff : error);
+}
+
+void MainWindow::updateCurrentEditorBlame()
+{
+    if (!editor) {
+        return;
+    }
+    if (!gitRepository.isOpen() || projectRoot.isEmpty() || editor->currentFilePath().isEmpty()) {
+        editor->clearBlameAnnotations();
+        return;
+    }
+
+    const QString editorPath = QDir::cleanPath(QFileInfo(editor->currentFilePath()).absoluteFilePath());
+    const QString rootPath = QDir::cleanPath(QFileInfo(projectRoot).absoluteFilePath());
+    if (editorPath != rootPath && !editorPath.startsWith(rootPath + QLatin1Char('/'), Qt::CaseInsensitive)) {
+        editor->clearBlameAnnotations();
+        return;
+    }
+
+    QString error;
+    const QString relativePath = QDir(rootPath).relativeFilePath(editorPath);
+    const QVector<GitBlameLine> blameLines = gitRepository.blameFile(relativePath, &error);
+    if (!error.isEmpty()) {
+        editor->clearBlameAnnotations();
+        return;
+    }
+
+    QVector<EditorBlameAnnotation> annotations;
+    annotations.reserve(blameLines.size());
+    for (const GitBlameLine &line : blameLines) {
+        annotations.push_back({line.lineNumber, line.shortId, line.summary});
+    }
+    editor->setBlameAnnotations(annotations);
 }
 
 QString MainWindow::selectedGitRelativePath() const

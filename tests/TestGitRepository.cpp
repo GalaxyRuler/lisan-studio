@@ -23,6 +23,9 @@ private slots:
     void pullsFastForwardFromLocalBareRemote();
     void createsSwitchesAndDeletesLocalBranch();
     void fastForwardMergesLocalBranch();
+    void returnsCommitHistoryForCurrentBranch();
+    void returnsBlameLinesForUtf8File();
+    void returnsDiffForHistoricalCommit();
 };
 
 static void runGit(const QDir &root, const QStringList &arguments)
@@ -310,6 +313,70 @@ void TestGitRepository::fastForwardMergesLocalBranch()
     QCOMPARE(repository.currentBranch(), QStringLiteral("main"));
     QCOMPARE(runGitOutput(root, {QStringLiteral("log"), QStringLiteral("-1"), QStringLiteral("--format=%s")}), QStringLiteral("branch work"));
     QVERIFY(!repository.hasChanges(&error));
+}
+
+void TestGitRepository::returnsCommitHistoryForCurrentBranch()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    QDir root(temp.path());
+    createInitialCommit(root);
+    writeFile(root, QStringLiteral("src/برنامج.apy"), QString::fromUtf8("اطبع(\"ثان\")\n"));
+    runGit(root, {QStringLiteral("add"), QStringLiteral(".")});
+    runGit(root, {QStringLiteral("commit"), QStringLiteral("-m"), QStringLiteral("second")});
+
+    GitRepository repository;
+    QString error;
+    QVERIFY2(repository.open(root.absolutePath(), &error), qPrintable(error));
+
+    const QVector<GitCommitSummary> history = repository.commitHistory(10, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error));
+    QVERIFY(history.size() >= 2);
+    QCOMPARE(history.first().summary, QStringLiteral("second"));
+    QVERIFY(!history.first().shortId.isEmpty());
+}
+
+void TestGitRepository::returnsBlameLinesForUtf8File()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    QDir root(temp.path());
+    createInitialCommit(root);
+    writeFile(root, QStringLiteral("src/برنامج.apy"), QString::fromUtf8("اطبع(\"ثان\")\n"));
+    runGit(root, {QStringLiteral("add"), QStringLiteral(".")});
+    runGit(root, {QStringLiteral("commit"), QStringLiteral("-m"), QStringLiteral("second")});
+
+    GitRepository repository;
+    QString error;
+    QVERIFY2(repository.open(root.absolutePath(), &error), qPrintable(error));
+
+    const QVector<GitBlameLine> blame = repository.blameFile(QString::fromUtf8("src/برنامج.apy"), &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error));
+    QCOMPARE(blame.size(), 1);
+    QCOMPARE(blame.first().lineNumber, 1);
+    QCOMPARE(blame.first().summary, QStringLiteral("second"));
+}
+
+void TestGitRepository::returnsDiffForHistoricalCommit()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    QDir root(temp.path());
+    createInitialCommit(root);
+    writeFile(root, QStringLiteral("src/برنامج.apy"), QString::fromUtf8("اطبع(\"ثان\")\n"));
+    runGit(root, {QStringLiteral("add"), QStringLiteral(".")});
+    runGit(root, {QStringLiteral("commit"), QStringLiteral("-m"), QStringLiteral("second")});
+
+    GitRepository repository;
+    QString error;
+    QVERIFY2(repository.open(root.absolutePath(), &error), qPrintable(error));
+    const QVector<GitCommitSummary> history = repository.commitHistory(1, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error));
+    QCOMPARE(history.size(), 1);
+
+    const QString diff = repository.diffForCommit(history.first().id, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error));
+    QVERIFY2(diff.contains(QString::fromUtf8("+اطبع(\"ثان\")")), qPrintable(diff));
 }
 
 QTEST_MAIN(TestGitRepository)
