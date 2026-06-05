@@ -1,3 +1,43 @@
+# v0.3.2-beta (2026-06-05)
+
+Phase D V2 release: advanced LSP navigation and refactor surfaces.
+
+## Added
+
+- Go-to-definition via F12 and Ctrl+Click, backed by
+  `textDocument/definition`.
+- Find references via Shift+F12, rendered in the bottom-panel references
+  list with click/Enter navigation.
+- Rename symbol via F2, backed by `textDocument/rename` workspace edits.
+  Multi-file preview, dirty-open-file refusal, invalid-range validation,
+  and rollback-on-write-failure are covered by tests.
+- Semantic token overlay from `textDocument/semanticTokens/full` layered
+  over the existing ApyHighlighter fallback. LSP tokens win where the
+  server provides ranges.
+- Document outline from `textDocument/documentSymbol`, rendered in a new
+  bottom-panel outline tab.
+- Workspace symbol picker via Ctrl+T, backed by `workspace/symbol`.
+
+## Changed
+
+- The bottom-panel controller now includes a stable `outline` panel id for
+  workbench-session restore.
+- `acs_lsp_client_tests`, `acs_editor_tests`,
+  `acs_project_runtime_tests`, and `acs_main_window_tests` cover the new
+  D1-D3 LSP surfaces.
+- MSI workflow product-version and artifact paths now target
+  `LisanStudio-0.3.2-beta.msi`.
+
+## Known v0.3.2-beta limitations
+
+- Advanced LSP features remain dependent on the bundled apython LSP runtime
+  advertising the matching capabilities.
+- Workspace-symbol query uses a modal query + result picker; richer
+  incremental filtering can follow in a later UI polish slice.
+- Manual installed-app QA, GitHub Actions MSI runs, tag creation, release
+  publication, and Authenticode signing remain operator-owned public
+  distribution gates after this in-repo release prep.
+
 # v0.3.0-beta (2026-06-05)
 
 Phase C V2 release: first user-visible LSP foundation for Arabic-first
