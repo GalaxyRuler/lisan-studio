@@ -18,6 +18,8 @@ jobs:
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - name: Checkout apython runtime dependency
         uses: actions/checkout@v4
@@ -62,7 +64,7 @@ jobs:
       - name: Install MSI and assert HKLM uninstall state
         shell: powershell
         run: |
-          $msiPath = Join-Path $PWD 'artifacts\LisanStudio-0.2.1-beta.msi'
+          $msiPath = Join-Path $PWD 'artifacts\LisanStudio-0.2.2-beta.msi'
           .\scripts\msi-smoke.ps1 -MsiPath $msiPath
 
       - name: Upload evidence
@@ -71,7 +73,7 @@ jobs:
         with:
           name: msi-install-evidence-${{ github.run_id }}
           path: |
-            artifacts/LisanStudio-0.2.1-beta.msi
+            artifacts/LisanStudio-0.2.2-beta.msi
             artifacts/SIGNING_STATUS.txt
             artifacts/msi-smoke/**
 
@@ -81,6 +83,8 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - name: Checkout apython runtime dependency
         uses: actions/checkout@v4
@@ -129,7 +133,7 @@ jobs:
         run: |
           .\scripts\build.ps1
           .\scripts\package.ps1 `
-            -ProductVersion 0.2.1 `
+            -ProductVersion 0.2.2 `
             -BuildId $env:GITHUB_SHA `
             -ApythonRoot "${{ github.workspace }}\apython-src" `
             -PythonRoot "C:\Users\codexqa\AppData\Local\Programs\Python\Python313"

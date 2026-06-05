@@ -22,6 +22,18 @@ instructions, see:
 docs\INSTALLATION.md
 ```
 
+Clone with submodules before building:
+
+```powershell
+git clone --recurse-submodules https://github.com/GalaxyRuler/lisan-studio
+```
+
+For an existing checkout:
+
+```powershell
+git submodule update --init --recursive
+```
+
 Run from PowerShell:
 
 ```powershell
@@ -43,8 +55,16 @@ C:\msys64\ucrt64
 The current gate builds the Qt app and runs:
 
 - `acs_editor_tests`
+- `acs_editor_tabs_controller_tests`
+- `acs_project_tree_controller_tests`
+- `acs_command_registry_tests`
+- `acs_workbench_state_tests`
 - `acs_project_runtime_tests`
+- `acs_runtime_orchestrator_tests`
 - `acs_main_window_tests`
+- `acs_editor_torture_tests`
+- `acs_untitled_draft_recovery_tests`
+- `acs_lsp_client_tests`
 
 ### MSI install + upgrade testing
 
