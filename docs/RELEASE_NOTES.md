@@ -1,3 +1,32 @@
+# v0.2.1-beta (2026-06-05)
+
+Phase A V2 release: multi-cursor editing now covers the deferred
+undo/redo, indentation, and committed IME text paths.
+
+## Added
+
+- Ctrl+Z and Ctrl+Y are pinned by regression tests for multi-cursor
+  edits. A single undo removes text inserted at all cursors, and a
+  single redo restores it.
+- Tab indents every active cursor line by one four-space level.
+  Shift+Tab dedents every active cursor line by one level. Each
+  operation is one undo step.
+- Committed IME text, including Arabic composition commits, inserts at
+  the primary cursor and every secondary cursor in one undoable edit.
+
+## Known v0.2.1-beta limitations
+
+- Live IME preedit text is accepted but is not painted as a separate
+  preview at every secondary caret. The committed text is dispatched to
+  all cursors when the composition is finalized.
+- Alt+drag column selection still has no live preview rectangle during
+  drag and still operates on logical lines rather than soft-wrapped
+  visual rows.
+- Other non-trivial editor commands outside Ctrl+Z, Ctrl+Y, Tab,
+  Shift+Tab, Return, Backspace, Delete, arrow movement, typing, and
+  committed IME text may still apply only to the primary cursor while
+  secondaries are active.
+
 # v0.2.0-beta (2026-05-26)
 
 V1.5 milestone-close release. The V1.5 roadmap is archived at
