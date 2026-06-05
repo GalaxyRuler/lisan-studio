@@ -21,6 +21,8 @@ private slots:
     void pushesCurrentBranchToLocalBareRemote();
     void fetchesRemoteTrackingBranchFromLocalBareRemote();
     void pullsFastForwardFromLocalBareRemote();
+    void createsSwitchesAndDeletesLocalBranch();
+    void fastForwardMergesLocalBranch();
 };
 
 static void runGit(const QDir &root, const QStringList &arguments)
@@ -262,6 +264,51 @@ void TestGitRepository::pullsFastForwardFromLocalBareRemote()
     QVERIFY2(repository.pullFastForward(QStringLiteral("origin"), &error), qPrintable(error));
 
     QCOMPARE(runGitOutput(local, {QStringLiteral("log"), QStringLiteral("-1"), QStringLiteral("--format=%s")}), QStringLiteral("second"));
+    QVERIFY(!repository.hasChanges(&error));
+}
+
+void TestGitRepository::createsSwitchesAndDeletesLocalBranch()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    QDir root(temp.path());
+    createInitialCommit(root);
+
+    GitRepository repository;
+    QString error;
+    QVERIFY2(repository.open(root.absolutePath(), &error), qPrintable(error));
+    QVERIFY2(repository.createBranch(QStringLiteral("feature/git-ui"), &error), qPrintable(error));
+    QVERIFY(repository.localBranches().contains(QStringLiteral("feature/git-ui")));
+
+    QVERIFY2(repository.checkoutBranch(QStringLiteral("feature/git-ui"), &error), qPrintable(error));
+    QCOMPARE(repository.currentBranch(), QStringLiteral("feature/git-ui"));
+
+    QVERIFY2(repository.checkoutBranch(QStringLiteral("main"), &error), qPrintable(error));
+    QVERIFY2(repository.deleteBranch(QStringLiteral("feature/git-ui"), &error), qPrintable(error));
+    QVERIFY(!repository.localBranches().contains(QStringLiteral("feature/git-ui")));
+}
+
+void TestGitRepository::fastForwardMergesLocalBranch()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    QDir root(temp.path());
+    createInitialCommit(root);
+
+    GitRepository repository;
+    QString error;
+    QVERIFY2(repository.open(root.absolutePath(), &error), qPrintable(error));
+    QVERIFY2(repository.createBranch(QStringLiteral("feature/git-ui"), &error), qPrintable(error));
+    QVERIFY2(repository.checkoutBranch(QStringLiteral("feature/git-ui"), &error), qPrintable(error));
+    writeFile(root, QStringLiteral("src/برنامج.apy"), QString::fromUtf8("اطبع(\"فرع\")\n"));
+    QVERIFY2(repository.stageFile(QString::fromUtf8("src/برنامج.apy"), &error), qPrintable(error));
+    QVERIFY2(repository.commitStaged(QStringLiteral("branch work"), &error), qPrintable(error));
+
+    QVERIFY2(repository.checkoutBranch(QStringLiteral("main"), &error), qPrintable(error));
+    QVERIFY2(repository.mergeFastForward(QStringLiteral("feature/git-ui"), &error), qPrintable(error));
+
+    QCOMPARE(repository.currentBranch(), QStringLiteral("main"));
+    QCOMPARE(runGitOutput(root, {QStringLiteral("log"), QStringLiteral("-1"), QStringLiteral("--format=%s")}), QStringLiteral("branch work"));
     QVERIFY(!repository.hasChanges(&error));
 }
 

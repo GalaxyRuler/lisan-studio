@@ -60,6 +60,7 @@ private slots:
     void gitStatusPanelListsDirtyFilesAndShowsDiff();
     void gitCommitWorkflowStagesAndCommitsSelectedFile();
     void gitRemoteControlsAreAvailableInGitPanel();
+    void gitBranchControlsListAndSwitchBranches();
     void debugInspectorPanelsExistInsideDebugTab();
     void debugInspectorRendersVariablesWatchAndCallStack();
     void enforcesRtlDirectionAcrossShellContainers();
@@ -829,6 +830,37 @@ void TestMainWindow::gitRemoteControlsAreAvailableInGitPanel()
     QVERIFY(window.findChild<QPushButton *>(QStringLiteral("gitFetchButton")) != nullptr);
     QVERIFY(window.findChild<QPushButton *>(QStringLiteral("gitPullButton")) != nullptr);
     QVERIFY(window.findChild<QPushButton *>(QStringLiteral("gitPushButton")) != nullptr);
+}
+
+void TestMainWindow::gitBranchControlsListAndSwitchBranches()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    QDir root(temp.path());
+    runGit(root, {QStringLiteral("init"), QStringLiteral("-b"), QStringLiteral("main")});
+    runGit(root, {QStringLiteral("config"), QStringLiteral("user.name"), QStringLiteral("Lisan Tester")});
+    runGit(root, {QStringLiteral("config"), QStringLiteral("user.email"), QStringLiteral("tester@example.invalid")});
+    writeFile(root, QStringLiteral("src/برنامج.apy"), QString::fromUtf8("اطبع(\"أول\")\n"));
+    runGit(root, {QStringLiteral("add"), QStringLiteral(".")});
+    runGit(root, {QStringLiteral("commit"), QStringLiteral("-m"), QStringLiteral("initial")});
+    runGit(root, {QStringLiteral("branch"), QStringLiteral("feature/git-ui")});
+
+    MainWindow window;
+    QVERIFY(window.openPath(root.absolutePath()));
+
+    auto *branchPicker = window.findChild<QComboBox *>(QStringLiteral("gitBranchPicker"));
+    auto *switchButton = window.findChild<QPushButton *>(QStringLiteral("gitSwitchBranchButton"));
+    auto *git = window.findChild<QLabel *>(QStringLiteral("statusGitLabel"));
+    QVERIFY(branchPicker != nullptr);
+    QVERIFY(switchButton != nullptr);
+    QVERIFY(git != nullptr);
+    QVERIFY(branchPicker->findText(QStringLiteral("main")) >= 0);
+    QVERIFY(branchPicker->findText(QStringLiteral("feature/git-ui")) >= 0);
+
+    branchPicker->setCurrentText(QStringLiteral("feature/git-ui"));
+    switchButton->click();
+
+    QCOMPARE(git->text(), QStringLiteral("Git: feature/git-ui"));
 }
 
 void TestMainWindow::debugInspectorPanelsExistInsideDebugTab()

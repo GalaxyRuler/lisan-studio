@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QString>
+#include <QStringList>
 #include <QVector>
 
 struct git_repository;
@@ -45,6 +46,11 @@ public:
     bool fetchRemote(const QString &remoteName = QStringLiteral("origin"), QString *error = nullptr);
     bool pushCurrentBranch(const QString &remoteName = QStringLiteral("origin"), QString *error = nullptr);
     bool pullFastForward(const QString &remoteName = QStringLiteral("origin"), QString *error = nullptr);
+    QStringList localBranches(QString *error = nullptr) const;
+    bool createBranch(const QString &branchName, QString *error = nullptr);
+    bool checkoutBranch(const QString &branchName, QString *error = nullptr);
+    bool deleteBranch(const QString &branchName, QString *error = nullptr);
+    bool mergeFastForward(const QString &branchName, QString *error = nullptr);
     bool hasChanges(QString *error = nullptr) const;
 
     static bool isRepository(const QString &path);

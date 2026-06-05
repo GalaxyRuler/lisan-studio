@@ -116,6 +116,10 @@ private slots:
     void fetchGitRemote();
     void pullGitRemote();
     void pushGitRemote();
+    void switchSelectedGitBranch();
+    void createGitBranch();
+    void mergeSelectedGitBranch();
+    void deleteSelectedGitBranch();
 
 private:
     EditorSurface *editor = nullptr;
@@ -153,6 +157,12 @@ private:
     QPushButton *gitFetchButton = nullptr;
     QPushButton *gitPullButton = nullptr;
     QPushButton *gitPushButton = nullptr;
+    QComboBox *gitBranchPicker = nullptr;
+    QLineEdit *gitBranchNameInput = nullptr;
+    QPushButton *gitSwitchBranchButton = nullptr;
+    QPushButton *gitCreateBranchButton = nullptr;
+    QPushButton *gitMergeBranchButton = nullptr;
+    QPushButton *gitDeleteBranchButton = nullptr;
     QPlainTextEdit *debugPanel = nullptr;
     QWidget *debugContainerPanel = nullptr;
     QListWidget *debugVariablesPanel = nullptr;
@@ -264,6 +274,7 @@ private:
     void renderGitStatusPanel();
     void renderGitDiffForPath(const QString &relativePath);
     QString selectedGitRelativePath() const;
+    void refreshGitBranches();
     void openWorkspaceSymbolPicker(const QVector<LspSymbol> &symbols);
     void openWorkspaceSymbolPickerForTest(const QVector<LspSymbol> &symbols) { openWorkspaceSymbolPicker(symbols); }
     void renderRenamePreview(const LspWorkspaceEdit &edit);

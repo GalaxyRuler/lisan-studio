@@ -1174,6 +1174,31 @@ void MainWindow::buildUi()
     gitToolbarLayout->addWidget(gitFetchButton);
     gitToolbarLayout->addWidget(gitPullButton);
     gitToolbarLayout->addWidget(gitPushButton);
+    auto *gitBranchToolbar = new QWidget(gitContainerPanel);
+    gitBranchToolbar->setObjectName(QStringLiteral("gitBranchToolbar"));
+    auto *gitBranchToolbarLayout = new QHBoxLayout(gitBranchToolbar);
+    gitBranchToolbarLayout->setContentsMargins(0, 0, 0, 0);
+    gitBranchToolbarLayout->setSpacing(6);
+    gitBranchPicker = new QComboBox(gitBranchToolbar);
+    gitBranchPicker->setObjectName(QStringLiteral("gitBranchPicker"));
+    gitBranchPicker->setMinimumWidth(160);
+    gitSwitchBranchButton = new QPushButton(QString::fromUtf8("تبديل"), gitBranchToolbar);
+    gitSwitchBranchButton->setObjectName(QStringLiteral("gitSwitchBranchButton"));
+    gitBranchNameInput = new QLineEdit(gitBranchToolbar);
+    gitBranchNameInput->setObjectName(QStringLiteral("gitBranchNameInput"));
+    gitBranchNameInput->setPlaceholderText(QString::fromUtf8("فرع جديد"));
+    gitCreateBranchButton = new QPushButton(QString::fromUtf8("إنشاء"), gitBranchToolbar);
+    gitCreateBranchButton->setObjectName(QStringLiteral("gitCreateBranchButton"));
+    gitMergeBranchButton = new QPushButton(QString::fromUtf8("دمج سريع"), gitBranchToolbar);
+    gitMergeBranchButton->setObjectName(QStringLiteral("gitMergeBranchButton"));
+    gitDeleteBranchButton = new QPushButton(QString::fromUtf8("حذف"), gitBranchToolbar);
+    gitDeleteBranchButton->setObjectName(QStringLiteral("gitDeleteBranchButton"));
+    gitBranchToolbarLayout->addWidget(gitBranchPicker);
+    gitBranchToolbarLayout->addWidget(gitSwitchBranchButton);
+    gitBranchToolbarLayout->addWidget(gitBranchNameInput, 1);
+    gitBranchToolbarLayout->addWidget(gitCreateBranchButton);
+    gitBranchToolbarLayout->addWidget(gitMergeBranchButton);
+    gitBranchToolbarLayout->addWidget(gitDeleteBranchButton);
     gitStatusPanel = new QListWidget(gitContainerPanel);
     gitStatusPanel->setObjectName(QStringLiteral("gitStatusPanel"));
     gitStatusPanel->setLayoutDirection(Qt::RightToLeft);
@@ -1186,6 +1211,7 @@ void MainWindow::buildUi()
     gitDiffPanel->setLayoutDirection(Qt::LeftToRight);
     gitDiffPanel->setToolTip(QString::fromUtf8("فرق Git الموحد للملف المحدد."));
     gitLayout->addWidget(gitToolbar);
+    gitLayout->addWidget(gitBranchToolbar);
     gitLayout->addWidget(gitStatusPanel);
     gitLayout->addWidget(gitDiffPanel, 1);
     connect(gitStageButton, &QPushButton::clicked, this, &MainWindow::stageSelectedGitFile);
@@ -1195,6 +1221,11 @@ void MainWindow::buildUi()
     connect(gitFetchButton, &QPushButton::clicked, this, &MainWindow::fetchGitRemote);
     connect(gitPullButton, &QPushButton::clicked, this, &MainWindow::pullGitRemote);
     connect(gitPushButton, &QPushButton::clicked, this, &MainWindow::pushGitRemote);
+    connect(gitSwitchBranchButton, &QPushButton::clicked, this, &MainWindow::switchSelectedGitBranch);
+    connect(gitCreateBranchButton, &QPushButton::clicked, this, &MainWindow::createGitBranch);
+    connect(gitMergeBranchButton, &QPushButton::clicked, this, &MainWindow::mergeSelectedGitBranch);
+    connect(gitDeleteBranchButton, &QPushButton::clicked, this, &MainWindow::deleteSelectedGitBranch);
+    connect(gitBranchNameInput, &QLineEdit::returnPressed, this, &MainWindow::createGitBranch);
     connect(gitStatusPanel, &QListWidget::itemClicked, this, [this](QListWidgetItem *item) {
         if (item) {
             renderGitDiffForPath(item->data(Qt::UserRole).toString());
@@ -4461,6 +4492,7 @@ void MainWindow::updateStatusIndicators()
         }
     }
     statusGitLabel->setText(gitStatusText);
+    refreshGitBranches();
     renderGitStatusPanel();
 }
 
@@ -4549,6 +4581,36 @@ QString MainWindow::selectedGitRelativePath() const
         item = gitStatusPanel->item(0);
     }
     return item ? item->data(Qt::UserRole).toString() : QString();
+}
+
+void MainWindow::refreshGitBranches()
+{
+    if (!gitBranchPicker) {
+        return;
+    }
+    QSignalBlocker blocker(gitBranchPicker);
+    const QString selected = gitBranchPicker->currentText();
+    gitBranchPicker->clear();
+    if (!gitRepository.isOpen()) {
+        return;
+    }
+
+    QString error;
+    const QStringList branches = gitRepository.localBranches(&error);
+    if (!error.isEmpty()) {
+        return;
+    }
+    gitBranchPicker->addItems(branches);
+    const QString branch = gitRepository.currentBranch();
+    const int branchIndex = gitBranchPicker->findText(branch);
+    if (branchIndex >= 0) {
+        gitBranchPicker->setCurrentIndex(branchIndex);
+    } else if (!selected.isEmpty()) {
+        const int selectedIndex = gitBranchPicker->findText(selected);
+        if (selectedIndex >= 0) {
+            gitBranchPicker->setCurrentIndex(selectedIndex);
+        }
+    }
 }
 
 void MainWindow::stageSelectedGitFile()
@@ -4648,6 +4710,67 @@ void MainWindow::pushGitRemote()
     }
     updateStatusIndicators();
     setStatus(QString::fromUtf8("تم دفع تغييرات Git"));
+}
+
+void MainWindow::switchSelectedGitBranch()
+{
+    if (!gitRepository.isOpen() || !gitBranchPicker) {
+        setStatus(QString::fromUtf8("لا يوجد مستودع Git مفتوح"));
+        return;
+    }
+    QString error;
+    if (!gitRepository.checkoutBranch(gitBranchPicker->currentText(), &error)) {
+        setStatus(error);
+        return;
+    }
+    updateStatusIndicators();
+    setStatus(QString::fromUtf8("تم تبديل الفرع"));
+}
+
+void MainWindow::createGitBranch()
+{
+    if (!gitRepository.isOpen() || !gitBranchNameInput) {
+        setStatus(QString::fromUtf8("لا يوجد مستودع Git مفتوح"));
+        return;
+    }
+    QString error;
+    if (!gitRepository.createBranch(gitBranchNameInput->text(), &error)) {
+        setStatus(error);
+        return;
+    }
+    gitBranchNameInput->clear();
+    updateStatusIndicators();
+    setStatus(QString::fromUtf8("تم إنشاء الفرع"));
+}
+
+void MainWindow::mergeSelectedGitBranch()
+{
+    if (!gitRepository.isOpen() || !gitBranchPicker) {
+        setStatus(QString::fromUtf8("لا يوجد مستودع Git مفتوح"));
+        return;
+    }
+    QString error;
+    if (!gitRepository.mergeFastForward(gitBranchPicker->currentText(), &error)) {
+        setStatus(error);
+        return;
+    }
+    updateStatusIndicators();
+    setStatus(QString::fromUtf8("تم الدمج السريع"));
+}
+
+void MainWindow::deleteSelectedGitBranch()
+{
+    if (!gitRepository.isOpen() || !gitBranchPicker) {
+        setStatus(QString::fromUtf8("لا يوجد مستودع Git مفتوح"));
+        return;
+    }
+    QString error;
+    if (!gitRepository.deleteBranch(gitBranchPicker->currentText(), &error)) {
+        setStatus(error);
+        return;
+    }
+    updateStatusIndicators();
+    setStatus(QString::fromUtf8("تم حذف الفرع"));
 }
 
 void MainWindow::writeOutput(const QString &title, const QString &text)

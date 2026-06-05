@@ -579,6 +579,232 @@ bool GitRepository::pullFastForward(const QString &remoteName, QString *error)
     return reset;
 }
 
+QStringList GitRepository::localBranches(QString *error) const
+{
+    if (error) {
+        error->clear();
+    }
+    QStringList branches;
+    if (!repository) {
+        if (error) {
+            *error = QStringLiteral("لا يوجد مستودع Git مفتوح.");
+        }
+        return branches;
+    }
+
+    git_branch_iterator *iterator = nullptr;
+    if (git_branch_iterator_new(&iterator, repository, GIT_BRANCH_LOCAL) != 0) {
+        if (error) {
+            *error = lastError(QStringLiteral("تعذر قراءة فروع Git."));
+        }
+        return branches;
+    }
+
+    git_reference *reference = nullptr;
+    git_branch_t type = GIT_BRANCH_LOCAL;
+    while (git_branch_next(&reference, &type, iterator) == 0) {
+        const char *name = nullptr;
+        if (git_branch_name(&name, reference) == 0 && name) {
+            branches.append(QString::fromUtf8(name));
+        }
+        git_reference_free(reference);
+        reference = nullptr;
+    }
+    git_branch_iterator_free(iterator);
+    branches.sort(Qt::CaseInsensitive);
+    return branches;
+}
+
+bool GitRepository::createBranch(const QString &branchName, QString *error)
+{
+    if (error) {
+        error->clear();
+    }
+    if (!repository) {
+        if (error) {
+            *error = QStringLiteral("لا يوجد مستودع Git مفتوح.");
+        }
+        return false;
+    }
+    const QString trimmed = branchName.trimmed();
+    if (trimmed.isEmpty()) {
+        if (error) {
+            *error = QString::fromUtf8("اسم الفرع مطلوب.");
+        }
+        return false;
+    }
+
+    git_reference *head = nullptr;
+    git_commit *headCommit = nullptr;
+    if (git_repository_head(&head, repository) != 0
+        || !git_reference_target(head)
+        || git_commit_lookup(&headCommit, repository, git_reference_target(head)) != 0) {
+        if (error) {
+            *error = lastError(QStringLiteral("تعذر قراءة HEAD لإنشاء الفرع."));
+        }
+        if (head) {
+            git_reference_free(head);
+        }
+        return false;
+    }
+
+    git_reference *created = nullptr;
+    const QByteArray nameUtf8 = trimmed.toUtf8();
+    const bool ok = git_branch_create(&created, repository, nameUtf8.constData(), headCommit, 0) == 0;
+    if (!ok && error) {
+        *error = lastError(QStringLiteral("تعذر إنشاء فرع Git."));
+    }
+    if (created) {
+        git_reference_free(created);
+    }
+    git_commit_free(headCommit);
+    git_reference_free(head);
+    return ok;
+}
+
+bool GitRepository::checkoutBranch(const QString &branchName, QString *error)
+{
+    if (error) {
+        error->clear();
+    }
+    if (!repository) {
+        if (error) {
+            *error = QStringLiteral("لا يوجد مستودع Git مفتوح.");
+        }
+        return false;
+    }
+    QString statusError;
+    if (!statusEntries(&statusError).isEmpty()) {
+        if (error) {
+            *error = QString::fromUtf8("احفظ أو التزم بتغييراتك المحلية قبل تبديل الفرع.");
+        }
+        return false;
+    }
+
+    git_reference *branch = nullptr;
+    const QByteArray branchUtf8 = branchName.toUtf8();
+    if (git_branch_lookup(&branch, repository, branchUtf8.constData(), GIT_BRANCH_LOCAL) != 0) {
+        if (error) {
+            *error = lastError(QStringLiteral("تعذر العثور على فرع Git."));
+        }
+        return false;
+    }
+
+    git_checkout_options options = GIT_CHECKOUT_OPTIONS_INIT;
+    options.checkout_strategy = GIT_CHECKOUT_FORCE;
+    const bool ok = git_repository_set_head(repository, git_reference_name(branch)) == 0
+        && git_checkout_head(repository, &options) == 0;
+    if (!ok && error) {
+        *error = lastError(QStringLiteral("تعذر تبديل فرع Git."));
+    }
+    git_reference_free(branch);
+    return ok;
+}
+
+bool GitRepository::deleteBranch(const QString &branchName, QString *error)
+{
+    if (error) {
+        error->clear();
+    }
+    if (!repository) {
+        if (error) {
+            *error = QStringLiteral("لا يوجد مستودع Git مفتوح.");
+        }
+        return false;
+    }
+
+    git_reference *branch = nullptr;
+    const QByteArray branchUtf8 = branchName.toUtf8();
+    if (git_branch_lookup(&branch, repository, branchUtf8.constData(), GIT_BRANCH_LOCAL) != 0) {
+        if (error) {
+            *error = lastError(QStringLiteral("تعذر العثور على فرع Git."));
+        }
+        return false;
+    }
+
+    const bool ok = git_branch_delete(branch) == 0;
+    if (!ok && error) {
+        *error = lastError(QStringLiteral("تعذر حذف فرع Git."));
+    }
+    git_reference_free(branch);
+    return ok;
+}
+
+bool GitRepository::mergeFastForward(const QString &branchName, QString *error)
+{
+    if (error) {
+        error->clear();
+    }
+    if (!repository) {
+        if (error) {
+            *error = QStringLiteral("لا يوجد مستودع Git مفتوح.");
+        }
+        return false;
+    }
+    QString statusError;
+    if (!statusEntries(&statusError).isEmpty()) {
+        if (error) {
+            *error = QString::fromUtf8("احفظ أو التزم بتغييراتك المحلية قبل الدمج.");
+        }
+        return false;
+    }
+
+    git_reference *branch = nullptr;
+    const QByteArray branchUtf8 = branchName.toUtf8();
+    if (git_branch_lookup(&branch, repository, branchUtf8.constData(), GIT_BRANCH_LOCAL) != 0) {
+        if (error) {
+            *error = lastError(QStringLiteral("تعذر العثور على فرع Git."));
+        }
+        return false;
+    }
+
+    const git_oid *targetOid = git_reference_target(branch);
+    git_object *targetCommit = nullptr;
+    if (!targetOid || git_object_lookup(&targetCommit, repository, targetOid, GIT_OBJECT_COMMIT) != 0) {
+        if (error) {
+            *error = lastError(QStringLiteral("تعذر قراءة التزام الفرع."));
+        }
+        git_reference_free(branch);
+        return false;
+    }
+
+    git_annotated_commit *annotated = nullptr;
+    if (git_annotated_commit_from_ref(&annotated, repository, branch) != 0) {
+        if (error) {
+            *error = lastError(QStringLiteral("تعذر تحليل دمج الفرع."));
+        }
+        git_object_free(targetCommit);
+        git_reference_free(branch);
+        return false;
+    }
+
+    const git_annotated_commit *heads[] = {annotated};
+    git_merge_analysis_t analysis = GIT_MERGE_ANALYSIS_NONE;
+    git_merge_preference_t preference = GIT_MERGE_PREFERENCE_NONE;
+    if (git_merge_analysis(&analysis, &preference, repository, heads, 1) != 0
+        || !(analysis & (GIT_MERGE_ANALYSIS_FASTFORWARD | GIT_MERGE_ANALYSIS_UP_TO_DATE))) {
+        if (error) {
+            *error = QString::fromUtf8("الدمج يتطلب دمجا غير سريع أو حل تعارض.");
+        }
+        git_annotated_commit_free(annotated);
+        git_object_free(targetCommit);
+        git_reference_free(branch);
+        return false;
+    }
+
+    git_checkout_options checkoutOptions = GIT_CHECKOUT_OPTIONS_INIT;
+    checkoutOptions.checkout_strategy = GIT_CHECKOUT_FORCE;
+    const bool ok = (analysis & GIT_MERGE_ANALYSIS_UP_TO_DATE)
+        || git_reset(repository, targetCommit, GIT_RESET_HARD, &checkoutOptions) == 0;
+    if (!ok && error) {
+        *error = lastError(QStringLiteral("تعذر إكمال الدمج السريع."));
+    }
+    git_annotated_commit_free(annotated);
+    git_object_free(targetCommit);
+    git_reference_free(branch);
+    return ok;
+}
+
 bool GitRepository::hasChanges(QString *error) const
 {
     return !statusEntries(error).isEmpty();
