@@ -58,6 +58,7 @@ private slots:
     void exposesLisanLogoAssetInShell();
     void exposesPremiumFutureBottomPanelTabs();
     void gitStatusPanelListsDirtyFilesAndShowsDiff();
+    void gitCommitWorkflowStagesAndCommitsSelectedFile();
     void debugInspectorPanelsExistInsideDebugTab();
     void debugInspectorRendersVariablesWatchAndCallStack();
     void enforcesRtlDirectionAcrossShellContainers();
@@ -164,8 +165,26 @@ static void runGit(const QDir &root, const QStringList &arguments)
     QProcess git;
     git.setWorkingDirectory(root.absolutePath());
     git.start(QStringLiteral("git"), arguments);
-    QVERIFY2(git.waitForFinished(10000), qPrintable(QStringLiteral("git timed out: %1").arg(arguments.join(QLatin1Char(' ')))));
-    QCOMPARE(git.exitCode(), 0);
+    if (!git.waitForFinished(10000)) {
+        qFatal("git command timed out");
+    }
+    if (git.exitCode() != 0) {
+        qFatal("git command failed");
+    }
+}
+
+static QString runGitOutput(const QDir &root, const QStringList &arguments)
+{
+    QProcess git;
+    git.setWorkingDirectory(root.absolutePath());
+    git.start(QStringLiteral("git"), arguments);
+    if (!git.waitForFinished(10000)) {
+        qFatal("git command timed out");
+    }
+    if (git.exitCode() != 0) {
+        qFatal("git command failed");
+    }
+    return QString::fromUtf8(git.readAllStandardOutput()).trimmed();
 }
 
 static QString trustAuditPath(const QString &projectRoot)
@@ -759,6 +778,47 @@ void TestMainWindow::gitStatusPanelListsDirtyFilesAndShowsDiff()
 
     QVERIFY(window.openPath(filePath));
     QVERIFY(diffPanel->toPlainText().contains(QString::fromUtf8("-اطبع(\"أول\")")));
+}
+
+void TestMainWindow::gitCommitWorkflowStagesAndCommitsSelectedFile()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    QDir root(temp.path());
+    runGit(root, {QStringLiteral("init"), QStringLiteral("-b"), QStringLiteral("main")});
+    runGit(root, {QStringLiteral("config"), QStringLiteral("user.name"), QStringLiteral("Lisan Tester")});
+    runGit(root, {QStringLiteral("config"), QStringLiteral("user.email"), QStringLiteral("tester@example.invalid")});
+    writeFile(root, QStringLiteral("src/برنامج.apy"), QString::fromUtf8("اطبع(\"أول\")\n"));
+    runGit(root, {QStringLiteral("add"), QStringLiteral(".")});
+    runGit(root, {QStringLiteral("commit"), QStringLiteral("-m"), QStringLiteral("initial")});
+    writeFile(root, QStringLiteral("src/برنامج.apy"), QString::fromUtf8("اطبع(\"تعديل\")\n"));
+
+    MainWindow window;
+    QVERIFY(window.openPath(root.absolutePath()));
+
+    auto *statusPanel = window.findChild<QListWidget *>(QStringLiteral("gitStatusPanel"));
+    auto *stageButton = window.findChild<QPushButton *>(QStringLiteral("gitStageButton"));
+    auto *messageInput = window.findChild<QLineEdit *>(QStringLiteral("gitCommitMessageInput"));
+    auto *commitButton = window.findChild<QPushButton *>(QStringLiteral("gitCommitButton"));
+    auto *git = window.findChild<QLabel *>(QStringLiteral("statusGitLabel"));
+    QVERIFY(statusPanel != nullptr);
+    QVERIFY(stageButton != nullptr);
+    QVERIFY(messageInput != nullptr);
+    QVERIFY(commitButton != nullptr);
+    QVERIFY(git != nullptr);
+    QCOMPARE(statusPanel->count(), 1);
+
+    statusPanel->setCurrentRow(0);
+    stageButton->click();
+    QCOMPARE(statusPanel->count(), 1);
+    QVERIFY(statusPanel->item(0)->text().startsWith(QStringLiteral("+M")));
+
+    messageInput->setText(QString::fromUtf8("تعديل من الواجهة"));
+    commitButton->click();
+
+    QCOMPARE(statusPanel->count(), 0);
+    QCOMPARE(git->text(), QStringLiteral("Git: main"));
+    QCOMPARE(runGitOutput(root, {QStringLiteral("log"), QStringLiteral("-1"), QStringLiteral("--format=%s")}), QString::fromUtf8("تعديل من الواجهة"));
 }
 
 void TestMainWindow::debugInspectorPanelsExistInsideDebugTab()

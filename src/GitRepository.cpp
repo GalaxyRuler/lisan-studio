@@ -275,6 +275,150 @@ QString GitRepository::diffForFile(const QString &relativePath, QString *error) 
     return diffText;
 }
 
+bool GitRepository::stageFile(const QString &relativePath, QString *error)
+{
+    if (error) {
+        error->clear();
+    }
+    if (!repository) {
+        if (error) {
+            *error = QStringLiteral("لا يوجد مستودع Git مفتوح.");
+        }
+        return false;
+    }
+
+    git_index *index = nullptr;
+    if (git_repository_index(&index, repository) != 0) {
+        if (error) {
+            *error = lastError(QStringLiteral("تعذر فتح فهرس Git."));
+        }
+        return false;
+    }
+
+    const QByteArray pathUtf8 = QDir::fromNativeSeparators(relativePath).toUtf8();
+    const bool added = git_index_add_bypath(index, pathUtf8.constData()) == 0
+        && git_index_write(index) == 0;
+    if (!added && error) {
+        *error = lastError(QStringLiteral("تعذر تجهيز الملف في Git."));
+    }
+    git_index_free(index);
+    return added;
+}
+
+bool GitRepository::unstageFile(const QString &relativePath, QString *error)
+{
+    if (error) {
+        error->clear();
+    }
+    if (!repository) {
+        if (error) {
+            *error = QStringLiteral("لا يوجد مستودع Git مفتوح.");
+        }
+        return false;
+    }
+
+    const QByteArray pathUtf8 = QDir::fromNativeSeparators(relativePath).toUtf8();
+    char *pathSpecValue = const_cast<char *>(pathUtf8.constData());
+    git_strarray pathSpec = {&pathSpecValue, 1};
+
+    git_object *headCommit = nullptr;
+    if (git_revparse_single(&headCommit, repository, "HEAD") != 0) {
+        if (error) {
+            *error = lastError(QStringLiteral("تعذر قراءة HEAD لإلغاء التجهيز."));
+        }
+        return false;
+    }
+
+    const bool reset = git_reset_default(repository, headCommit, &pathSpec) == 0;
+    if (!reset && error) {
+        *error = lastError(QStringLiteral("تعذر إلغاء تجهيز الملف في Git."));
+    }
+    git_object_free(headCommit);
+    return reset;
+}
+
+bool GitRepository::commitStaged(const QString &message, QString *error)
+{
+    if (error) {
+        error->clear();
+    }
+    if (!repository) {
+        if (error) {
+            *error = QStringLiteral("لا يوجد مستودع Git مفتوح.");
+        }
+        return false;
+    }
+
+    const QString trimmedMessage = message.trimmed();
+    if (trimmedMessage.isEmpty()) {
+        if (error) {
+            *error = QString::fromUtf8("رسالة الالتزام مطلوبة.");
+        }
+        return false;
+    }
+
+    git_index *index = nullptr;
+    if (git_repository_index(&index, repository) != 0) {
+        if (error) {
+            *error = lastError(QStringLiteral("تعذر فتح فهرس Git."));
+        }
+        return false;
+    }
+
+    git_oid treeOid;
+    if (git_index_write_tree(&treeOid, index) != 0 || git_index_write(index) != 0) {
+        if (error) {
+            *error = lastError(QStringLiteral("تعذر كتابة شجرة Git."));
+        }
+        git_index_free(index);
+        return false;
+    }
+    git_index_free(index);
+
+    git_tree *tree = nullptr;
+    if (git_tree_lookup(&tree, repository, &treeOid) != 0) {
+        if (error) {
+            *error = lastError(QStringLiteral("تعذر قراءة شجرة Git."));
+        }
+        return false;
+    }
+
+    git_commit *parent = nullptr;
+    git_reference *head = nullptr;
+    int parentCount = 0;
+    if (git_repository_head(&head, repository) == 0) {
+        const git_oid *parentOid = git_reference_target(head);
+        if (parentOid && git_commit_lookup(&parent, repository, parentOid) == 0) {
+            parentCount = 1;
+        }
+    }
+
+    git_signature *signature = nullptr;
+    if (git_signature_default(&signature, repository) != 0) {
+        git_signature_now(&signature, "Lisan Studio", "lisanstudio@example.invalid");
+    }
+
+    git_oid commitOid;
+    const QByteArray messageUtf8 = trimmedMessage.toUtf8();
+    const int commitResult = parentCount == 1
+        ? git_commit_create_v(&commitOid, repository, "HEAD", signature, signature, nullptr, messageUtf8.constData(), tree, 1, parent)
+        : git_commit_create_v(&commitOid, repository, "HEAD", signature, signature, nullptr, messageUtf8.constData(), tree, 0);
+
+    if (commitResult != 0 && error) {
+        *error = lastError(QStringLiteral("تعذر إنشاء التزام Git."));
+    }
+
+    git_signature_free(signature);
+    if (head) {
+        git_reference_free(head);
+    }
+    if (parent) {
+        git_commit_free(parent);
+    }
+    git_tree_free(tree);
+    return commitResult == 0;
+}
+
 bool GitRepository::hasChanges(QString *error) const
 {
     return !statusEntries(error).isEmpty();

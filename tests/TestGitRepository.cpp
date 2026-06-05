@@ -15,6 +15,8 @@ private slots:
     void reportsCurrentBranchForCleanRepository();
     void reportsUtf8DirtyAndUntrackedFiles();
     void returnsUnifiedDiffForModifiedUtf8File();
+    void stagesAndUnstagesUtf8File();
+    void commitsStagedUtf8FileAndCleansRepository();
 };
 
 static void runGit(const QDir &root, const QStringList &arguments)
@@ -112,6 +114,53 @@ void TestGitRepository::returnsUnifiedDiffForModifiedUtf8File()
     QVERIFY2(diff.contains(QStringLiteral("+++ ")), qPrintable(diff));
     QVERIFY2(diff.contains(QString::fromUtf8("-اطبع(\"أول\")")), qPrintable(diff));
     QVERIFY2(diff.contains(QString::fromUtf8("+اطبع(\"تعديل\")")), qPrintable(diff));
+}
+
+void TestGitRepository::stagesAndUnstagesUtf8File()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    QDir root(temp.path());
+    createInitialCommit(root);
+    writeFile(root, QStringLiteral("src/برنامج.apy"), QString::fromUtf8("اطبع(\"تعديل\")\n"));
+
+    GitRepository repository;
+    QString error;
+    QVERIFY2(repository.open(root.absolutePath(), &error), qPrintable(error));
+    QVERIFY2(repository.stageFile(QString::fromUtf8("src/برنامج.apy"), &error), qPrintable(error));
+
+    QVector<GitStatusEntry> entries = repository.statusEntries(&error);
+    QVERIFY2(error.isEmpty(), qPrintable(error));
+    QCOMPARE(entries.size(), 1);
+    QCOMPARE(entries.first().relativePath, QString::fromUtf8("src/برنامج.apy"));
+    QCOMPARE(entries.first().state, GitFileState::Modified);
+    QVERIFY(entries.first().staged);
+
+    QVERIFY2(repository.unstageFile(QString::fromUtf8("src/برنامج.apy"), &error), qPrintable(error));
+    entries = repository.statusEntries(&error);
+    QVERIFY2(error.isEmpty(), qPrintable(error));
+    QCOMPARE(entries.size(), 1);
+    QCOMPARE(entries.first().relativePath, QString::fromUtf8("src/برنامج.apy"));
+    QVERIFY(!entries.first().staged);
+}
+
+void TestGitRepository::commitsStagedUtf8FileAndCleansRepository()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    QDir root(temp.path());
+    createInitialCommit(root);
+    writeFile(root, QStringLiteral("src/برنامج.apy"), QString::fromUtf8("اطبع(\"تعديل\")\n"));
+
+    GitRepository repository;
+    QString error;
+    QVERIFY2(repository.open(root.absolutePath(), &error), qPrintable(error));
+    QVERIFY2(repository.stageFile(QString::fromUtf8("src/برنامج.apy"), &error), qPrintable(error));
+    QVERIFY2(repository.commitStaged(QString::fromUtf8("تعديل عربي"), &error), qPrintable(error));
+
+    QVERIFY(!repository.hasChanges(&error));
+    QVERIFY2(error.isEmpty(), qPrintable(error));
+    runGit(root, {QStringLiteral("log"), QStringLiteral("-1"), QStringLiteral("--format=%s")});
 }
 
 QTEST_MAIN(TestGitRepository)

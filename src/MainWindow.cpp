@@ -1146,6 +1146,25 @@ void MainWindow::buildUi()
     auto *gitLayout = new QVBoxLayout(gitContainerPanel);
     gitLayout->setContentsMargins(6, 6, 6, 6);
     gitLayout->setSpacing(6);
+    auto *gitToolbar = new QWidget(gitContainerPanel);
+    gitToolbar->setObjectName(QStringLiteral("gitToolbar"));
+    auto *gitToolbarLayout = new QHBoxLayout(gitToolbar);
+    gitToolbarLayout->setContentsMargins(0, 0, 0, 0);
+    gitToolbarLayout->setSpacing(6);
+    gitStageButton = new QPushButton(QString::fromUtf8("تجهيز"), gitToolbar);
+    gitStageButton->setObjectName(QStringLiteral("gitStageButton"));
+    gitUnstageButton = new QPushButton(QString::fromUtf8("إلغاء التجهيز"), gitToolbar);
+    gitUnstageButton->setObjectName(QStringLiteral("gitUnstageButton"));
+    gitCommitMessageInput = new QLineEdit(gitToolbar);
+    gitCommitMessageInput->setObjectName(QStringLiteral("gitCommitMessageInput"));
+    gitCommitMessageInput->setPlaceholderText(QString::fromUtf8("رسالة الالتزام"));
+    gitCommitMessageInput->setLayoutDirection(Qt::RightToLeft);
+    gitCommitButton = new QPushButton(QString::fromUtf8("التزام"), gitToolbar);
+    gitCommitButton->setObjectName(QStringLiteral("gitCommitButton"));
+    gitToolbarLayout->addWidget(gitStageButton);
+    gitToolbarLayout->addWidget(gitUnstageButton);
+    gitToolbarLayout->addWidget(gitCommitMessageInput, 1);
+    gitToolbarLayout->addWidget(gitCommitButton);
     gitStatusPanel = new QListWidget(gitContainerPanel);
     gitStatusPanel->setObjectName(QStringLiteral("gitStatusPanel"));
     gitStatusPanel->setLayoutDirection(Qt::RightToLeft);
@@ -1157,8 +1176,13 @@ void MainWindow::buildUi()
     gitDiffPanel->setReadOnly(true);
     gitDiffPanel->setLayoutDirection(Qt::LeftToRight);
     gitDiffPanel->setToolTip(QString::fromUtf8("فرق Git الموحد للملف المحدد."));
+    gitLayout->addWidget(gitToolbar);
     gitLayout->addWidget(gitStatusPanel);
     gitLayout->addWidget(gitDiffPanel, 1);
+    connect(gitStageButton, &QPushButton::clicked, this, &MainWindow::stageSelectedGitFile);
+    connect(gitUnstageButton, &QPushButton::clicked, this, &MainWindow::unstageSelectedGitFile);
+    connect(gitCommitButton, &QPushButton::clicked, this, &MainWindow::commitStagedGitChanges);
+    connect(gitCommitMessageInput, &QLineEdit::returnPressed, this, &MainWindow::commitStagedGitChanges);
     connect(gitStatusPanel, &QListWidget::itemClicked, this, [this](QListWidgetItem *item) {
         if (item) {
             renderGitDiffForPath(item->data(Qt::UserRole).toString());
@@ -4501,6 +4525,69 @@ void MainWindow::renderGitDiffForPath(const QString &relativePath)
     QString error;
     const QString diff = gitRepository.diffForFile(relativePath, &error);
     gitDiffPanel->setPlainText(error.isEmpty() ? diff : error);
+}
+
+QString MainWindow::selectedGitRelativePath() const
+{
+    if (!gitStatusPanel) {
+        return QString();
+    }
+    QListWidgetItem *item = gitStatusPanel->currentItem();
+    if (!item && gitStatusPanel->count() > 0) {
+        item = gitStatusPanel->item(0);
+    }
+    return item ? item->data(Qt::UserRole).toString() : QString();
+}
+
+void MainWindow::stageSelectedGitFile()
+{
+    const QString relativePath = selectedGitRelativePath();
+    if (!gitRepository.isOpen() || relativePath.isEmpty()) {
+        setStatus(QString::fromUtf8("لا يوجد ملف Git محدد"));
+        return;
+    }
+
+    QString error;
+    if (!gitRepository.stageFile(relativePath, &error)) {
+        setStatus(error);
+        return;
+    }
+    updateStatusIndicators();
+    setStatus(QString::fromUtf8("تم تجهيز: %1").arg(relativePath));
+}
+
+void MainWindow::unstageSelectedGitFile()
+{
+    const QString relativePath = selectedGitRelativePath();
+    if (!gitRepository.isOpen() || relativePath.isEmpty()) {
+        setStatus(QString::fromUtf8("لا يوجد ملف Git محدد"));
+        return;
+    }
+
+    QString error;
+    if (!gitRepository.unstageFile(relativePath, &error)) {
+        setStatus(error);
+        return;
+    }
+    updateStatusIndicators();
+    setStatus(QString::fromUtf8("ألغي تجهيز: %1").arg(relativePath));
+}
+
+void MainWindow::commitStagedGitChanges()
+{
+    if (!gitRepository.isOpen() || !gitCommitMessageInput) {
+        setStatus(QString::fromUtf8("لا يوجد مستودع Git مفتوح"));
+        return;
+    }
+
+    QString error;
+    if (!gitRepository.commitStaged(gitCommitMessageInput->text(), &error)) {
+        setStatus(error);
+        return;
+    }
+    gitCommitMessageInput->clear();
+    updateStatusIndicators();
+    setStatus(QString::fromUtf8("تم إنشاء الالتزام"));
 }
 
 void MainWindow::writeOutput(const QString &title, const QString &text)

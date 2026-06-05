@@ -110,6 +110,9 @@ private slots:
     void addCursorAtNextMatchAction();
     void selectAllCursorMatchesAction();
     void collapseToSingleCursorAction();
+    void stageSelectedGitFile();
+    void unstageSelectedGitFile();
+    void commitStagedGitChanges();
 
 private:
     EditorSurface *editor = nullptr;
@@ -140,6 +143,10 @@ private:
     QWidget *gitContainerPanel = nullptr;
     QListWidget *gitStatusPanel = nullptr;
     QPlainTextEdit *gitDiffPanel = nullptr;
+    QPushButton *gitStageButton = nullptr;
+    QPushButton *gitUnstageButton = nullptr;
+    QLineEdit *gitCommitMessageInput = nullptr;
+    QPushButton *gitCommitButton = nullptr;
     QPlainTextEdit *debugPanel = nullptr;
     QWidget *debugContainerPanel = nullptr;
     QListWidget *debugVariablesPanel = nullptr;
@@ -250,6 +257,7 @@ private:
     void renderOutlineForTest(const QVector<LspSymbol> &symbols) { renderOutline(symbols); }
     void renderGitStatusPanel();
     void renderGitDiffForPath(const QString &relativePath);
+    QString selectedGitRelativePath() const;
     void openWorkspaceSymbolPicker(const QVector<LspSymbol> &symbols);
     void openWorkspaceSymbolPickerForTest(const QVector<LspSymbol> &symbols) { openWorkspaceSymbolPicker(symbols); }
     void renderRenamePreview(const LspWorkspaceEdit &edit);
