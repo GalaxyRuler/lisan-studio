@@ -351,6 +351,7 @@ MainWindow::MainWindow(QWidget *parent, const QString &settingsPath)
     : QMainWindow(parent),
       settings(settingsPath),
       runtimeOrchestrator(this),
+      dapClient(this),
       lspClient(this),
       documentChangePoller(&documentRegistry)
 {
@@ -380,6 +381,33 @@ MainWindow::MainWindow(QWidget *parent, const QString &settingsPath)
         if (editor->openFile(path, &error) && editorTabsController) {
             editorTabsController->syncSessionsInto(workbenchState);
         }
+    });
+    connect(&dapClient, &DapClient::stopped, this, [this](const QString &reason, int threadId) {
+        debugSessionActive = true;
+        debugSessionPaused = true;
+        activeDebugThreadId = threadId;
+        if (debugPanel) {
+            debugPanel->appendPlainText(QString::fromUtf8("توقف التصحيح: %1، الخيط %2").arg(reason).arg(threadId));
+        }
+        setStatus(QString::fromUtf8("توقف التصحيح"));
+    });
+    connect(&dapClient, &DapClient::continued, this, [this](int threadId) {
+        debugSessionActive = true;
+        debugSessionPaused = false;
+        activeDebugThreadId = threadId;
+        if (debugPanel) {
+            debugPanel->appendPlainText(QString::fromUtf8("متابعة التصحيح: الخيط %1").arg(threadId));
+        }
+        setStatus(QString::fromUtf8("متابعة التصحيح"));
+    });
+    connect(&dapClient, &DapClient::terminated, this, [this]() {
+        debugSessionActive = false;
+        debugSessionPaused = false;
+        activeDebugThreadId = 0;
+        if (debugPanel) {
+            debugPanel->appendPlainText(QString::fromUtf8("انتهت جلسة التصحيح"));
+        }
+        setStatus(QString::fromUtf8("انتهى التصحيح"));
     });
     documentChangePollTimer = new QTimer(this);
     documentChangePollTimer->setInterval(2000);
@@ -3578,6 +3606,90 @@ void MainWindow::configureLanguageServer()
     lspClient.setServerCommand(command);
 }
 
+void MainWindow::configureDebugAdapter()
+{
+    QProcessEnvironment environment = QProcessEnvironment::systemEnvironment();
+    environment.remove(QStringLiteral("PYTHONHOME"));
+    environment.remove(QStringLiteral("PYTHONPATH"));
+    environment.insert(QStringLiteral("PYTHONNOUSERSITE"), QStringLiteral("1"));
+    environment.insert(QStringLiteral("PYTHONUTF8"), QStringLiteral("1"));
+    environment.insert(QStringLiteral("PYTHONIOENCODING"), QStringLiteral("utf-8"));
+
+    DapServerCommand command;
+    command.program = runtimeOrchestrator.pythonExecutablePath();
+    command.arguments = {QStringLiteral("-m"), QStringLiteral("debugpy.adapter")};
+    command.workingDirectory = runtimeWorkingDirectory();
+    command.environment = environment;
+    dapClient.setServerCommand(command);
+}
+
+bool MainWindow::startDebugSession()
+{
+    QString error;
+    const QString runFilePath = materializeRunnableBuffer(&error);
+    if (runFilePath.isEmpty()) {
+        setStatus(error);
+        return false;
+    }
+
+    if (!QFileInfo::exists(runtimeOrchestrator.pythonExecutablePath())) {
+        setStatus(QString::fromUtf8("تعذر بدء التصحيح: لم يتم العثور على Python المضمن."));
+        return false;
+    }
+
+    if (dapClient.isRunning()) {
+        dapClient.disconnect();
+    }
+    configureDebugAdapter();
+
+    if (debugPanel) {
+        debugPanel->setPlainText(QString::fromUtf8("بدء جلسة التصحيح...\nملف: %1")
+            .arg(QDir::toNativeSeparators(runFilePath)));
+    }
+
+    if (!dapClient.startAndInitialize(5000, &error)) {
+        setStatus(QString::fromUtf8("تعذر بدء التصحيح: %1").arg(error));
+        return false;
+    }
+
+    DapLaunchRequest launch;
+    launch.module = QStringLiteral("arabicpython.cli");
+    launch.arguments = {runFilePath};
+    launch.workingDirectory = runtimeWorkingDirectory();
+    const int launchSequence = dapClient.beginLaunch(launch, &error);
+    if (launchSequence == 0) {
+        setStatus(QString::fromUtf8("تعذر إطلاق التصحيح: %1").arg(error));
+        return false;
+    }
+    if (!dapClient.waitForInitialized(5000, &error)) {
+        setStatus(QString::fromUtf8("تعذر تهيئة التصحيح: %1").arg(error));
+        return false;
+    }
+
+    const QVector<int> breakpoints = editor ? editor->breakpointLinesForTest() : QVector<int>{};
+    if (!dapClient.setBreakpoints(runFilePath, breakpoints, 5000, &error)) {
+        setStatus(QString::fromUtf8("تعذر إرسال نقاط التوقف: %1").arg(error));
+        return false;
+    }
+    if (!dapClient.configurationDone(5000, &error)) {
+        setStatus(QString::fromUtf8("تعذر إكمال إعداد التصحيح: %1").arg(error));
+        return false;
+    }
+    if (!dapClient.waitForRequest(launchSequence, 5000, &error)) {
+        setStatus(QString::fromUtf8("تعذر إطلاق التصحيح: %1").arg(error));
+        return false;
+    }
+
+    debugSessionActive = true;
+    debugSessionPaused = false;
+    activeDebugThreadId = 0;
+    if (debugPanel) {
+        debugPanel->appendPlainText(QString::fromUtf8("تم إطلاق التصحيح عبر debugpy."));
+    }
+    setStatus(QString::fromUtf8("بدأ التصحيح"));
+    return true;
+}
+
 void MainWindow::syncCurrentEditorToLanguageServer(bool reopenDocument)
 {
     if (!editor) {
@@ -3876,17 +3988,20 @@ void MainWindow::continueDebugSession()
     }
     outputDock->raise();
 
-    if (!debugSessionActive) {
-        debugSessionActive = true;
-        debugSessionPaused = true;
-        activeDebugThreadId = 1;
-        debugPanel->setPlainText(QString::fromUtf8("جلسة التصحيح جاهزة. سيتم ربط debugpy الكامل في مسار التشغيل الحي."));
-        setStatus(QString::fromUtf8("تم بدء جلسة التصحيح"));
+    if (!debugSessionActive || !dapClient.isRunning()) {
+        debugSessionActive = false;
+        debugSessionPaused = false;
+        activeDebugThreadId = 0;
+        startDebugSession();
         return;
     }
 
     QString error;
-    if (debugSessionPaused && dapClient.isRunning() && !dapClient.continueExecution(activeDebugThreadId, 500, &error)) {
+    if (!debugSessionPaused) {
+        setStatus(QString::fromUtf8("التصحيح قيد التشغيل"));
+        return;
+    }
+    if (!dapClient.continueExecution(activeDebugThreadId, 5000, &error)) {
         setStatus(error);
         return;
     }
@@ -3901,7 +4016,11 @@ void MainWindow::stepOverDebugSession()
         return;
     }
     QString error;
-    if (dapClient.isRunning() && !dapClient.stepOver(activeDebugThreadId, 500, &error)) {
+    if (!dapClient.isRunning()) {
+        setStatus(QString::fromUtf8("لا توجد جلسة تصحيح نشطة"));
+        return;
+    }
+    if (!dapClient.stepOver(activeDebugThreadId, 5000, &error)) {
         setStatus(error);
         return;
     }
@@ -3915,7 +4034,11 @@ void MainWindow::stepIntoDebugSession()
         return;
     }
     QString error;
-    if (dapClient.isRunning() && !dapClient.stepInto(activeDebugThreadId, 500, &error)) {
+    if (!dapClient.isRunning()) {
+        setStatus(QString::fromUtf8("لا توجد جلسة تصحيح نشطة"));
+        return;
+    }
+    if (!dapClient.stepInto(activeDebugThreadId, 5000, &error)) {
         setStatus(error);
         return;
     }
@@ -3929,7 +4052,11 @@ void MainWindow::stepOutDebugSession()
         return;
     }
     QString error;
-    if (dapClient.isRunning() && !dapClient.stepOut(activeDebugThreadId, 500, &error)) {
+    if (!dapClient.isRunning()) {
+        setStatus(QString::fromUtf8("لا توجد جلسة تصحيح نشطة"));
+        return;
+    }
+    if (!dapClient.stepOut(activeDebugThreadId, 5000, &error)) {
         setStatus(error);
         return;
     }

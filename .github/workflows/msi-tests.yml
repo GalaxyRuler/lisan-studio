@@ -30,7 +30,7 @@ jobs:
           path: apython-src
           token: ${{ secrets.APYTHON_CHECKOUT_TOKEN || github.token }}
 
-      - name: Ensure setuptools available
+      - name: Ensure Python packaging and debugger dependencies
         shell: powershell
         run: |
           $missing = @()
@@ -38,6 +38,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { $missing += 'setuptools' }
           python -c "import wheel" *> $null
           if ($LASTEXITCODE -ne 0) { $missing += 'wheel' }
+          python -c "import debugpy; raise SystemExit(0 if debugpy.__version__ == '1.8.20' else 1)" *> $null
+          if ($LASTEXITCODE -ne 0) { $missing += 'debugpy==1.8.20' }
           if ($missing.Count -gt 0) {
             python -m pip install --quiet --disable-pip-version-check --prefer-binary @missing
           }
@@ -95,7 +97,7 @@ jobs:
           path: apython-src
           token: ${{ secrets.APYTHON_CHECKOUT_TOKEN || github.token }}
 
-      - name: Ensure setuptools available
+      - name: Ensure Python packaging and debugger dependencies
         shell: powershell
         run: |
           $missing = @()
@@ -103,6 +105,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { $missing += 'setuptools' }
           python -c "import wheel" *> $null
           if ($LASTEXITCODE -ne 0) { $missing += 'wheel' }
+          python -c "import debugpy; raise SystemExit(0 if debugpy.__version__ == '1.8.20' else 1)" *> $null
+          if ($LASTEXITCODE -ne 0) { $missing += 'debugpy==1.8.20' }
           if ($missing.Count -gt 0) {
             python -m pip install --quiet --disable-pip-version-check --prefer-binary @missing
           }

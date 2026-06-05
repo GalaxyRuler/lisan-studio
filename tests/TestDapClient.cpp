@@ -19,6 +19,8 @@ class TestDapClient : public QObject
 private slots:
     void initializeHandshakeReadsCapabilities();
     void launchRequestSerializesProgramArgumentsAndWorkingDirectory();
+    void beginLaunchHandlesInitializedBeforeLaunchResponse();
+    void moduleLaunchSerializesModuleInsteadOfProgram();
     void setBreakpointsRequestSerializesSourceLines();
     void runControlRequestsRoundTripAndStoppedEventsReachSignals();
 };
@@ -81,6 +83,8 @@ def response(request, body=None):
         payload["body"] = body
     write_message(payload)
 
+configuration_done_seen = False
+pending_launch = None
 running = True
 while running:
     message = read_message()
@@ -101,16 +105,36 @@ while running:
             ]
         })
     elif command == "configurationDone":
+        configuration_done_seen = True
         response(message)
+        if pending_launch is not None:
+            response(pending_launch)
+            write_message({
+                "seq": seq,
+                "type": "event",
+                "event": "stopped",
+                "body": {"reason": "breakpoint", "threadId": 7},
+            })
+            seq += 1
+            pending_launch = None
     elif command == "launch":
-        response(message)
         write_message({
             "seq": seq,
             "type": "event",
-            "event": "stopped",
-            "body": {"reason": "breakpoint", "threadId": 7},
+            "event": "initialized",
         })
         seq += 1
+        if configuration_done_seen:
+            response(message)
+            write_message({
+                "seq": seq,
+                "type": "event",
+                "event": "stopped",
+                "body": {"reason": "breakpoint", "threadId": 7},
+            })
+            seq += 1
+        else:
+            pending_launch = message
     elif command == "continue":
         response(message)
         write_message({
@@ -223,6 +247,7 @@ void TestDapClient::launchRequestSerializesProgramArgumentsAndWorkingDirectory()
 
     QString error;
     QVERIFY2(client.startAndInitialize(5000, &error), qPrintable(error));
+    QVERIFY2(client.configurationDone(5000, &error), qPrintable(error));
 
     DapLaunchRequest launch;
     launch.program = QStringLiteral("C:/project/main.apy");
@@ -231,14 +256,77 @@ void TestDapClient::launchRequestSerializesProgramArgumentsAndWorkingDirectory()
     launch.stopOnEntry = true;
     QVERIFY2(client.launch(launch, 5000, &error), qPrintable(error));
 
-    QVERIFY(waitForMethodCount(logPath, 2));
+    QVERIFY(waitForMethodCount(logPath, 3));
     const QVector<QJsonObject> messages = readLogMessages(logPath);
-    QCOMPARE(messages.at(1).value(QStringLiteral("command")).toString(), QStringLiteral("launch"));
-    const QJsonObject arguments = messages.at(1).value(QStringLiteral("arguments")).toObject();
+    QCOMPARE(messages.at(2).value(QStringLiteral("command")).toString(), QStringLiteral("launch"));
+    const QJsonObject arguments = messages.at(2).value(QStringLiteral("arguments")).toObject();
     QCOMPARE(arguments.value(QStringLiteral("program")).toString(), QStringLiteral("C:/project/main.apy"));
     QCOMPARE(arguments.value(QStringLiteral("cwd")).toString(), QStringLiteral("C:/project"));
     QVERIFY(arguments.value(QStringLiteral("stopOnEntry")).toBool());
     QCOMPARE(arguments.value(QStringLiteral("args")).toArray().size(), 2);
+}
+
+void TestDapClient::beginLaunchHandlesInitializedBeforeLaunchResponse()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString logPath = dir.filePath(QStringLiteral("dap-log.jsonl"));
+    const QString scriptPath = writeMockServer(dir);
+    QVERIFY(!scriptPath.isEmpty());
+
+    DapClient client;
+    client.setServerCommand(mockServerCommand(scriptPath, logPath));
+    QSignalSpy initializedSpy(&client, &DapClient::initialized);
+
+    QString error;
+    QVERIFY2(client.startAndInitialize(5000, &error), qPrintable(error));
+
+    DapLaunchRequest launch;
+    launch.program = QStringLiteral("C:/project/main.apy");
+    launch.workingDirectory = QStringLiteral("C:/project");
+    const int launchSequence = client.beginLaunch(launch, &error);
+    QVERIFY2(launchSequence > 0, qPrintable(error));
+    QVERIFY2(client.waitForInitialized(5000, &error), qPrintable(error));
+    QCOMPARE(initializedSpy.count(), 1);
+    QVERIFY2(client.setBreakpoints(QStringLiteral("C:/project/main.apy"), {2}, 5000, &error), qPrintable(error));
+    QVERIFY2(client.configurationDone(5000, &error), qPrintable(error));
+    QVERIFY2(client.waitForRequest(launchSequence, 5000, &error), qPrintable(error));
+
+    QVERIFY(waitForMethodCount(logPath, 4));
+    const QVector<QJsonObject> messages = readLogMessages(logPath);
+    QCOMPARE(messages.at(1).value(QStringLiteral("command")).toString(), QStringLiteral("launch"));
+    QCOMPARE(messages.at(2).value(QStringLiteral("command")).toString(), QStringLiteral("setBreakpoints"));
+    QCOMPARE(messages.at(3).value(QStringLiteral("command")).toString(), QStringLiteral("configurationDone"));
+}
+
+void TestDapClient::moduleLaunchSerializesModuleInsteadOfProgram()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString logPath = dir.filePath(QStringLiteral("dap-log.jsonl"));
+    const QString scriptPath = writeMockServer(dir);
+    QVERIFY(!scriptPath.isEmpty());
+
+    DapClient client;
+    client.setServerCommand(mockServerCommand(scriptPath, logPath));
+
+    QString error;
+    QVERIFY2(client.startAndInitialize(5000, &error), qPrintable(error));
+    QVERIFY2(client.configurationDone(5000, &error), qPrintable(error));
+
+    DapLaunchRequest launch;
+    launch.program = QStringLiteral("C:/project/main.apy");
+    launch.module = QStringLiteral("arabicpython.cli");
+    launch.arguments = {QStringLiteral("C:/project/main.apy")};
+    launch.workingDirectory = QStringLiteral("C:/project");
+    QVERIFY2(client.launch(launch, 5000, &error), qPrintable(error));
+
+    QVERIFY(waitForMethodCount(logPath, 3));
+    const QVector<QJsonObject> messages = readLogMessages(logPath);
+    const QJsonObject arguments = messages.at(2).value(QStringLiteral("arguments")).toObject();
+    QCOMPARE(arguments.value(QStringLiteral("module")).toString(), QStringLiteral("arabicpython.cli"));
+    QVERIFY(!arguments.contains(QStringLiteral("program")));
+    QCOMPARE(arguments.value(QStringLiteral("args")).toArray().first().toString(), QStringLiteral("C:/project/main.apy"));
 }
 
 void TestDapClient::setBreakpointsRequestSerializesSourceLines()

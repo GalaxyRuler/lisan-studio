@@ -28,6 +28,7 @@ struct DapInitializeResult
 struct DapLaunchRequest
 {
     QString program;
+    QString module;
     QStringList arguments;
     QString workingDirectory;
     bool stopOnEntry = false;
@@ -48,7 +49,10 @@ public:
     bool isRunning() const;
     DapInitializeResult initializeResult() const;
 
+    int beginLaunch(const DapLaunchRequest &request, QString *error = nullptr);
     bool launch(const DapLaunchRequest &request, int timeoutMs = 5000, QString *error = nullptr);
+    bool waitForRequest(int requestSequence, int timeoutMs = 5000, QString *error = nullptr);
+    bool waitForInitialized(int timeoutMs = 5000, QString *error = nullptr);
     bool setBreakpoints(const QString &sourcePath, const QVector<int> &lines, int timeoutMs = 5000, QString *error = nullptr);
     bool configurationDone(int timeoutMs = 5000, QString *error = nullptr);
     bool continueExecution(int threadId, int timeoutMs = 5000, QString *error = nullptr);
@@ -60,6 +64,7 @@ public:
 signals:
     void stopped(const QString &reason, int threadId);
     void continued(int threadId);
+    void initialized();
     void terminated();
 
 private:
@@ -69,6 +74,7 @@ private:
     int nextSequence = 1;
     DapInitializeResult lastInitializeResult;
     QMap<int, QJsonObject> responses;
+    bool initializedEventSeen = false;
 
     int sendRequest(const QString &commandName, const QJsonObject &arguments = {});
     void writePayload(const QJsonObject &payload);

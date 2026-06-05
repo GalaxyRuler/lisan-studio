@@ -95,6 +95,15 @@ DapInitializeResult DapClient::initializeResult() const
 
 bool DapClient::launch(const DapLaunchRequest &request, int timeoutMs, QString *error)
 {
+    const int requestSequence = beginLaunch(request, error);
+    if (requestSequence == 0) {
+        return false;
+    }
+    return waitForRequest(requestSequence, timeoutMs, error);
+}
+
+int DapClient::beginLaunch(const DapLaunchRequest &request, QString *error)
+{
     if (error) {
         error->clear();
     }
@@ -102,7 +111,7 @@ bool DapClient::launch(const DapLaunchRequest &request, int timeoutMs, QString *
         if (error) {
             *error = QStringLiteral("DAP server is not running.");
         }
-        return false;
+        return 0;
     }
 
     QJsonArray args;
@@ -111,18 +120,61 @@ bool DapClient::launch(const DapLaunchRequest &request, int timeoutMs, QString *
     }
 
     QJsonObject arguments;
-    arguments.insert(QStringLiteral("program"), request.program);
+    if (!request.module.isEmpty()) {
+        arguments.insert(QStringLiteral("module"), request.module);
+    } else {
+        arguments.insert(QStringLiteral("program"), request.program);
+    }
     arguments.insert(QStringLiteral("args"), args);
     arguments.insert(QStringLiteral("cwd"), request.workingDirectory);
     arguments.insert(QStringLiteral("stopOnEntry"), request.stopOnEntry);
     arguments.insert(QStringLiteral("console"), QStringLiteral("internalConsole"));
 
-    const int requestSequence = sendRequest(QStringLiteral("launch"), arguments);
+    initializedEventSeen = false;
+    return sendRequest(QStringLiteral("launch"), arguments);
+}
+
+bool DapClient::waitForRequest(int requestSequence, int timeoutMs, QString *error)
+{
     QJsonObject response;
     if (!waitForResponse(requestSequence, &response, timeoutMs, error)) {
         return false;
     }
     return responseSucceeded(response, error);
+}
+
+bool DapClient::waitForInitialized(int timeoutMs, QString *error)
+{
+    if (error) {
+        error->clear();
+    }
+
+    QElapsedTimer timer;
+    timer.start();
+
+    while (timer.elapsed() < timeoutMs) {
+        readAvailableMessages();
+        if (initializedEventSeen) {
+            return true;
+        }
+
+        if (process.state() == QProcess::NotRunning) {
+            if (error) {
+                *error = QString::fromUtf8(process.readAllStandardError()).trimmed();
+                if (error->isEmpty()) {
+                    *error = process.errorString();
+                }
+            }
+            return false;
+        }
+
+        process.waitForReadyRead(25);
+    }
+
+    if (error) {
+        *error = QStringLiteral("Timed out waiting for DAP initialized event.");
+    }
+    return false;
 }
 
 bool DapClient::setBreakpoints(const QString &sourcePath, const QVector<int> &lines, int timeoutMs, QString *error)
@@ -282,6 +334,9 @@ void DapClient::readAvailableMessages()
             emit stopped(body.value(QStringLiteral("reason")).toString(), body.value(QStringLiteral("threadId")).toInt());
         } else if (event == QStringLiteral("continued")) {
             emit continued(body.value(QStringLiteral("threadId")).toInt());
+        } else if (event == QStringLiteral("initialized")) {
+            initializedEventSeen = true;
+            emit initialized();
         } else if (event == QStringLiteral("terminated")) {
             emit terminated();
         }

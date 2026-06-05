@@ -65,6 +65,7 @@ private slots:
     void commandPaletteExposesRegisteredWorkbenchCommands();
     void commandPaletteShowsPersistedShortcutOverrides();
     void coreCommandSurfacesDeclareRegisteredCommandIds();
+    void debugAdapterCommandUsesBundledRuntimeAndSanitizedEnvironment();
     void commandPaletteIncludesInFileFindCommand();
     void commandPaletteIncludesSnippetCommand();
     void commandPaletteIncludesVisibleWhitespaceCommand();
@@ -1097,6 +1098,23 @@ void TestMainWindow::coreCommandSurfacesDeclareRegisteredCommandIds()
     for (const QString &surfaceId : surfaceIds) {
         QVERIFY2(paletteIds.contains(surfaceId), qPrintable(QStringLiteral("Missing command registry entry for %1").arg(surfaceId)));
     }
+}
+
+void TestMainWindow::debugAdapterCommandUsesBundledRuntimeAndSanitizedEnvironment()
+{
+    MainWindow window;
+    window.configureDebugAdapter();
+
+    const DapServerCommand command = window.dapClient.serverCommand();
+    QVERIFY(command.program.endsWith(QStringLiteral("runtime\\python\\python.exe"))
+        || command.program.endsWith(QStringLiteral("runtime/python/python.exe")));
+    QCOMPARE(command.arguments, QStringList({QStringLiteral("-m"), QStringLiteral("debugpy.adapter")}));
+    QVERIFY(!command.workingDirectory.isEmpty());
+    QVERIFY(!command.environment.contains(QStringLiteral("PYTHONHOME")));
+    QVERIFY(!command.environment.contains(QStringLiteral("PYTHONPATH")));
+    QCOMPARE(command.environment.value(QStringLiteral("PYTHONNOUSERSITE")), QStringLiteral("1"));
+    QCOMPARE(command.environment.value(QStringLiteral("PYTHONUTF8")), QStringLiteral("1"));
+    QCOMPARE(command.environment.value(QStringLiteral("PYTHONIOENCODING")), QStringLiteral("utf-8"));
 }
 
 void TestMainWindow::commandPaletteIncludesInFileFindCommand()

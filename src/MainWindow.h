@@ -182,6 +182,8 @@ private:
     void applyShortcutSettings();
     void refreshCurrentEditorUi(bool includeProblems);
     void configureLanguageServer();
+    void configureDebugAdapter();
+    bool startDebugSession();
     void syncCurrentEditorToLanguageServer(bool reopenDocument);
     void notifyLanguageServerOfSave();
     void closeLanguageServerDocument();

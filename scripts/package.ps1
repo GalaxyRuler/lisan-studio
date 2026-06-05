@@ -3,6 +3,7 @@ param(
     [string]$ApythonRoot = "C:\Users\Admin\apython",
     [Parameter()]
     [string]$PythonRoot = "C:\Users\Admin\AppData\Local\Programs\Python\Python313",
+    [string]$DebugpySourceSitePackages = "",
     [string]$Configuration = "Release",
     [string]$ProductVersion = "0.1.0",
     [string]$BuildId = "",
@@ -145,6 +146,38 @@ Tag: py3-none-any
     "" | Set-Content -LiteralPath (Join-Path $distInfo "RECORD") -Encoding ASCII
 }
 
+function Install-DebugpyRuntimeOffline {
+    param(
+        [Parameter(Mandatory = $true)][string]$SourceSitePackages,
+        [Parameter(Mandatory = $true)][string]$DestinationSitePackages
+    )
+
+    $sourceDebugpy = Join-Path $SourceSitePackages "debugpy"
+    if (-not (Test-Path -LiteralPath $sourceDebugpy)) {
+        throw "debugpy package source missing: $sourceDebugpy. Install debugpy into PythonRoot or pass -DebugpySourceSitePackages."
+    }
+
+    $sourceDistInfo = @(Get-ChildItem -LiteralPath $SourceSitePackages -Directory -Filter "debugpy-*.dist-info" -ErrorAction SilentlyContinue | Select-Object -First 1)
+    if ($sourceDistInfo.Count -eq 0) {
+        throw "debugpy dist-info source missing under: $SourceSitePackages"
+    }
+
+    foreach ($destinationName in @("debugpy") + @($sourceDistInfo[0].Name)) {
+        $destinationPath = Join-Path $DestinationSitePackages $destinationName
+        if (Test-Path -LiteralPath $destinationPath) {
+            Remove-Item -LiteralPath $destinationPath -Recurse -Force
+        }
+    }
+
+    Copy-DirectoryContents -Source $sourceDebugpy -Destination (Join-Path $DestinationSitePackages "debugpy")
+    Copy-DirectoryContents -Source $sourceDistInfo[0].FullName -Destination (Join-Path $DestinationSitePackages $sourceDistInfo[0].Name)
+
+    $adapterEntrypoint = Join-Path $DestinationSitePackages "debugpy\adapter\__main__.py"
+    if (-not (Test-Path -LiteralPath $adapterEntrypoint)) {
+        throw "debugpy adapter entrypoint missing after copy: $adapterEntrypoint"
+    }
+}
+
 function Assert-StagedApythonRuntime {
     param(
         [Parameter(Mandatory = $true)][string]$PythonExe,
@@ -154,7 +187,8 @@ function Assert-StagedApythonRuntime {
     foreach ($requiredFile in @(
             (Join-Path $SitePackages "arabicpython\__init__.py"),
             (Join-Path $SitePackages "arabicpython\cli.py"),
-            (Join-Path $SitePackages "arabicpython_kernel\__init__.py")
+            (Join-Path $SitePackages "arabicpython_kernel\__init__.py"),
+            (Join-Path $SitePackages "debugpy\adapter\__main__.py")
         )) {
         if (-not (Test-Path -LiteralPath $requiredFile)) {
             throw "Staged Apython runtime file missing: $requiredFile"
@@ -167,7 +201,7 @@ import importlib.util
 import pathlib
 
 site = pathlib.Path(r'''$SitePackages''').resolve()
-for package in ('arabicpython', 'arabicpython_kernel'):
+for package in ('arabicpython', 'arabicpython_kernel', 'debugpy'):
     spec = importlib.util.find_spec(package)
     if spec is None or spec.origin is None:
         raise SystemExit(f'{package} import spec missing')
@@ -175,7 +209,10 @@ for package in ('arabicpython', 'arabicpython_kernel'):
     if site != origin and site not in origin.parents:
         raise SystemExit(f'{package} imported from outside staged runtime: {origin}')
     print(f'{package} {origin}')
+if importlib.util.find_spec('debugpy.adapter') is None:
+    raise SystemExit('debugpy.adapter import spec missing')
 print('lughat-althuban', md.version('lughat-althuban'))
+print('debugpy', md.version('debugpy'))
 "@
 
     & $PythonExe -I -c $runtimeCheck
@@ -323,6 +360,12 @@ if (Test-Path $sitePackages) {
 }
 
 Install-ApythonRuntimeOffline -SourceRoot $ApythonRoot -DestinationSitePackages $sitePackages
+$resolvedDebugpySourceSitePackages = if ([string]::IsNullOrWhiteSpace($DebugpySourceSitePackages)) {
+    Join-Path $PythonRoot "Lib\site-packages"
+} else {
+    $DebugpySourceSitePackages
+}
+Install-DebugpyRuntimeOffline -SourceSitePackages $resolvedDebugpySourceSitePackages -DestinationSitePackages $sitePackages
 
 $editableMarkers = Get-ChildItem -LiteralPath $sitePackages -Force -ErrorAction SilentlyContinue |
     Where-Object { $_.Name -like "__editable__*" -or $_.Name -like "apython-*.dist-info" }
