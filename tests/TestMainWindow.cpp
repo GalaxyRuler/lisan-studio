@@ -2275,15 +2275,17 @@ void TestMainWindow::mainWindowSurfacesSearchTruncationInStatusBar()
     QTemporaryDir temp;
     QVERIFY(temp.isValid());
     QDir root(temp.path());
+    constexpr int TestScanCap = 20;
 
-    for (int i = 0; i <= SearchService::MaxScannedFiles; ++i) {
+    for (int i = 0; i <= TestScanCap; ++i) {
         writeFile(
             root,
             QStringLiteral("file-%1.apy").arg(i, 4, 10, QLatin1Char('0')),
-            i == SearchService::MaxScannedFiles ? QStringLiteral("needle\n") : QStringLiteral("لا يوجد\n"));
+            i == TestScanCap ? QStringLiteral("needle\n") : QStringLiteral("لا يوجد\n"));
     }
 
     MainWindow window;
+    window.setSearchScanCapForTest(TestScanCap);
     QVERIFY(window.openPath(root.absolutePath()));
 
     auto *commandBox = window.findChild<QLineEdit *>(QStringLiteral("commandBox"));
@@ -2295,7 +2297,7 @@ void TestMainWindow::mainWindowSurfacesSearchTruncationInStatusBar()
     QVERIFY(QMetaObject::invokeMethod(&window, "findInProject", Qt::DirectConnection));
 
     const QString truncationText = QString::fromUtf8("تم اقتطاع نتائج البحث عند %1 ملف")
-                                       .arg(SearchService::MaxScannedFiles);
+                                       .arg(TestScanCap);
     QTRY_VERIFY_WITH_TIMEOUT(status->text().contains(truncationText), 10000);
 }
 

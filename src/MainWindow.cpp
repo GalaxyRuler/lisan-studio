@@ -2124,6 +2124,7 @@ void MainWindow::findInProject()
     }
 
     const QString root = projectRoot;
+    const int scanCap = searchScanCap;
     const int generation = workbenchState.nextSearchGeneration();
     const QVector<SearchResultRow> immediateRows = currentEditorSearchResults(query);
     renderSearchResults(immediateRows);
@@ -2134,7 +2135,7 @@ void MainWindow::findInProject()
 
     auto *watcher = new QFutureWatcher<SearchResults>(this);
     activeSearchWatcher = watcher;
-    connect(watcher, &QFutureWatcher<SearchResults>::finished, this, [this, watcher, generation, immediateRows]() {
+    connect(watcher, &QFutureWatcher<SearchResults>::finished, this, [this, watcher, generation, immediateRows, scanCap]() {
         const SearchResults projectResults = watcher->result();
         watcher->deleteLater();
         if (activeSearchWatcher == watcher) {
@@ -2146,12 +2147,12 @@ void MainWindow::findInProject()
         const QVector<SearchResultRow> mergedRows = SearchService::mergeRows(immediateRows, projectResults.rows);
         renderSearchResults(mergedRows);
         setStatus(projectResults.truncatedAtFileCap
-            ? QString::fromUtf8("تم اقتطاع نتائج البحث عند %1 ملف").arg(SearchService::MaxScannedFiles)
+            ? QString::fromUtf8("تم اقتطاع نتائج البحث عند %1 ملف").arg(scanCap)
             : QString::fromUtf8("نتائج البحث: %1").arg(mergedRows.size()));
     });
-    watcher->setFuture(QtConcurrent::run([root, query]() {
+    watcher->setFuture(QtConcurrent::run([root, query, scanCap]() {
         SearchService service;
-        return service.searchWithMetadata(root, query, 1000);
+        return service.searchWithMetadata(root, query, 1000, scanCap);
     }));
 }
 

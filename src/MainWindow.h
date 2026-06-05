@@ -140,6 +140,7 @@ private:
     QTimer *untitledDraftAutosaveTimer = nullptr;
     QFutureWatcher<SearchResults> *activeSearchWatcher = nullptr;
     bool multiCursorSoftCapNoticeShown = false;
+    int searchScanCap = SearchService::MaxScannedFiles;
     QVector<ProjectReplacePreviewRow> currentProjectReplacePreviewRows;
     SettingsStore settings;
     std::function<RuntimeDiagnostics(int)> runtimeDiagnosticsProvider;
@@ -170,6 +171,7 @@ private:
     void updateStatusIndicators();
     // Test-only snapshot for verifying MainWindow's registry integration.
     QVector<DocumentRecord> documentRecordsForTest() const { return documentRegistry.documents(); }
+    void setSearchScanCapForTest(int cap) { searchScanCap = qMax(1, cap); }
     void resolveExternalDocumentChange(const DocumentRecord &record);
     void writeOutput(const QString &title, const QString &text);
     void showOutputPanel();
