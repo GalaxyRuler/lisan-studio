@@ -4,9 +4,11 @@
 #include "SettingsStore.h"
 
 #include <QCoreApplication>
+#include <QMessageBox>
 #include <QSettings>
 #include <QTabWidget>
 #include <QTemporaryDir>
+#include <QTimer>
 
 namespace {
 
@@ -27,6 +29,12 @@ bool containsUntitledDraftsKey(const QString &settingsPath)
     return settings.contains(QStringLiteral("session/untitledDrafts"));
 }
 
+bool nonOrderlyShutdownSentinel(const QString &settingsPath)
+{
+    QSettings settings(settingsPath, QSettings::IniFormat);
+    return settings.value(QStringLiteral("session/nonOrderlyShutdown"), false).toBool();
+}
+
 } // namespace
 
 class TestUntitledDraftRecovery : public QObject
@@ -38,7 +46,9 @@ private slots:
     void roundtripPreservesDraftOrderingAcrossManyDrafts();
     void roundtripDropsEmptyDraftEntries();
     void roundtripPreservesRtlMarksAndBidiContent();
-    void firstKeystrokeTransitionPersistsButSubsequentEditsDoNotUntilNextTransition();
+    void dirtyUntitledBufferAutosavesEveryFiveSecondsOfContinuousEditing();
+    void gracefulShutdownClearsTheNonOrderlySentinel();
+    void forceKillSimulationPersistsDraftsAndPromptsOnRelaunch();
 };
 
 void TestUntitledDraftRecovery::roundtripMultiLineArabicDraftPreservesContent()
@@ -110,7 +120,7 @@ void TestUntitledDraftRecovery::roundtripPreservesRtlMarksAndBidiContent()
     QCOMPARE(loaded.untitledDrafts.first().toUtf8(), draft.toUtf8());
 }
 
-void TestUntitledDraftRecovery::firstKeystrokeTransitionPersistsButSubsequentEditsDoNotUntilNextTransition()
+void TestUntitledDraftRecovery::dirtyUntitledBufferAutosavesEveryFiveSecondsOfContinuousEditing()
 {
     QTemporaryDir temp;
     QVERIFY(temp.isValid());
@@ -121,6 +131,10 @@ void TestUntitledDraftRecovery::firstKeystrokeTransitionPersistsButSubsequentEdi
     QVERIFY(editor != nullptr);
     QCOMPARE(editor->toPlainText(), QString());
     QVERIFY(!editor->isDirty());
+    auto *autosaveTimer = window.findChild<QTimer *>(QStringLiteral("untitledDraftAutosaveTimer"));
+    QVERIFY(autosaveTimer != nullptr);
+    QCOMPARE(autosaveTimer->interval(), 5000);
+    autosaveTimer->setInterval(10);
 
     QVERIFY(!containsUntitledDraftsKey(settingsPath) || storedUntitledDrafts(settingsPath).isEmpty());
 
@@ -136,8 +150,64 @@ void TestUntitledDraftRecovery::firstKeystrokeTransitionPersistsButSubsequentEdi
     QCoreApplication::processEvents();
 
     QCOMPARE(editor->toPlainText(), QStringLiteral("XYZ"));
-    QCOMPARE(storedUntitledDrafts(settingsPath), snapshot);
-    QVERIFY(storedUntitledDrafts(settingsPath) != QStringList({QStringLiteral("XYZ")}));
+
+    QTRY_COMPARE_WITH_TIMEOUT(storedUntitledDrafts(settingsPath), QStringList({QStringLiteral("XYZ")}), 1000);
+    QVERIFY(storedUntitledDrafts(settingsPath) != snapshot);
+}
+
+void TestUntitledDraftRecovery::gracefulShutdownClearsTheNonOrderlySentinel()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    const QString settingsPath = settingsPathFor(temp);
+
+    {
+        MainWindow window(nullptr, settingsPath);
+        QVERIFY(nonOrderlyShutdownSentinel(settingsPath));
+        QVERIFY(window.close());
+    }
+
+    QVERIFY(!nonOrderlyShutdownSentinel(settingsPath));
+}
+
+void TestUntitledDraftRecovery::forceKillSimulationPersistsDraftsAndPromptsOnRelaunch()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    const QString settingsPath = settingsPathFor(temp);
+    const QString draft = QString::fromUtf8("اطبع(\"استعادة بعد انقطاع\")");
+
+    {
+        MainWindow interrupted(nullptr, settingsPath);
+        auto *editor = interrupted.findChild<EditorSurface *>(QStringLiteral("editorSurface"));
+        QVERIFY(editor != nullptr);
+        auto *autosaveTimer = interrupted.findChild<QTimer *>(QStringLiteral("untitledDraftAutosaveTimer"));
+        QVERIFY(autosaveTimer != nullptr);
+        autosaveTimer->setInterval(10);
+
+        editor->insertPlainText(draft);
+        QTRY_COMPARE_WITH_TIMEOUT(storedUntitledDrafts(settingsPath), QStringList({draft}), 1000);
+        QVERIFY(nonOrderlyShutdownSentinel(settingsPath));
+    }
+
+    bool recoveryPromptObserved = false;
+    QTimer::singleShot(0, [&recoveryPromptObserved]() {
+        auto *box = qobject_cast<QMessageBox *>(QApplication::activeModalWidget());
+        QVERIFY(box != nullptr);
+        recoveryPromptObserved = box->windowTitle().contains(QString::fromUtf8("استعادة"))
+            || box->text().contains(QString::fromUtf8("استعادة"))
+            || box->informativeText().contains(QString::fromUtf8("استعادة"));
+        box->button(QMessageBox::Yes)->click();
+    });
+
+    MainWindow relaunched(nullptr, settingsPath);
+    QVERIFY(recoveryPromptObserved);
+    auto *tabs = relaunched.findChild<QTabWidget *>(QStringLiteral("editorTabs"));
+    QVERIFY(tabs != nullptr);
+    auto *editor = qobject_cast<EditorSurface *>(tabs->currentWidget());
+    QVERIFY(editor != nullptr);
+    QCOMPARE(editor->toPlainText(), draft);
+    QVERIFY(editor->isDirty());
 }
 
 QTEST_MAIN(TestUntitledDraftRecovery)

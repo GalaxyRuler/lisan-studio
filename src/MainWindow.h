@@ -137,6 +137,7 @@ private:
     QAction *formatAction = nullptr;
     QAction *cancelRunAction = nullptr;
     QTimer *documentChangePollTimer = nullptr;
+    QTimer *untitledDraftAutosaveTimer = nullptr;
     QFutureWatcher<SearchResults> *activeSearchWatcher = nullptr;
     bool multiCursorSoftCapNoticeShown = false;
     QVector<ProjectReplacePreviewRow> currentProjectReplacePreviewRows;
@@ -196,8 +197,10 @@ private:
     void appendRuntimeOutput(OutputTranscriptChannel channel, const QString &label, const QString &text);
     void setOutputFilter(const OutputTranscriptFilter &filter);
     void renderOutputTranscript();
-    void restoreWorkbenchSession();
+    void restoreWorkbenchSession(bool promptForDraftRecovery = false);
     void saveWorkbenchSession();
+    bool hasDirtyUntitledDraft() const;
+    void scheduleUntitledDraftAutosave();
     void closeEvent(QCloseEvent *event) override;
     bool eventFilter(QObject *watched, QEvent *event) override;
 };

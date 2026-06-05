@@ -293,6 +293,9 @@ MainWindow::MainWindow(QWidget *parent, const QString &settingsPath)
       runtimeOrchestrator(this),
       documentChangePoller(&documentRegistry)
 {
+    const bool promptForDraftRecovery = settings.hasNonOrderlyShutdown();
+    settings.markWorkbenchSessionStarted();
+
     buildUi();
     connect(&runtimeOrchestrator, &RuntimeOrchestrator::outputCleared, this, [this]() {
         showOutputPanel();
@@ -320,7 +323,22 @@ MainWindow::MainWindow(QWidget *parent, const QString &settingsPath)
     documentChangePollTimer->setInterval(2000);
     connect(documentChangePollTimer, &QTimer::timeout, this, &MainWindow::pollOpenDocumentChanges);
     documentChangePollTimer->start();
-    restoreWorkbenchSession();
+
+    untitledDraftAutosaveTimer = new QTimer(this);
+    untitledDraftAutosaveTimer->setObjectName(QStringLiteral("untitledDraftAutosaveTimer"));
+    untitledDraftAutosaveTimer->setInterval(5000);
+    untitledDraftAutosaveTimer->setSingleShot(true);
+    connect(untitledDraftAutosaveTimer, &QTimer::timeout, this, [this]() {
+        if (!hasDirtyUntitledDraft()) {
+            return;
+        }
+        saveWorkbenchSession();
+        if (hasDirtyUntitledDraft()) {
+            untitledDraftAutosaveTimer->start();
+        }
+    });
+
+    restoreWorkbenchSession(promptForDraftRecovery);
     resize(1280, 820);
     setWindowTitle(QString::fromUtf8("استوديو لسان"));
     setWindowIcon(QIcon(QStringLiteral(":/branding/lisan-logo.png")));
@@ -849,6 +867,10 @@ void MainWindow::buildUi()
                     multiCursorSoftCapNoticeShown = false;
                 }
             });
+        }
+        if (surface && !surface->property("untitledDraftAutosaveConnected").toBool()) {
+            surface->setProperty("untitledDraftAutosaveConnected", true);
+            connect(surface->document(), &QTextDocument::contentsChanged, this, &MainWindow::scheduleUntitledDraftAutosave);
         }
         if (!surface || surface->totalCursorCount() < EditorSurface::kSoftCursorCap) {
             multiCursorSoftCapNoticeShown = false;
@@ -3320,9 +3342,22 @@ void MainWindow::renderOutputTranscript()
     outputPanel->setPlainText(outputTranscript.render(outputFilter));
 }
 
-void MainWindow::restoreWorkbenchSession()
+void MainWindow::restoreWorkbenchSession(bool promptForDraftRecovery)
 {
-    const SavedWorkbenchSession session = settings.savedWorkbenchSession();
+    SavedWorkbenchSession session = settings.savedWorkbenchSession();
+    if (promptForDraftRecovery && !session.untitledDrafts.isEmpty()) {
+        const QMessageBox::StandardButton choice = QMessageBox::question(
+            this,
+            QString::fromUtf8("استعادة المسودات"),
+            QString::fromUtf8("تم العثور على مسودات غير محفوظة من جلسة لم تغلق بشكل طبيعي. هل تريد استعادتها؟"),
+            QMessageBox::Yes | QMessageBox::No,
+            QMessageBox::Yes);
+        if (choice != QMessageBox::Yes) {
+            session.untitledDrafts.clear();
+            settings.saveWorkbenchSession(session);
+        }
+    }
+
     if (!session.projectRoot.isEmpty() && QFileInfo(session.projectRoot).isDir()) {
         loadProject(session.projectRoot);
     }
@@ -3395,6 +3430,29 @@ void MainWindow::saveWorkbenchSession()
     settings.saveWorkbenchSession(session);
 }
 
+bool MainWindow::hasDirtyUntitledDraft() const
+{
+    if (!editorTabs) {
+        return false;
+    }
+
+    for (int i = 0; i < editorTabs->count(); ++i) {
+        const auto *surface = qobject_cast<EditorSurface *>(editorTabs->widget(i));
+        if (surface && surface->currentFilePath().isEmpty() && surface->isDirty()) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void MainWindow::scheduleUntitledDraftAutosave()
+{
+    if (!untitledDraftAutosaveTimer || !hasDirtyUntitledDraft() || untitledDraftAutosaveTimer->isActive()) {
+        return;
+    }
+    untitledDraftAutosaveTimer->start();
+}
+
 void MainWindow::closeEvent(QCloseEvent *event)
 {
     if (!confirmUnsavedDocuments(UnsavedChangesOperation::Exit)) {
@@ -3403,6 +3461,7 @@ void MainWindow::closeEvent(QCloseEvent *event)
     }
 
     saveWorkbenchSession();
+    settings.markWorkbenchSessionClosedGracefully();
     QMainWindow::closeEvent(event);
 }
 
