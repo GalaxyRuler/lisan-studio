@@ -1,3 +1,33 @@
+# v0.4.1-beta (2026-06-05)
+
+Phase E V2 close: debugger inspection panels for paused programs.
+
+## Added
+
+- Debug inspector tabs inside the Debug bottom panel: log, variables, watch,
+  and call stack.
+- Local variable retrieval through DAP `stackTrace`, `scopes`, and
+  `variables` requests when debugpy stops at a breakpoint.
+- Watch expressions backed by DAP `evaluate` in the active stack frame.
+- Call-stack rendering with frame source path and line metadata; selecting a
+  frame navigates the editor to the matching source location.
+
+## Changed
+
+- The DAP client now parses stack frames, scopes, variables, and evaluate
+  responses in addition to launch and run-control requests.
+- GitHub MSI workflows now package `LisanStudio-0.4.1-beta.msi`.
+
+## Known v0.4.1-beta limitations
+
+- The debugger inspector focuses on the active stopped thread and top frame;
+  richer multi-thread and nested variable expansion can follow in a later
+  debugger polish slice.
+- The integrated terminal is still pending Phase F.
+- Manual installed-app QA, GitHub Actions MSI runs, tag creation, release
+  publication, and Authenticode signing remain operator-owned public
+  distribution gates after this in-repo release prep.
+
 # v0.4.0-beta (2026-06-05)
 
 Phase E V2 release: debugger launch, breakpoints, and run control.
