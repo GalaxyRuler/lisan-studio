@@ -92,8 +92,8 @@ This is the source of truth for "where are we in V2." Update on every state tran
 
 | Slice | Title | Depends on | Status | Commit | Release | Notes |
 |---|---|---|---|---|---|---|
-| V2-A1 | Multi-cursor Ctrl+Z/Y dispatch | V1.5 slice 9 | □ | — | — | — |
-| V2-A2 | Multi-cursor Tab indent dispatch | V2-A1 | □ | — | — | — |
+| V2-A1 | Multi-cursor Ctrl+Z/Y dispatch | V1.5 slice 9 | ◕ | e2addc1 | — | Landed with V2-A2 in one Codex implementation commit |
+| V2-A2 | Multi-cursor Tab indent dispatch | V2-A1 | ◕ | e2addc1 | — | Landed with V2-A1 in one Codex implementation commit |
 | V2-A3 | Multi-cursor IME composition | V2-A1, V2-A2 | □ | — | — | Hardest of phase A; risk-noted in roadmap |
 | — | **v0.2.1-beta cut** (phase A close) | V2-A3 | □ | — | — | Release-cut slice; see release-cut protocol |
 
