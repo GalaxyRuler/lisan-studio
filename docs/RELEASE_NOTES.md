@@ -1,3 +1,35 @@
+# v0.5.0-beta (2026-06-05)
+
+Phase F V2 close: integrated terminal execution.
+
+## Added
+
+- A trust-gated integrated terminal tab with shell picker, command input,
+  stop control, and LTR transcript rendering for command output.
+- Project-local terminal profile persistence in `.lisan-workspace/settings.json`.
+- Windows terminal profiles for PowerShell and cmd, with WSL Bash shown when
+  `wsl.exe` is available.
+- `TerminalBackend` process execution with stdin writes, merged output reads,
+  and process-exit signals.
+- Terminal backend and MainWindow coverage for cmd spawn/write/read/exit,
+  trust blocking, selected-shell persistence, and command input from the UI.
+
+## Changed
+
+- ADR-0014 now records the validated V2 terminal path: process-backed terminal
+  execution first, with raw ConPTY/QTermWidget deferred until their Windows
+  input and rendering behavior can be proven safely.
+- GitHub MSI workflows now package `LisanStudio-0.5.0-beta.msi`.
+
+## Known v0.5.0-beta limitations
+
+- The terminal surface is intentionally text-backed. Rich ANSI rendering,
+  deeper terminal emulation, and a proven ConPTY/QTermWidget replacement remain
+  future upgrade paths.
+- Manual installed-app QA, GitHub Actions MSI runs, tag creation, release
+  publication, and Authenticode signing remain operator-owned public
+  distribution gates after this in-repo release prep.
+
 # v0.4.1-beta (2026-06-05)
 
 Phase E V2 close: debugger inspection panels for paused programs.

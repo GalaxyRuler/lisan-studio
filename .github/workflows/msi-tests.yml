@@ -61,7 +61,7 @@ jobs:
         run: |
           .\scripts\build.ps1
           .\scripts\package.ps1 `
-            -ProductVersion 0.4.1 `
+            -ProductVersion 0.5.0 `
             -BuildId $env:GITHUB_SHA `
             -ApythonRoot "${{ github.workspace }}\apython-src" `
             -PythonRoot "C:\Users\codexqa\AppData\Local\Programs\Python\Python313"
@@ -69,7 +69,7 @@ jobs:
       - name: Install MSI and assert HKLM uninstall state
         shell: powershell
         run: |
-          $msiPath = Join-Path $PWD 'artifacts\LisanStudio-0.4.1-beta.msi'
+          $msiPath = Join-Path $PWD 'artifacts\LisanStudio-0.5.0-beta.msi'
           .\scripts\msi-smoke.ps1 -MsiPath $msiPath
 
       - name: Upload evidence
@@ -78,7 +78,7 @@ jobs:
         with:
           name: msi-install-evidence-${{ github.run_id }}
           path: |
-            artifacts/LisanStudio-0.4.1-beta.msi
+            artifacts/LisanStudio-0.5.0-beta.msi
             artifacts/SIGNING_STATUS.txt
             artifacts/msi-smoke/**
 
@@ -143,7 +143,7 @@ jobs:
         run: |
           .\scripts\build.ps1
           .\scripts\package.ps1 `
-            -ProductVersion 0.4.1 `
+            -ProductVersion 0.5.0 `
             -BuildId $env:GITHUB_SHA `
             -ApythonRoot "${{ github.workspace }}\apython-src" `
             -PythonRoot "C:\Users\codexqa\AppData\Local\Programs\Python\Python313"
@@ -152,12 +152,12 @@ jobs:
         shell: powershell
         run: |
           $earlierMsiPath = Join-Path $env:GITHUB_WORKSPACE 'msi-fixtures\LisanStudio-0.1.0-beta.msi'
-          $replacementMsiPath = Join-Path $PWD 'artifacts\LisanStudio-0.4.1-beta.msi'
+          $replacementMsiPath = Join-Path $PWD 'artifacts\LisanStudio-0.5.0-beta.msi'
           .\scripts\msi-upgrade-smoke.ps1 `
             -EarlierMsiPath $earlierMsiPath `
             -ReplacementMsiPath $replacementMsiPath `
             -ExpectedEarlierVersion 0.1.0 `
-            -ExpectedReplacementVersion 0.4.1 `
+            -ExpectedReplacementVersion 0.5.0 `
             -AllowMutation `
             -IUnderstandThisRunsMsiUpgrade
 
@@ -168,6 +168,6 @@ jobs:
           name: msi-upgrade-evidence-${{ github.run_id }}
           path: |
             msi-fixtures/LisanStudio-0.1.0-beta.msi
-            artifacts/LisanStudio-0.4.1-beta.msi
+            artifacts/LisanStudio-0.5.0-beta.msi
             artifacts/SIGNING_STATUS.txt
             artifacts/msi-upgrade-smoke/**
