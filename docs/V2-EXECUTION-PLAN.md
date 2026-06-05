@@ -95,7 +95,7 @@ This is the source of truth for "where are we in V2." Update on every state tran
 | V2-A1 | Multi-cursor Ctrl+Z/Y dispatch | V1.5 slice 9 | ◕ | e2addc1 | — | Landed with V2-A2 in one Codex implementation commit |
 | V2-A2 | Multi-cursor Tab indent dispatch | V2-A1 | ◕ | e2addc1 | — | Landed with V2-A1 in one Codex implementation commit |
 | V2-A3 | Multi-cursor IME composition | V2-A1, V2-A2 | ◕ | b2edec9 | — | Committed IME text dispatch landed; live preedit preview remains documented limitation |
-| — | **v0.2.1-beta cut** (phase A close) | V2-A3 | □ | — | — | Release-cut slice; see release-cut protocol |
+| — | **v0.2.1-beta cut** (phase A close) | V2-A3 | ◕ | d7328f1 | — | In-repo release prep landed; push/GHA/tag/publish still pending |
 
 ### Phase B — Editor polish foundations
 
