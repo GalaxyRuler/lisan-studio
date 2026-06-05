@@ -873,8 +873,8 @@ void TestMainWindow::commandPaletteExposesRegisteredWorkbenchCommands()
     QVERIFY(QMetaObject::invokeMethod(&window, "openCommandPalette", Qt::DirectConnection));
 
     commandIds.sort();
-    const QStringList expectedIds = {
-        QStringLiteral("command-palette"),
+    QStringList expectedIds = {
+        QStringLiteral("system.commandPalette"),
         QStringLiteral("cursor.addAbove"),
         QStringLiteral("cursor.addAtNextMatch"),
         QStringLiteral("cursor.addBelow"),
@@ -886,12 +886,12 @@ void TestMainWindow::commandPaletteExposesRegisteredWorkbenchCommands()
         QStringLiteral("document.saveAll"),
         QStringLiteral("editor.toggleTrimTrailingWhitespace"),
         QStringLiteral("editor.toggleVisibleWhitespace"),
-        QStringLiteral("find-in-file"),
-        QStringLiteral("format-current-file"),
-        QStringLiteral("lint-current-file"),
-        QStringLiteral("new-file"),
-        QStringLiteral("open-file"),
-        QStringLiteral("open-project"),
+        QStringLiteral("editor.findInFile"),
+        QStringLiteral("run.formatCurrentFile"),
+        QStringLiteral("run.lintCurrentFile"),
+        QStringLiteral("file.new"),
+        QStringLiteral("file.open"),
+        QStringLiteral("project.open"),
         QStringLiteral("output.clear"),
         QStringLiteral("output.copy"),
         QStringLiteral("output.filter.all"),
@@ -908,20 +908,21 @@ void TestMainWindow::commandPaletteExposesRegisteredWorkbenchCommands()
         QStringLiteral("project.item.rename"),
         QStringLiteral("project.item.reveal"),
         QStringLiteral("project.refresh"),
-        QStringLiteral("replace-in-project"),
-        QStringLiteral("replace-in-project.applyAccepted"),
-        QStringLiteral("run-current-file"),
+        QStringLiteral("search.replacePreview"),
+        QStringLiteral("search.replaceApplyAccepted"),
+        QStringLiteral("run.currentFile"),
         QStringLiteral("run.rerunLast"),
-        QStringLiteral("save-as"),
-        QStringLiteral("save-file"),
-        QStringLiteral("search-project"),
-        QStringLiteral("settings"),
+        QStringLiteral("file.saveAs"),
+        QStringLiteral("file.save"),
+        QStringLiteral("search.project"),
+        QStringLiteral("system.settings"),
         QStringLiteral("snippet.insertPrint"),
-        QStringLiteral("stop-run"),
+        QStringLiteral("run.stop"),
         QStringLiteral("terminal.openPowerShell"),
         QStringLiteral("workspace.trust"),
         QStringLiteral("workspace.untrust"),
     };
+    expectedIds.sort();
     QCOMPARE(commandIds, expectedIds);
 }
 
@@ -932,7 +933,7 @@ void TestMainWindow::commandPaletteShowsPersistedShortcutOverrides()
     const QString settingsPath = temp.filePath(QStringLiteral("settings.ini"));
 
     QJsonObject shortcuts;
-    shortcuts.insert(QStringLiteral("save-file"), QStringLiteral("Ctrl+Alt+S"));
+    shortcuts.insert(QStringLiteral("file.save"), QStringLiteral("Ctrl+Alt+S"));
     QJsonObject shortcutSettings;
     shortcutSettings.insert(QStringLiteral("version"), 1);
     shortcutSettings.insert(QStringLiteral("shortcuts"), shortcuts);
@@ -956,7 +957,7 @@ void TestMainWindow::commandPaletteShowsPersistedShortcutOverrides()
 
         for (int row = 0; row < commands->count(); ++row) {
             auto *item = commands->item(row);
-            if (item->data(Qt::UserRole).toString() != QStringLiteral("save-file")) {
+            if (item->data(Qt::UserRole).toString() != QStringLiteral("file.save")) {
                 continue;
             }
             metadataShortcut = item->data(Qt::UserRole + 2).toString();
@@ -1022,8 +1023,8 @@ void TestMainWindow::coreCommandSurfacesDeclareRegisteredCommandIds()
     surfaceIds.removeDuplicates();
     surfaceIds.sort();
 
-    const QStringList expectedSurfaceIds = {
-        QStringLiteral("command-palette"),
+    QStringList expectedSurfaceIds = {
+        QStringLiteral("system.commandPalette"),
         QStringLiteral("cursor.addAbove"),
         QStringLiteral("cursor.addAtNextMatch"),
         QStringLiteral("cursor.addBelow"),
@@ -1031,12 +1032,12 @@ void TestMainWindow::coreCommandSurfacesDeclareRegisteredCommandIds()
         QStringLiteral("cursor.selectAllMatches"),
         QStringLiteral("editor.toggleTrimTrailingWhitespace"),
         QStringLiteral("editor.toggleVisibleWhitespace"),
-        QStringLiteral("find-in-file"),
-        QStringLiteral("format-current-file"),
-        QStringLiteral("lint-current-file"),
-        QStringLiteral("new-file"),
-        QStringLiteral("open-file"),
-        QStringLiteral("open-project"),
+        QStringLiteral("editor.findInFile"),
+        QStringLiteral("run.formatCurrentFile"),
+        QStringLiteral("run.lintCurrentFile"),
+        QStringLiteral("file.new"),
+        QStringLiteral("file.open"),
+        QStringLiteral("project.open"),
         QStringLiteral("output.clear"),
         QStringLiteral("output.copy"),
         QStringLiteral("output.filter.all"),
@@ -1053,19 +1054,20 @@ void TestMainWindow::coreCommandSurfacesDeclareRegisteredCommandIds()
         QStringLiteral("project.item.rename"),
         QStringLiteral("project.item.reveal"),
         QStringLiteral("project.refresh"),
-        QStringLiteral("replace-in-project"),
-        QStringLiteral("replace-in-project.applyAccepted"),
-        QStringLiteral("run-current-file"),
-        QStringLiteral("save-as"),
-        QStringLiteral("save-file"),
-        QStringLiteral("search-project"),
-        QStringLiteral("settings"),
+        QStringLiteral("search.replacePreview"),
+        QStringLiteral("search.replaceApplyAccepted"),
+        QStringLiteral("run.currentFile"),
+        QStringLiteral("file.saveAs"),
+        QStringLiteral("file.save"),
+        QStringLiteral("search.project"),
+        QStringLiteral("system.settings"),
         QStringLiteral("snippet.insertPrint"),
-        QStringLiteral("stop-run"),
+        QStringLiteral("run.stop"),
         QStringLiteral("terminal.openPowerShell"),
         QStringLiteral("workspace.trust"),
         QStringLiteral("workspace.untrust"),
     };
+    expectedSurfaceIds.sort();
     QCOMPARE(surfaceIds, expectedSurfaceIds);
 
     for (const QString &surfaceId : surfaceIds) {
@@ -1097,7 +1099,7 @@ void TestMainWindow::commandPaletteIncludesInFileFindCommand()
     });
 
     QVERIFY(QMetaObject::invokeMethod(&window, "openCommandPalette", Qt::DirectConnection));
-    QVERIFY(commandIds.contains(QStringLiteral("find-in-file")));
+    QVERIFY(commandIds.contains(QStringLiteral("editor.findInFile")));
 }
 
 void TestMainWindow::commandPaletteIncludesSnippetCommand()
@@ -1260,7 +1262,7 @@ void TestMainWindow::commandPaletteFiltersAndExecutesSelectedCommand()
     QVERIFY(sawCommandMetadata);
     QVERIFY(sawCommandWidgets);
     QCOMPARE(visibleRows, 1);
-    QCOMPARE(visibleCommandId, QStringLiteral("new-file"));
+    QCOMPARE(visibleCommandId, QStringLiteral("file.new"));
     QCOMPARE(tabs->count(), beforeTabCount + 1);
     QCOMPARE(window.currentEditorPath(), QString());
     auto *currentEditor = qobject_cast<EditorSurface *>(tabs->currentWidget());
@@ -1306,7 +1308,7 @@ void TestMainWindow::commandPaletteFiltersAndExecutesSelectedCommand()
     QVERIFY(QMetaObject::invokeMethod(&window, "openCommandPalette", Qt::DirectConnection));
 
     QCOMPARE(doubleClickVisibleRows, 1);
-    QCOMPARE(doubleClickCommandId, QStringLiteral("new-file"));
+    QCOMPARE(doubleClickCommandId, QStringLiteral("file.new"));
     QCOMPARE(tabs->count(), beforeTabCount + 2);
 }
 
@@ -2345,7 +2347,7 @@ void TestMainWindow::projectReplacePreviewRendersRowsWithoutWritingFile()
     auto *replaceInput = window.findChild<QLineEdit *>(QStringLiteral("projectReplaceInput"));
     QVERIFY(commandBox != nullptr);
     QVERIFY(replaceInput != nullptr);
-    QCOMPARE(replaceInput->property("commandId").toString(), QStringLiteral("replace-in-project"));
+    QCOMPARE(replaceInput->property("commandId").toString(), QStringLiteral("search.replacePreview"));
 
     commandBox->setText(QString::fromUtf8("عدد"));
     replaceInput->setText(QString::fromUtf8("قيمة"));
@@ -2501,7 +2503,7 @@ void TestMainWindow::projectReplaceApplyWritesCheckedRowsOnly()
     QVERIFY(commandBox != nullptr);
     QVERIFY(replaceInput != nullptr);
     QVERIFY(applyButton != nullptr);
-    QCOMPARE(applyButton->property("commandId").toString(), QStringLiteral("replace-in-project.applyAccepted"));
+    QCOMPARE(applyButton->property("commandId").toString(), QStringLiteral("search.replaceApplyAccepted"));
 
     commandBox->setText(QString::fromUtf8("عدد"));
     replaceInput->setText(QString::fromUtf8("قيمة"));
@@ -3358,13 +3360,13 @@ void TestMainWindow::settingsDialogEditsSelectedShortcutBinding()
         }
 
         for (int row = 0; row < shortcutList->count(); ++row) {
-            if (shortcutList->item(row)->data(Qt::UserRole).toString() == QStringLiteral("save-file")) {
+            if (shortcutList->item(row)->data(Qt::UserRole).toString() == QStringLiteral("file.save")) {
                 shortcutList->setCurrentRow(row);
                 break;
             }
         }
         if (!shortcutList->currentItem()) {
-            failure = QStringLiteral("save-file shortcut row missing");
+            failure = QStringLiteral("file.save shortcut row missing");
             dialog->reject();
             return;
         }
@@ -3377,7 +3379,7 @@ void TestMainWindow::settingsDialogEditsSelectedShortcutBinding()
     QTRY_VERIFY2(inspected, qPrintable(failure));
     QVERIFY2(failure.isEmpty(), qPrintable(failure));
     QCOMPARE(
-        SettingsStore(settingsPath).shortcutSettingsJson().value(QStringLiteral("shortcuts")).toObject().value(QStringLiteral("save-file")).toString(),
+        SettingsStore(settingsPath).shortcutSettingsJson().value(QStringLiteral("shortcuts")).toObject().value(QStringLiteral("file.save")).toString(),
         QStringLiteral("Ctrl+Alt+S"));
 }
 
@@ -3388,7 +3390,7 @@ void TestMainWindow::persistedShortcutOverrideAppliesToWorkbenchActions()
     const QString settingsPath = temp.filePath(QStringLiteral("settings.ini"));
 
     QJsonObject shortcuts;
-    shortcuts.insert(QStringLiteral("save-file"), QStringLiteral("Ctrl+Alt+S"));
+    shortcuts.insert(QStringLiteral("file.save"), QStringLiteral("Ctrl+Alt+S"));
     QJsonObject shortcutSettings;
     shortcutSettings.insert(QStringLiteral("version"), 1);
     shortcutSettings.insert(QStringLiteral("shortcuts"), shortcuts);
@@ -3398,7 +3400,7 @@ void TestMainWindow::persistedShortcutOverrideAppliesToWorkbenchActions()
 
     int saveActionCount = 0;
     for (auto *action : window.findChildren<QAction *>()) {
-        if (action->property("commandId").toString() != QStringLiteral("save-file")) {
+        if (action->property("commandId").toString() != QStringLiteral("file.save")) {
             continue;
         }
         ++saveActionCount;
@@ -3416,7 +3418,7 @@ void TestMainWindow::shortcutSettingsExportWritesPersistedJson()
     const QString settingsPath = temp.filePath(QStringLiteral("settings.ini"));
 
     QJsonObject shortcuts;
-    shortcuts.insert(QStringLiteral("save-file"), QStringLiteral("Ctrl+Alt+S"));
+    shortcuts.insert(QStringLiteral("file.save"), QStringLiteral("Ctrl+Alt+S"));
     QJsonObject shortcutSettings;
     shortcutSettings.insert(QStringLiteral("version"), 1);
     shortcutSettings.insert(QStringLiteral("shortcuts"), shortcuts);
@@ -3439,7 +3441,7 @@ void TestMainWindow::shortcutSettingsExportWritesPersistedJson()
     const QJsonObject exportedJson = QJsonDocument::fromJson(exportedFile.readAll()).object();
     QCOMPARE(exportedJson.value(QStringLiteral("version")).toInt(), 1);
     QCOMPARE(
-        exportedJson.value(QStringLiteral("shortcuts")).toObject().value(QStringLiteral("save-file")).toString(),
+        exportedJson.value(QStringLiteral("shortcuts")).toObject().value(QStringLiteral("file.save")).toString(),
         QStringLiteral("Ctrl+Alt+S"));
 }
 
@@ -3451,7 +3453,7 @@ void TestMainWindow::shortcutSettingsImportAppliesValidJson()
     const QString importPath = temp.filePath(QStringLiteral("shortcuts.json"));
 
     QJsonObject shortcuts;
-    shortcuts.insert(QStringLiteral("save-file"), QStringLiteral("Ctrl+Alt+S"));
+    shortcuts.insert(QStringLiteral("file.save"), QStringLiteral("Ctrl+Alt+S"));
     QJsonObject shortcutSettings;
     shortcutSettings.insert(QStringLiteral("version"), 1);
     shortcutSettings.insert(QStringLiteral("shortcuts"), shortcuts);
@@ -3472,12 +3474,12 @@ void TestMainWindow::shortcutSettingsImportAppliesValidJson()
 
     QVERIFY(imported);
     QCOMPARE(
-        SettingsStore(settingsPath).shortcutSettingsJson().value(QStringLiteral("shortcuts")).toObject().value(QStringLiteral("save-file")).toString(),
+        SettingsStore(settingsPath).shortcutSettingsJson().value(QStringLiteral("shortcuts")).toObject().value(QStringLiteral("file.save")).toString(),
         QStringLiteral("Ctrl+Alt+S"));
 
     int saveActionCount = 0;
     for (auto *action : window.findChildren<QAction *>()) {
-        if (action->property("commandId").toString() != QStringLiteral("save-file")) {
+        if (action->property("commandId").toString() != QStringLiteral("file.save")) {
             continue;
         }
         ++saveActionCount;
@@ -3494,7 +3496,7 @@ void TestMainWindow::shortcutSettingsImportRejectsInvalidJsonWithoutChangingExis
     const QString importPath = temp.filePath(QStringLiteral("bad-shortcuts.json"));
 
     QJsonObject existingShortcuts;
-    existingShortcuts.insert(QStringLiteral("save-file"), QStringLiteral("Ctrl+Alt+S"));
+    existingShortcuts.insert(QStringLiteral("file.save"), QStringLiteral("Ctrl+Alt+S"));
     QJsonObject existingSettings;
     existingSettings.insert(QStringLiteral("version"), 1);
     existingSettings.insert(QStringLiteral("shortcuts"), existingShortcuts);
@@ -3522,7 +3524,7 @@ void TestMainWindow::shortcutSettingsImportRejectsInvalidJsonWithoutChangingExis
 
     QVERIFY(!imported);
     QCOMPARE(
-        SettingsStore(settingsPath).shortcutSettingsJson().value(QStringLiteral("shortcuts")).toObject().value(QStringLiteral("save-file")).toString(),
+        SettingsStore(settingsPath).shortcutSettingsJson().value(QStringLiteral("shortcuts")).toObject().value(QStringLiteral("file.save")).toString(),
         QStringLiteral("Ctrl+Alt+S"));
     QVERIFY(window.property("shortcutSettingsError").toString().contains(QStringLiteral("missing-command")));
 }
@@ -3534,7 +3536,7 @@ void TestMainWindow::shortcutSettingsResetRestoresDefaultActions()
     const QString settingsPath = temp.filePath(QStringLiteral("settings.ini"));
 
     QJsonObject shortcuts;
-    shortcuts.insert(QStringLiteral("save-file"), QStringLiteral("Ctrl+Alt+S"));
+    shortcuts.insert(QStringLiteral("file.save"), QStringLiteral("Ctrl+Alt+S"));
     QJsonObject shortcutSettings;
     shortcutSettings.insert(QStringLiteral("version"), 1);
     shortcutSettings.insert(QStringLiteral("shortcuts"), shortcuts);
@@ -3554,7 +3556,7 @@ void TestMainWindow::shortcutSettingsResetRestoresDefaultActions()
 
     int saveActionCount = 0;
     for (auto *action : window.findChildren<QAction *>()) {
-        if (action->property("commandId").toString() != QStringLiteral("save-file")) {
+        if (action->property("commandId").toString() != QStringLiteral("file.save")) {
             continue;
         }
         ++saveActionCount;
@@ -3576,17 +3578,17 @@ void TestMainWindow::shortcutOverrideHelperPersistsAndAppliesCommandShortcut()
         "setShortcutOverrideForCommand",
         Qt::DirectConnection,
         Q_RETURN_ARG(bool, saved),
-        Q_ARG(QString, QStringLiteral("save-file")),
+        Q_ARG(QString, QStringLiteral("file.save")),
         Q_ARG(QKeySequence, QKeySequence(QStringLiteral("Ctrl+Alt+S")))));
 
     QVERIFY(saved);
     QCOMPARE(
-        SettingsStore(settingsPath).shortcutSettingsJson().value(QStringLiteral("shortcuts")).toObject().value(QStringLiteral("save-file")).toString(),
+        SettingsStore(settingsPath).shortcutSettingsJson().value(QStringLiteral("shortcuts")).toObject().value(QStringLiteral("file.save")).toString(),
         QStringLiteral("Ctrl+Alt+S"));
 
     int saveActionCount = 0;
     for (auto *action : window.findChildren<QAction *>()) {
-        if (action->property("commandId").toString() != QStringLiteral("save-file")) {
+        if (action->property("commandId").toString() != QStringLiteral("file.save")) {
             continue;
         }
         ++saveActionCount;
@@ -3608,12 +3610,12 @@ void TestMainWindow::shortcutOverrideHelperRejectsConflictsWithoutChangingSettin
         "setShortcutOverrideForCommand",
         Qt::DirectConnection,
         Q_RETURN_ARG(bool, saved),
-        Q_ARG(QString, QStringLiteral("save-file")),
+        Q_ARG(QString, QStringLiteral("file.save")),
         Q_ARG(QKeySequence, QKeySequence(QKeySequence::Open))));
 
     QVERIFY(!saved);
     QVERIFY(SettingsStore(settingsPath).shortcutSettingsJson().isEmpty());
-    QVERIFY(window.property("shortcutSettingsError").toString().contains(QStringLiteral("open-file")));
+    QVERIFY(window.property("shortcutSettingsError").toString().contains(QStringLiteral("file.open")));
 }
 
 QTEST_MAIN(TestMainWindow)

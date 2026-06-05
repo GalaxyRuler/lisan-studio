@@ -905,8 +905,8 @@ void TestProjectSearchRuntime::settingsStorePersistsShortcutSettingsJson()
     QVERIFY(empty.shortcutSettingsJson().isEmpty());
 
     QJsonObject shortcuts;
-    shortcuts.insert(QStringLiteral("save-file"), QStringLiteral("Ctrl+Alt+S"));
-    shortcuts.insert(QStringLiteral("run-current-file"), QStringLiteral("F6"));
+    shortcuts.insert(QStringLiteral("file.save"), QStringLiteral("Ctrl+Alt+S"));
+    shortcuts.insert(QStringLiteral("run.currentFile"), QStringLiteral("F6"));
 
     QJsonObject exported;
     exported.insert(QStringLiteral("version"), 1);
@@ -918,7 +918,7 @@ void TestProjectSearchRuntime::settingsStorePersistsShortcutSettingsJson()
     SettingsStore reloaded(temp.path() + QStringLiteral("/settings.ini"));
     const QJsonObject loaded = reloaded.shortcutSettingsJson();
     QCOMPARE(loaded.value(QStringLiteral("version")).toInt(), 1);
-    QCOMPARE(loaded.value(QStringLiteral("shortcuts")).toObject().value(QStringLiteral("save-file")).toString(), QStringLiteral("Ctrl+Alt+S"));
+    QCOMPARE(loaded.value(QStringLiteral("shortcuts")).toObject().value(QStringLiteral("file.save")).toString(), QStringLiteral("Ctrl+Alt+S"));
     QCOMPARE(loaded.value(QStringLiteral("futureMetadata")).toArray().first().toString(), QStringLiteral("kept"));
 }
 

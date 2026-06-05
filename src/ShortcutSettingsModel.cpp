@@ -2,6 +2,30 @@
 
 #include <QJsonValue>
 
+namespace {
+QString migratedCommandId(QString commandId)
+{
+    static const QMap<QString, QString> migrations = {
+        {QStringLiteral("new-file"), QStringLiteral("file.new")},
+        {QStringLiteral("open-file"), QStringLiteral("file.open")},
+        {QStringLiteral("open-project"), QStringLiteral("project.open")},
+        {QStringLiteral("save-file"), QStringLiteral("file.save")},
+        {QStringLiteral("save-as"), QStringLiteral("file.saveAs")},
+        {QStringLiteral("find-in-file"), QStringLiteral("editor.findInFile")},
+        {QStringLiteral("run-current-file"), QStringLiteral("run.currentFile")},
+        {QStringLiteral("lint-current-file"), QStringLiteral("run.lintCurrentFile")},
+        {QStringLiteral("format-current-file"), QStringLiteral("run.formatCurrentFile")},
+        {QStringLiteral("stop-run"), QStringLiteral("run.stop")},
+        {QStringLiteral("search-project"), QStringLiteral("search.project")},
+        {QStringLiteral("replace-in-project"), QStringLiteral("search.replacePreview")},
+        {QStringLiteral("replace-in-project.applyAccepted"), QStringLiteral("search.replaceApplyAccepted")},
+        {QStringLiteral("settings"), QStringLiteral("system.settings")},
+        {QStringLiteral("command-palette"), QStringLiteral("system.commandPalette")},
+    };
+    return migrations.value(commandId, commandId);
+}
+}
+
 bool ShortcutSettingsModel::setOverride(const CommandRegistry &registry, const QString &commandId, const QKeySequence &shortcut, QString *error)
 {
     if (!registry.contains(commandId)) {
@@ -76,7 +100,7 @@ bool ShortcutSettingsModel::loadJson(const QJsonObject &object, const CommandReg
     const QJsonObject shortcuts = shortcutsValue.toObject();
     for (auto it = shortcuts.constBegin(); it != shortcuts.constEnd(); ++it) {
         const QKeySequence shortcut(it.value().toString());
-        if (!loaded.setOverride(registry, it.key(), shortcut, error)) {
+        if (!loaded.setOverride(registry, migratedCommandId(it.key()), shortcut, error)) {
             return false;
         }
     }
