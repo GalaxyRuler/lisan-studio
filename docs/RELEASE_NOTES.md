@@ -1,3 +1,36 @@
+# v0.3.0-beta (2026-06-05)
+
+Phase C V2 release: first user-visible LSP foundation for Arabic-first
+editing.
+
+## Added
+
+- Lisan Studio now starts and synchronizes a Qt-side LSP client for `.apy`
+  documents through the bundled `lughat-althuban-lsp` runtime path.
+- The editor can request `textDocument/completion` and show a debounced
+  completion popup. Accepting a completion replaces the current identifier
+  prefix instead of duplicating the typed text.
+- The editor can request `textDocument/hover` on identifier dwell and surface
+  the returned markdown in a tooltip.
+- `acs_lsp_client_tests` covers initialize, document sync, completion parsing,
+  hover parsing, and local round-trip budget checks.
+
+## Changed
+
+- The repository now vendors `lsp-framework` as the first submodule under
+  `third_party/lsp-framework`; fresh checkouts must initialize submodules.
+- GitHub MSI test checkout steps use recursive submodule checkout so the LSP
+  transport is present in CI.
+
+## Known v0.3.0-beta limitations
+
+- Completion and hover depend on the bundled apython LSP runtime being present
+  and initializable. If the runtime is missing, LSP UI features stay silent.
+- Completion insertion uses the current identifier prefix plus `insertText`.
+  LSP `textEdit` replacement ranges are not yet consumed.
+- Manual installed-app QA, GitHub Actions MSI runs, tag creation, and release
+  publication remain operator-owned steps after this in-repo release prep.
+
 # v0.2.2-beta (2026-06-05)
 
 Phase B V2 release: workbench recovery, search truncation visibility,
