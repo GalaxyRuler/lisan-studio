@@ -24,7 +24,7 @@ candidate and a public release. The canonical slice tracker remains
 | Draft PR opened | Done | PR #9: <https://github.com/GalaxyRuler/lisan-studio/pull/9> |
 | Local validation | Done | `./scripts/validate.ps1` passed 13/13 |
 | Local package validation | Done | `./scripts/package.ps1 -ProductVersion 0.5.0 ...` passed package-time validation 13/13 from commit `b206fe2` |
-| GitHub Actions MSI evidence | Pending | Run <https://github.com/GalaxyRuler/lisan-studio/actions/runs/27007455061> is queued; `lisanstudio-qa` self-hosted runner is currently offline |
+| GitHub Actions MSI evidence | Pending | Replacement run <https://github.com/GalaxyRuler/lisan-studio/actions/runs/27009103229> is queued at head `4c608f8`; `lisanstudio-qa` self-hosted runner is currently offline |
 | Installed-app QA | Pending | Must run inside `LisanStudio-QA`; do not run GUI/MSI install or uninstall on active WHITEDRAGON |
 | Authenticode signing | Repo hook ready / external key pending | `scripts/package.ps1` supports optional thumbprint-based `signtool.exe` signing via `-SigningCertificateThumbprint` or `LISAN_SIGNING_CERT_THUMBPRINT`. A real OV/EV certificate, key storage, and CI secret/variable configuration remain external release gates |
 | Tag and GitHub release | Pending | Wait for PR review/merge, MSI evidence, signing decision, and operator release approval |
@@ -49,7 +49,7 @@ The full MSI workflow was dispatched with:
 gh workflow run msi-tests.yml --repo GalaxyRuler/lisan-studio --ref codex/v2-public-use --field scenario=full
 ```
 
-Run URL: <https://github.com/GalaxyRuler/lisan-studio/actions/runs/27007455061>
+Run URL: <https://github.com/GalaxyRuler/lisan-studio/actions/runs/27009103229>
 
 ## Operating Boundary
 
