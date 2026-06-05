@@ -62,6 +62,7 @@ private slots:
     void enforcesRtlDirectionAcrossShellContainers();
     void workbenchDeclaresKeyboardFocusOrder();
     void statusBarExposesEditorRuntimeAndGitIndicators();
+    void statusBarShowsGitBranchAndDirtyCount();
     void breadcrumbBarTracksActiveEditorPathWithSymbolPlaceholder();
     void exposesCommandPaletteAction();
     void commandPaletteExposesRegisteredWorkbenchCommands();
@@ -155,6 +156,15 @@ static QString writeFile(const QDir &root, const QString &relative, const QStrin
     }
     file.write(text.toUtf8());
     return info.absoluteFilePath();
+}
+
+static void runGit(const QDir &root, const QStringList &arguments)
+{
+    QProcess git;
+    git.setWorkingDirectory(root.absolutePath());
+    git.start(QStringLiteral("git"), arguments);
+    QVERIFY2(git.waitForFinished(10000), qPrintable(QStringLiteral("git timed out: %1").arg(arguments.join(QLatin1Char(' ')))));
+    QCOMPARE(git.exitCode(), 0);
 }
 
 static QString trustAuditPath(const QString &projectRoot)
@@ -874,6 +884,31 @@ void TestMainWindow::statusBarExposesEditorRuntimeAndGitIndicators()
     QCOMPARE(language->text(), QStringLiteral(".apy"));
     QCOMPARE(runtime->text(), QString::fromUtf8("التشغيل: جاهز"));
     QCOMPARE(git->text(), QStringLiteral("Git: --"));
+}
+
+void TestMainWindow::statusBarShowsGitBranchAndDirtyCount()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    QDir root(temp.path());
+    runGit(root, {QStringLiteral("init"), QStringLiteral("-b"), QStringLiteral("main")});
+    runGit(root, {QStringLiteral("config"), QStringLiteral("user.name"), QStringLiteral("Lisan Tester")});
+    runGit(root, {QStringLiteral("config"), QStringLiteral("user.email"), QStringLiteral("tester@example.invalid")});
+    const QString filePath = writeFile(root, QStringLiteral("src/برنامج.apy"), QString::fromUtf8("اطبع(\"أهلا\")\n"));
+    runGit(root, {QStringLiteral("add"), QStringLiteral(".")});
+    runGit(root, {QStringLiteral("commit"), QStringLiteral("-m"), QStringLiteral("initial")});
+
+    MainWindow window;
+    QVERIFY(window.openPath(root.absolutePath()));
+
+    auto *git = window.findChild<QLabel *>(QStringLiteral("statusGitLabel"));
+    QVERIFY(git != nullptr);
+    QCOMPARE(git->text(), QStringLiteral("Git: main"));
+
+    writeFile(root, QStringLiteral("src/برنامج.apy"), QString::fromUtf8("اطبع(\"تعديل\")\n"));
+    QVERIFY(window.openPath(filePath));
+
+    QCOMPARE(git->text(), QStringLiteral("Git: main (1)"));
 }
 
 void TestMainWindow::breadcrumbBarTracksActiveEditorPathWithSymbolPlaceholder()

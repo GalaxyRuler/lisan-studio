@@ -3542,6 +3542,11 @@ bool MainWindow::loadProject(const QString &path)
     refreshTerminalProfiles();
     updateTerminalControls();
     settings.addRecentProject(projectRoot);
+    QString gitError;
+    if (!gitRepository.open(projectRoot, &gitError)) {
+        gitRepository.close();
+    }
+    updateStatusIndicators();
     setStatus(QString::fromUtf8("المشروع: %1").arg(projectRoot));
     return true;
 }
@@ -4373,7 +4378,21 @@ void MainWindow::updateStatusIndicators()
     statusIndentationLabel->setText(QString::fromUtf8("مسافات: 4"));
     statusLanguageModeLabel->setText(languageModeStatusText(path));
     statusRuntimeLabel->setText(QString::fromUtf8("التشغيل: جاهز"));
-    statusGitLabel->setText(QStringLiteral("Git: --"));
+
+    QString gitStatusText = QStringLiteral("Git: --");
+    if (gitRepository.isOpen()) {
+        QString gitError;
+        const QString branch = gitRepository.currentBranch(&gitError);
+        const QVector<GitStatusEntry> entries = gitError.isEmpty()
+            ? gitRepository.statusEntries(&gitError)
+            : QVector<GitStatusEntry>{};
+        if (gitError.isEmpty() && !branch.isEmpty()) {
+            gitStatusText = entries.isEmpty()
+                ? QStringLiteral("Git: %1").arg(branch)
+                : QStringLiteral("Git: %1 (%2)").arg(branch).arg(entries.size());
+        }
+    }
+    statusGitLabel->setText(gitStatusText);
 }
 
 void MainWindow::writeOutput(const QString &title, const QString &text)

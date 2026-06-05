@@ -7,6 +7,7 @@
 #include "DapClient.h"
 #include "EditorTabsController.h"
 #include "EditorSurface.h"
+#include "GitRepository.h"
 #include "LspClient.h"
 #include "OutputTranscript.h"
 #include "ProjectModel.h"
@@ -175,6 +176,7 @@ private:
     WorkspaceSettings workspaceSettings;
     OutputTranscript outputTranscript;
     OutputTranscriptFilter outputFilter;
+    GitRepository gitRepository;
     QVector<TerminalProfile> terminalProfiles;
     QString lspDocumentUri;
     int lspDocumentVersion = 0;

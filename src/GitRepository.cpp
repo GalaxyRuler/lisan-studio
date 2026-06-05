@@ -1,0 +1,240 @@
+#include "GitRepository.h"
+
+#include <git2.h>
+
+#include <QDir>
+#include <QFileInfo>
+
+#include <algorithm>
+
+namespace {
+QString normalizeRootPath(const char *path)
+{
+    if (!path || !*path) {
+        return QString();
+    }
+    return QDir::cleanPath(QDir::fromNativeSeparators(QString::fromUtf8(path)));
+}
+
+GitFileState stateFromStatus(unsigned int status, bool staged)
+{
+    if (status & GIT_STATUS_CONFLICTED) {
+        return GitFileState::Conflicted;
+    }
+    if (staged) {
+        if (status & GIT_STATUS_INDEX_NEW) {
+            return GitFileState::Added;
+        }
+        if (status & GIT_STATUS_INDEX_DELETED) {
+            return GitFileState::Deleted;
+        }
+        if (status & GIT_STATUS_INDEX_RENAMED) {
+            return GitFileState::Renamed;
+        }
+        if (status & GIT_STATUS_INDEX_TYPECHANGE) {
+            return GitFileState::TypeChanged;
+        }
+        return GitFileState::Modified;
+    }
+
+    if (status & GIT_STATUS_WT_NEW) {
+        return GitFileState::Untracked;
+    }
+    if (status & GIT_STATUS_WT_DELETED) {
+        return GitFileState::Deleted;
+    }
+    if (status & GIT_STATUS_WT_RENAMED) {
+        return GitFileState::Renamed;
+    }
+    if (status & GIT_STATUS_WT_TYPECHANGE) {
+        return GitFileState::TypeChanged;
+    }
+    return GitFileState::Modified;
+}
+
+QString deltaPath(const git_diff_delta *delta)
+{
+    if (!delta) {
+        return QString();
+    }
+    const char *path = delta->new_file.path ? delta->new_file.path : delta->old_file.path;
+    return path ? QString::fromUtf8(path) : QString();
+}
+}
+
+GitRepository::GitRepository()
+{
+    git_libgit2_init();
+}
+
+GitRepository::~GitRepository()
+{
+    close();
+    git_libgit2_shutdown();
+}
+
+bool GitRepository::open(const QString &path, QString *error)
+{
+    if (error) {
+        error->clear();
+    }
+
+    close();
+
+    git_repository *opened = nullptr;
+    const QByteArray pathUtf8 = QFileInfo(path).absoluteFilePath().toUtf8();
+    if (git_repository_open_ext(&opened, pathUtf8.constData(), 0, nullptr) != 0) {
+        if (error) {
+            *error = lastError(QStringLiteral("تعذر فتح مستودع Git."));
+        }
+        return false;
+    }
+
+    const QString workdir = normalizeRootPath(git_repository_workdir(opened));
+    root = workdir.isEmpty() ? normalizeRootPath(git_repository_path(opened)) : workdir;
+    repository = opened;
+    return true;
+}
+
+void GitRepository::close()
+{
+    if (repository) {
+        git_repository_free(repository);
+        repository = nullptr;
+    }
+    root.clear();
+}
+
+bool GitRepository::isOpen() const
+{
+    return repository != nullptr;
+}
+
+QString GitRepository::rootPath() const
+{
+    return root;
+}
+
+QString GitRepository::currentBranch(QString *error) const
+{
+    if (error) {
+        error->clear();
+    }
+    if (!repository) {
+        if (error) {
+            *error = QStringLiteral("لا يوجد مستودع Git مفتوح.");
+        }
+        return QString();
+    }
+
+    git_reference *head = nullptr;
+    const int result = git_repository_head(&head, repository);
+    if (result == GIT_EUNBORNBRANCH) {
+        return QStringLiteral("HEAD");
+    }
+    if (result != 0) {
+        if (error) {
+            *error = lastError(QStringLiteral("تعذر قراءة فرع Git الحالي."));
+        }
+        return QString();
+    }
+
+    const char *branchName = nullptr;
+    QString displayName;
+    if (git_reference_is_branch(head) && git_branch_name(&branchName, head) == 0 && branchName) {
+        displayName = QString::fromUtf8(branchName);
+    } else {
+        const char *shorthand = git_reference_shorthand(head);
+        displayName = shorthand ? QString::fromUtf8(shorthand) : QStringLiteral("HEAD");
+    }
+    git_reference_free(head);
+    return displayName;
+}
+
+QVector<GitStatusEntry> GitRepository::statusEntries(QString *error) const
+{
+    if (error) {
+        error->clear();
+    }
+    QVector<GitStatusEntry> entries;
+    if (!repository) {
+        if (error) {
+            *error = QStringLiteral("لا يوجد مستودع Git مفتوح.");
+        }
+        return entries;
+    }
+
+    git_status_options options = GIT_STATUS_OPTIONS_INIT;
+    options.show = GIT_STATUS_SHOW_INDEX_AND_WORKDIR;
+    options.flags = GIT_STATUS_OPT_INCLUDE_UNTRACKED
+        | GIT_STATUS_OPT_RECURSE_UNTRACKED_DIRS
+        | GIT_STATUS_OPT_RENAMES_HEAD_TO_INDEX
+        | GIT_STATUS_OPT_SORT_CASE_INSENSITIVELY;
+
+    git_status_list *statusList = nullptr;
+    if (git_status_list_new(&statusList, repository, &options) != 0) {
+        if (error) {
+            *error = lastError(QStringLiteral("تعذر قراءة حالة Git."));
+        }
+        return entries;
+    }
+
+    const size_t count = git_status_list_entrycount(statusList);
+    entries.reserve(static_cast<int>(count));
+    for (size_t i = 0; i < count; ++i) {
+        const git_status_entry *entry = git_status_byindex(statusList, i);
+        if (!entry) {
+            continue;
+        }
+
+        if (entry->head_to_index) {
+            const QString path = deltaPath(entry->head_to_index);
+            if (!path.isEmpty()) {
+                entries.push_back({path, stateFromStatus(entry->status, true), true});
+            }
+        }
+        if (entry->index_to_workdir) {
+            const QString path = deltaPath(entry->index_to_workdir);
+            if (!path.isEmpty()) {
+                entries.push_back({path, stateFromStatus(entry->status, false), false});
+            }
+        }
+    }
+    git_status_list_free(statusList);
+
+    std::sort(entries.begin(), entries.end(), [](const GitStatusEntry &left, const GitStatusEntry &right) {
+        const int pathCompare = QString::compare(left.relativePath, right.relativePath, Qt::CaseInsensitive);
+        if (pathCompare != 0) {
+            return pathCompare < 0;
+        }
+        return left.staged && !right.staged;
+    });
+    return entries;
+}
+
+bool GitRepository::hasChanges(QString *error) const
+{
+    return !statusEntries(error).isEmpty();
+}
+
+bool GitRepository::isRepository(const QString &path)
+{
+    git_libgit2_init();
+    git_repository *probe = nullptr;
+    const QByteArray pathUtf8 = QFileInfo(path).absoluteFilePath().toUtf8();
+    const bool result = git_repository_open_ext(&probe, pathUtf8.constData(), 0, nullptr) == 0;
+    if (probe) {
+        git_repository_free(probe);
+    }
+    git_libgit2_shutdown();
+    return result;
+}
+
+QString GitRepository::lastError(const QString &fallback)
+{
+    const git_error *error = git_error_last();
+    if (!error || !error->message) {
+        return fallback;
+    }
+    return QString::fromUtf8(error->message);
+}
