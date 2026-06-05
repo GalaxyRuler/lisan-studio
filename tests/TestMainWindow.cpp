@@ -57,6 +57,8 @@ private slots:
     void usesSingleRtlTopCommandBarWithMenuButtons();
     void exposesLisanLogoAssetInShell();
     void exposesPremiumFutureBottomPanelTabs();
+    void debugInspectorPanelsExistInsideDebugTab();
+    void debugInspectorRendersVariablesWatchAndCallStack();
     void enforcesRtlDirectionAcrossShellContainers();
     void workbenchDeclaresKeyboardFocusOrder();
     void statusBarExposesEditorRuntimeAndGitIndicators();
@@ -716,6 +718,59 @@ void TestMainWindow::exposesPremiumFutureBottomPanelTabs()
     QCOMPARE(tabs->tabText(4), QString::fromUtf8("المراجع"));
     QCOMPARE(tabs->tabText(5), QString::fromUtf8("المخطط"));
     QCOMPARE(tabs->tabText(6), QString::fromUtf8("التصحيح"));
+}
+
+void TestMainWindow::debugInspectorPanelsExistInsideDebugTab()
+{
+    MainWindow window;
+
+    auto *debugContainer = window.findChild<QWidget *>(QStringLiteral("debugContainerPanel"));
+    QVERIFY(debugContainer != nullptr);
+    auto *debugTabs = window.findChild<QTabWidget *>(QStringLiteral("debugInspectorTabs"));
+    QVERIFY(debugTabs != nullptr);
+    QCOMPARE(debugTabs->count(), 4);
+    QCOMPARE(debugTabs->tabText(0), QString::fromUtf8("السجل"));
+    QCOMPARE(debugTabs->tabText(1), QString::fromUtf8("المتغيرات"));
+    QCOMPARE(debugTabs->tabText(2), QString::fromUtf8("المراقبة"));
+    QCOMPARE(debugTabs->tabText(3), QString::fromUtf8("المكدس"));
+    QVERIFY(window.findChild<QPlainTextEdit *>(QStringLiteral("debugPanel")) != nullptr);
+    QVERIFY(window.findChild<QListWidget *>(QStringLiteral("debugVariablesPanel")) != nullptr);
+    QVERIFY(window.findChild<QListWidget *>(QStringLiteral("debugWatchPanel")) != nullptr);
+    QVERIFY(window.findChild<QListWidget *>(QStringLiteral("debugCallStackPanel")) != nullptr);
+}
+
+void TestMainWindow::debugInspectorRendersVariablesWatchAndCallStack()
+{
+    MainWindow window;
+
+    window.renderDebugVariables({
+        {QString::fromUtf8("عدد"), QStringLiteral("42"), QStringLiteral("int"), 0},
+        {QString::fromUtf8("رسالة"), QString::fromUtf8("مرحبا"), QStringLiteral("str"), 0},
+    });
+    auto *variables = window.findChild<QListWidget *>(QStringLiteral("debugVariablesPanel"));
+    QVERIFY(variables != nullptr);
+    QCOMPARE(variables->count(), 2);
+    QVERIFY(variables->item(0)->text().contains(QString::fromUtf8("عدد")));
+    QCOMPARE(variables->item(0)->data(Qt::UserRole).toString(), QString::fromUtf8("عدد"));
+
+    variables->setCurrentRow(0);
+    window.addSelectedDebugVariableToWatch();
+    auto *watch = window.findChild<QListWidget *>(QStringLiteral("debugWatchPanel"));
+    QVERIFY(watch != nullptr);
+    QCOMPARE(watch->count(), 1);
+    QVERIFY(watch->item(0)->text().contains(QString::fromUtf8("عدد")));
+    QVERIFY(watch->item(0)->text().contains(QStringLiteral("--")));
+
+    window.renderDebugCallStack({
+        {11, QStringLiteral("main"), QStringLiteral("C:/project/main.apy"), 8, 1},
+    });
+    auto *stack = window.findChild<QListWidget *>(QStringLiteral("debugCallStackPanel"));
+    QVERIFY(stack != nullptr);
+    QCOMPARE(stack->count(), 1);
+    QVERIFY(stack->item(0)->text().contains(QStringLiteral("main.apy")));
+    QCOMPARE(stack->item(0)->data(Qt::UserRole).toString(), QStringLiteral("C:/project/main.apy"));
+    QCOMPARE(stack->item(0)->data(Qt::UserRole + 1).toInt(), 8);
+    QCOMPARE(stack->item(0)->data(Qt::UserRole + 2).toInt(), 11);
 }
 
 void TestMainWindow::enforcesRtlDirectionAcrossShellContainers()

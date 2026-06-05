@@ -241,6 +241,140 @@ bool DapClient::stepOut(int threadId, int timeoutMs, QString *error)
     return requestThreadCommand(QStringLiteral("stepOut"), threadId, timeoutMs, error);
 }
 
+QVector<DapStackFrame> DapClient::stackTrace(int threadId, int timeoutMs, QString *error)
+{
+    if (error) {
+        error->clear();
+    }
+    if (process.state() == QProcess::NotRunning) {
+        if (error) {
+            *error = QStringLiteral("DAP server is not running.");
+        }
+        return {};
+    }
+
+    const int requestSequence = sendRequest(QStringLiteral("stackTrace"), QJsonObject{{QStringLiteral("threadId"), threadId}});
+    QJsonObject response;
+    if (!waitForResponse(requestSequence, &response, timeoutMs, error) || !responseSucceeded(response, error)) {
+        return {};
+    }
+
+    QVector<DapStackFrame> frames;
+    const QJsonArray stackFrames = response.value(QStringLiteral("body")).toObject().value(QStringLiteral("stackFrames")).toArray();
+    frames.reserve(stackFrames.size());
+    for (const QJsonValue &value : stackFrames) {
+        const QJsonObject object = value.toObject();
+        const QJsonObject source = object.value(QStringLiteral("source")).toObject();
+        frames.append({
+            object.value(QStringLiteral("id")).toInt(),
+            object.value(QStringLiteral("name")).toString(),
+            source.value(QStringLiteral("path")).toString(),
+            object.value(QStringLiteral("line")).toInt(),
+            object.value(QStringLiteral("column")).toInt(),
+        });
+    }
+    return frames;
+}
+
+QVector<DapScope> DapClient::scopes(int frameId, int timeoutMs, QString *error)
+{
+    if (error) {
+        error->clear();
+    }
+    if (process.state() == QProcess::NotRunning) {
+        if (error) {
+            *error = QStringLiteral("DAP server is not running.");
+        }
+        return {};
+    }
+
+    const int requestSequence = sendRequest(QStringLiteral("scopes"), QJsonObject{{QStringLiteral("frameId"), frameId}});
+    QJsonObject response;
+    if (!waitForResponse(requestSequence, &response, timeoutMs, error) || !responseSucceeded(response, error)) {
+        return {};
+    }
+
+    QVector<DapScope> parsedScopes;
+    const QJsonArray scopesArray = response.value(QStringLiteral("body")).toObject().value(QStringLiteral("scopes")).toArray();
+    parsedScopes.reserve(scopesArray.size());
+    for (const QJsonValue &value : scopesArray) {
+        const QJsonObject object = value.toObject();
+        parsedScopes.append({
+            object.value(QStringLiteral("name")).toString(),
+            object.value(QStringLiteral("variablesReference")).toInt(),
+            object.value(QStringLiteral("expensive")).toBool(),
+        });
+    }
+    return parsedScopes;
+}
+
+QVector<DapVariable> DapClient::variables(int variablesReference, int timeoutMs, QString *error)
+{
+    if (error) {
+        error->clear();
+    }
+    if (process.state() == QProcess::NotRunning) {
+        if (error) {
+            *error = QStringLiteral("DAP server is not running.");
+        }
+        return {};
+    }
+
+    const int requestSequence = sendRequest(QStringLiteral("variables"), QJsonObject{{QStringLiteral("variablesReference"), variablesReference}});
+    QJsonObject response;
+    if (!waitForResponse(requestSequence, &response, timeoutMs, error) || !responseSucceeded(response, error)) {
+        return {};
+    }
+
+    QVector<DapVariable> parsedVariables;
+    const QJsonArray variablesArray = response.value(QStringLiteral("body")).toObject().value(QStringLiteral("variables")).toArray();
+    parsedVariables.reserve(variablesArray.size());
+    for (const QJsonValue &value : variablesArray) {
+        const QJsonObject object = value.toObject();
+        parsedVariables.append({
+            object.value(QStringLiteral("name")).toString(),
+            object.value(QStringLiteral("value")).toString(),
+            object.value(QStringLiteral("type")).toString(),
+            object.value(QStringLiteral("variablesReference")).toInt(),
+        });
+    }
+    return parsedVariables;
+}
+
+DapVariable DapClient::evaluate(const QString &expression, int frameId, const QString &context, int timeoutMs, QString *error)
+{
+    if (error) {
+        error->clear();
+    }
+    if (process.state() == QProcess::NotRunning) {
+        if (error) {
+            *error = QStringLiteral("DAP server is not running.");
+        }
+        return {};
+    }
+
+    QJsonObject arguments;
+    arguments.insert(QStringLiteral("expression"), expression);
+    arguments.insert(QStringLiteral("context"), context);
+    if (frameId > 0) {
+        arguments.insert(QStringLiteral("frameId"), frameId);
+    }
+
+    const int requestSequence = sendRequest(QStringLiteral("evaluate"), arguments);
+    QJsonObject response;
+    if (!waitForResponse(requestSequence, &response, timeoutMs, error) || !responseSucceeded(response, error)) {
+        return {};
+    }
+
+    const QJsonObject body = response.value(QStringLiteral("body")).toObject();
+    return {
+        expression,
+        body.value(QStringLiteral("result")).toString(),
+        body.value(QStringLiteral("type")).toString(),
+        body.value(QStringLiteral("variablesReference")).toInt(),
+    };
+}
+
 void DapClient::disconnect(int timeoutMs)
 {
     if (process.state() == QProcess::NotRunning) {

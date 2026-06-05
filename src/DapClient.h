@@ -34,6 +34,30 @@ struct DapLaunchRequest
     bool stopOnEntry = false;
 };
 
+struct DapStackFrame
+{
+    int id = 0;
+    QString name;
+    QString sourcePath;
+    int line = 0;
+    int column = 0;
+};
+
+struct DapScope
+{
+    QString name;
+    int variablesReference = 0;
+    bool expensive = false;
+};
+
+struct DapVariable
+{
+    QString name;
+    QString value;
+    QString type;
+    int variablesReference = 0;
+};
+
 class DapClient final : public QObject
 {
     Q_OBJECT
@@ -59,6 +83,10 @@ public:
     bool stepOver(int threadId, int timeoutMs = 5000, QString *error = nullptr);
     bool stepInto(int threadId, int timeoutMs = 5000, QString *error = nullptr);
     bool stepOut(int threadId, int timeoutMs = 5000, QString *error = nullptr);
+    QVector<DapStackFrame> stackTrace(int threadId, int timeoutMs = 5000, QString *error = nullptr);
+    QVector<DapScope> scopes(int frameId, int timeoutMs = 5000, QString *error = nullptr);
+    QVector<DapVariable> variables(int variablesReference, int timeoutMs = 5000, QString *error = nullptr);
+    DapVariable evaluate(const QString &expression, int frameId, const QString &context = QStringLiteral("watch"), int timeoutMs = 5000, QString *error = nullptr);
     void disconnect(int timeoutMs = 2000);
 
 signals:

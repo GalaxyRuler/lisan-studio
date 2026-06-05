@@ -23,6 +23,7 @@ private slots:
     void moduleLaunchSerializesModuleInsteadOfProgram();
     void setBreakpointsRequestSerializesSourceLines();
     void runControlRequestsRoundTripAndStoppedEventsReachSignals();
+    void inspectionRequestsParseStackScopesVariablesAndWatchEvaluation();
 };
 
 namespace {
@@ -150,6 +151,39 @@ while running:
         response(message)
     elif command == "stepOut":
         response(message)
+    elif command == "stackTrace":
+        response(message, {
+            "stackFrames": [
+                {
+                    "id": 11,
+                    "name": "الرئيسية",
+                    "source": {"path": "C:/project/main.apy"},
+                    "line": 4,
+                    "column": 1,
+                }
+            ],
+            "totalFrames": 1,
+        })
+    elif command == "scopes":
+        response(message, {
+            "scopes": [
+                {"name": "Locals", "variablesReference": 31, "expensive": False},
+                {"name": "Globals", "variablesReference": 32, "expensive": True},
+            ]
+        })
+    elif command == "variables":
+        response(message, {
+            "variables": [
+                {"name": "عدد", "value": "42", "type": "int", "variablesReference": 0},
+                {"name": "رسالة", "value": "مرحبا", "type": "str", "variablesReference": 0},
+            ]
+        })
+    elif command == "evaluate":
+        response(message, {
+            "result": "84",
+            "type": "int",
+            "variablesReference": 0,
+        })
     elif command == "disconnect":
         response(message)
         running = False
@@ -394,6 +428,60 @@ void TestDapClient::runControlRequestsRoundTripAndStoppedEventsReachSignals()
     QCOMPARE(messages.at(4).value(QStringLiteral("command")).toString(), QStringLiteral("next"));
     QCOMPARE(messages.at(5).value(QStringLiteral("command")).toString(), QStringLiteral("stepIn"));
     QCOMPARE(messages.at(6).value(QStringLiteral("command")).toString(), QStringLiteral("stepOut"));
+}
+
+void TestDapClient::inspectionRequestsParseStackScopesVariablesAndWatchEvaluation()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString logPath = dir.filePath(QStringLiteral("dap-log.jsonl"));
+    const QString scriptPath = writeMockServer(dir);
+    QVERIFY(!scriptPath.isEmpty());
+
+    DapClient client;
+    client.setServerCommand(mockServerCommand(scriptPath, logPath));
+
+    QString error;
+    QVERIFY2(client.startAndInitialize(5000, &error), qPrintable(error));
+
+    const QVector<DapStackFrame> frames = client.stackTrace(7, 5000, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error));
+    QCOMPARE(frames.size(), 1);
+    QCOMPARE(frames.first().id, 11);
+    QCOMPARE(frames.first().name, QString::fromUtf8("الرئيسية"));
+    QCOMPARE(frames.first().sourcePath, QStringLiteral("C:/project/main.apy"));
+    QCOMPARE(frames.first().line, 4);
+
+    const QVector<DapScope> scopes = client.scopes(frames.first().id, 5000, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error));
+    QCOMPARE(scopes.size(), 2);
+    QCOMPARE(scopes.first().name, QStringLiteral("Locals"));
+    QCOMPARE(scopes.first().variablesReference, 31);
+    QVERIFY(scopes.at(1).expensive);
+
+    const QVector<DapVariable> variables = client.variables(scopes.first().variablesReference, 5000, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error));
+    QCOMPARE(variables.size(), 2);
+    QCOMPARE(variables.first().name, QString::fromUtf8("عدد"));
+    QCOMPARE(variables.first().value, QStringLiteral("42"));
+    QCOMPARE(variables.at(1).type, QStringLiteral("str"));
+
+    const DapVariable watched = client.evaluate(QString::fromUtf8("عدد * 2"), frames.first().id, QStringLiteral("watch"), 5000, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error));
+    QCOMPARE(watched.name, QString::fromUtf8("عدد * 2"));
+    QCOMPARE(watched.value, QStringLiteral("84"));
+    QCOMPARE(watched.type, QStringLiteral("int"));
+
+    QVERIFY(waitForMethodCount(logPath, 5));
+    const QVector<QJsonObject> messages = readLogMessages(logPath);
+    QCOMPARE(messages.at(1).value(QStringLiteral("command")).toString(), QStringLiteral("stackTrace"));
+    QCOMPARE(messages.at(1).value(QStringLiteral("arguments")).toObject().value(QStringLiteral("threadId")).toInt(), 7);
+    QCOMPARE(messages.at(2).value(QStringLiteral("command")).toString(), QStringLiteral("scopes"));
+    QCOMPARE(messages.at(2).value(QStringLiteral("arguments")).toObject().value(QStringLiteral("frameId")).toInt(), 11);
+    QCOMPARE(messages.at(3).value(QStringLiteral("command")).toString(), QStringLiteral("variables"));
+    QCOMPARE(messages.at(3).value(QStringLiteral("arguments")).toObject().value(QStringLiteral("variablesReference")).toInt(), 31);
+    QCOMPARE(messages.at(4).value(QStringLiteral("command")).toString(), QStringLiteral("evaluate"));
+    QCOMPARE(messages.at(4).value(QStringLiteral("arguments")).toObject().value(QStringLiteral("expression")).toString(), QString::fromUtf8("عدد * 2"));
 }
 
 QTEST_MAIN(TestDapClient)

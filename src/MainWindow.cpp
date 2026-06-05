@@ -32,6 +32,7 @@
 #include <QListWidgetItem>
 #include <QMap>
 #include <QMessageBox>
+#include <QMenu>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPaintEvent>
@@ -389,6 +390,7 @@ MainWindow::MainWindow(QWidget *parent, const QString &settingsPath)
         if (debugPanel) {
             debugPanel->appendPlainText(QString::fromUtf8("توقف التصحيح: %1، الخيط %2").arg(reason).arg(threadId));
         }
+        refreshDebugInspection(threadId);
         setStatus(QString::fromUtf8("توقف التصحيح"));
     });
     connect(&dapClient, &DapClient::continued, this, [this](int threadId) {
@@ -404,6 +406,7 @@ MainWindow::MainWindow(QWidget *parent, const QString &settingsPath)
         debugSessionActive = false;
         debugSessionPaused = false;
         activeDebugThreadId = 0;
+        activeDebugFrameId = 0;
         if (debugPanel) {
             debugPanel->appendPlainText(QString::fromUtf8("انتهت جلسة التصحيح"));
         }
@@ -1092,12 +1095,71 @@ void MainWindow::buildUi()
     connect(outlinePanel, &QListWidget::itemActivated, this, &MainWindow::openOutlineResult);
     connect(outlinePanel, &QListWidget::itemDoubleClicked, this, &MainWindow::openOutlineResult);
 
-    auto *arabicDebugPanel = new ArabicPlaceholderPlainTextEdit(bottomPanelTabs);
+    debugContainerPanel = new QWidget(bottomPanelTabs);
+    debugContainerPanel->setObjectName(QStringLiteral("debugContainerPanel"));
+    debugContainerPanel->setLayoutDirection(Qt::RightToLeft);
+    auto *debugLayout = new QVBoxLayout(debugContainerPanel);
+    debugLayout->setContentsMargins(0, 0, 0, 0);
+    auto *debugInspectorTabs = new QTabWidget(debugContainerPanel);
+    debugInspectorTabs->setObjectName(QStringLiteral("debugInspectorTabs"));
+    debugInspectorTabs->setLayoutDirection(Qt::RightToLeft);
+
+    auto *arabicDebugPanel = new ArabicPlaceholderPlainTextEdit(debugInspectorTabs);
     debugPanel = arabicDebugPanel;
     debugPanel->setObjectName(QStringLiteral("debugPanel"));
     debugPanel->setReadOnly(true);
     debugPanel->setLayoutDirection(Qt::RightToLeft);
     arabicDebugPanel->setArabicPlaceholderText(QString::fromUtf8("بيانات التصحيح ستظهر هنا"));
+
+    debugVariablesPanel = new QListWidget(debugInspectorTabs);
+    debugVariablesPanel->setObjectName(QStringLiteral("debugVariablesPanel"));
+    debugVariablesPanel->setLayoutDirection(Qt::RightToLeft);
+    debugVariablesPanel->setWordWrap(true);
+    debugVariablesPanel->setContextMenuPolicy(Qt::CustomContextMenu);
+    debugVariablesPanel->setToolTip(QString::fromUtf8("المتغيرات المحلية عند نقطة التوقف. انقر بالزر الأيمن لإضافتها إلى المراقبة."));
+    connect(debugVariablesPanel, &QListWidget::customContextMenuRequested, this, [this](const QPoint &position) {
+        auto *item = debugVariablesPanel ? debugVariablesPanel->itemAt(position) : nullptr;
+        if (!item) {
+            return;
+        }
+        QMenu menu(debugVariablesPanel);
+        auto *addWatch = menu.addAction(QString::fromUtf8("إضافة إلى المراقبة"));
+        connect(addWatch, &QAction::triggered, this, &MainWindow::addSelectedDebugVariableToWatch);
+        menu.exec(debugVariablesPanel->viewport()->mapToGlobal(position));
+    });
+
+    debugWatchPanel = new QListWidget(debugInspectorTabs);
+    debugWatchPanel->setObjectName(QStringLiteral("debugWatchPanel"));
+    debugWatchPanel->setLayoutDirection(Qt::RightToLeft);
+    debugWatchPanel->setWordWrap(true);
+    debugWatchPanel->setToolTip(QString::fromUtf8("تعبيرات المراقبة وقيمها في الإطار الحالي."));
+
+    debugCallStackPanel = new QListWidget(debugInspectorTabs);
+    debugCallStackPanel->setObjectName(QStringLiteral("debugCallStackPanel"));
+    debugCallStackPanel->setLayoutDirection(Qt::RightToLeft);
+    debugCallStackPanel->setWordWrap(true);
+    debugCallStackPanel->setToolTip(QString::fromUtf8("مكدس الاستدعاء. اختيار إطار ينقل المحرر إلى السطر المطابق."));
+    connect(debugCallStackPanel, &QListWidget::itemClicked, this, [this](QListWidgetItem *item) {
+        if (!item) {
+            return;
+        }
+        const QString path = item->data(Qt::UserRole).toString();
+        const int line = item->data(Qt::UserRole + 1).toInt();
+        if (!path.isEmpty()) {
+            openPath(path);
+        }
+        if (line > 0) {
+            goToEditorLine(line);
+        }
+        activeDebugFrameId = item->data(Qt::UserRole + 2).toInt();
+        refreshDebugWatches();
+    });
+
+    debugInspectorTabs->addTab(debugPanel, QString::fromUtf8("السجل"));
+    debugInspectorTabs->addTab(debugVariablesPanel, QString::fromUtf8("المتغيرات"));
+    debugInspectorTabs->addTab(debugWatchPanel, QString::fromUtf8("المراقبة"));
+    debugInspectorTabs->addTab(debugCallStackPanel, QString::fromUtf8("المكدس"));
+    debugLayout->addWidget(debugInspectorTabs);
 
     bottomPanelTabs->addTab(terminalPanel, QString::fromUtf8("الطرفية"));
     bottomPanelTabs->addTab(outputPanel, QString::fromUtf8("الإخراج"));
@@ -1105,7 +1167,7 @@ void MainWindow::buildUi()
     bottomPanelTabs->addTab(searchResultsPanel, QString::fromUtf8("نتائج البحث"));
     bottomPanelTabs->addTab(referencesPanel, QString::fromUtf8("المراجع"));
     bottomPanelTabs->addTab(outlinePanel, QString::fromUtf8("المخطط"));
-    bottomPanelTabs->addTab(debugPanel, QString::fromUtf8("التصحيح"));
+    bottomPanelTabs->addTab(debugContainerPanel, QString::fromUtf8("التصحيح"));
     bottomPanels = std::make_unique<BottomPanelController>(
         bottomPanelTabs,
         outputPanel,
@@ -1114,7 +1176,7 @@ void MainWindow::buildUi()
         searchResultsPanel,
         referencesPanel,
         outlinePanel,
-        debugPanel);
+        debugContainerPanel);
 
     outputDock = new QDockWidget(QString::fromUtf8("اللوحة السفلية"), this);
     outputDock->setObjectName(QStringLiteral("outputDock"));
@@ -3983,8 +4045,8 @@ void MainWindow::continueDebugSession()
     if (!outputDock->isVisible()) {
         outputDock->show();
     }
-    if (bottomPanelTabs && debugPanel) {
-        bottomPanelTabs->setCurrentWidget(debugPanel);
+    if (bottomPanelTabs && debugContainerPanel) {
+        bottomPanelTabs->setCurrentWidget(debugContainerPanel);
     }
     outputDock->raise();
 
@@ -4062,6 +4124,129 @@ void MainWindow::stepOutDebugSession()
     }
     debugPanel->appendPlainText(QString::fromUtf8("خروج من الدالة"));
     setStatus(QString::fromUtf8("خروج من الدالة"));
+}
+
+void MainWindow::refreshDebugInspection(int threadId)
+{
+    if (!dapClient.isRunning()) {
+        return;
+    }
+
+    QString error;
+    const QVector<DapStackFrame> frames = dapClient.stackTrace(threadId, 3000, &error);
+    if (!error.isEmpty()) {
+        setStatus(error);
+        return;
+    }
+    renderDebugCallStack(frames);
+
+    if (frames.isEmpty()) {
+        activeDebugFrameId = 0;
+        renderDebugVariables({});
+        refreshDebugWatches();
+        return;
+    }
+
+    activeDebugFrameId = frames.first().id;
+    const QVector<DapScope> scopes = dapClient.scopes(activeDebugFrameId, 3000, &error);
+    if (!error.isEmpty()) {
+        setStatus(error);
+        return;
+    }
+
+    QVector<DapVariable> collectedVariables;
+    for (const DapScope &scope : scopes) {
+        if (scope.expensive || scope.variablesReference <= 0) {
+            continue;
+        }
+        const QVector<DapVariable> scopeVariables = dapClient.variables(scope.variablesReference, 3000, &error);
+        if (!error.isEmpty()) {
+            setStatus(error);
+            return;
+        }
+        collectedVariables += scopeVariables;
+    }
+    renderDebugVariables(collectedVariables);
+    refreshDebugWatches();
+}
+
+void MainWindow::renderDebugVariables(const QVector<DapVariable> &variables)
+{
+    if (!debugVariablesPanel) {
+        return;
+    }
+    debugVariablesPanel->clear();
+    for (const DapVariable &variable : variables) {
+        const QString typeSuffix = variable.type.isEmpty() ? QString() : QStringLiteral(" : %1").arg(variable.type);
+        auto *item = new QListWidgetItem(QStringLiteral("%1 = %2%3").arg(variable.name, variable.value, typeSuffix));
+        item->setData(Qt::UserRole, variable.name);
+        item->setData(Qt::UserRole + 1, variable.value);
+        item->setData(Qt::UserRole + 2, variable.type);
+        debugVariablesPanel->addItem(item);
+    }
+}
+
+void MainWindow::renderDebugCallStack(const QVector<DapStackFrame> &frames)
+{
+    if (!debugCallStackPanel) {
+        return;
+    }
+    debugCallStackPanel->clear();
+    for (const DapStackFrame &frame : frames) {
+        const QString fileName = frame.sourcePath.isEmpty()
+            ? QStringLiteral("--")
+            : QFileInfo(frame.sourcePath).fileName();
+        auto *item = new QListWidgetItem(QStringLiteral("%1  %2:%3").arg(frame.name, fileName).arg(frame.line));
+        item->setData(Qt::UserRole, frame.sourcePath);
+        item->setData(Qt::UserRole + 1, frame.line);
+        item->setData(Qt::UserRole + 2, frame.id);
+        debugCallStackPanel->addItem(item);
+    }
+    if (debugCallStackPanel->count() > 0) {
+        debugCallStackPanel->setCurrentRow(0);
+    }
+}
+
+void MainWindow::addSelectedDebugVariableToWatch()
+{
+    if (!debugVariablesPanel || !debugVariablesPanel->currentItem()) {
+        return;
+    }
+    addWatchExpression(debugVariablesPanel->currentItem()->data(Qt::UserRole).toString());
+}
+
+void MainWindow::addWatchExpression(const QString &expression)
+{
+    const QString trimmed = expression.trimmed();
+    if (trimmed.isEmpty() || debugWatchExpressions.contains(trimmed)) {
+        return;
+    }
+    debugWatchExpressions.append(trimmed);
+    refreshDebugWatches();
+}
+
+void MainWindow::refreshDebugWatches()
+{
+    if (!debugWatchPanel) {
+        return;
+    }
+    debugWatchPanel->clear();
+    for (const QString &expression : debugWatchExpressions) {
+        QString displayValue = QStringLiteral("--");
+        QString displayType;
+        if (dapClient.isRunning() && activeDebugFrameId > 0) {
+            QString error;
+            const DapVariable value = dapClient.evaluate(expression, activeDebugFrameId, QStringLiteral("watch"), 3000, &error);
+            if (error.isEmpty()) {
+                displayValue = value.value;
+                displayType = value.type;
+            } else {
+                displayValue = error;
+            }
+        }
+        const QString typeSuffix = displayType.isEmpty() ? QString() : QStringLiteral(" : %1").arg(displayType);
+        debugWatchPanel->addItem(QStringLiteral("%1 = %2%3").arg(expression, displayValue, typeSuffix));
+    }
 }
 
 void MainWindow::updateStatusIndicators()

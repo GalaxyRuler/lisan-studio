@@ -127,6 +127,10 @@ private:
     QListWidget *referencesPanel = nullptr;
     QListWidget *outlinePanel = nullptr;
     QPlainTextEdit *debugPanel = nullptr;
+    QWidget *debugContainerPanel = nullptr;
+    QListWidget *debugVariablesPanel = nullptr;
+    QListWidget *debugWatchPanel = nullptr;
+    QListWidget *debugCallStackPanel = nullptr;
     QTabWidget *bottomPanelTabs = nullptr;
     QDockWidget *outputDock = nullptr;
     QLabel *statusLabel = nullptr;
@@ -166,6 +170,8 @@ private:
     bool debugSessionActive = false;
     bool debugSessionPaused = false;
     int activeDebugThreadId = 0;
+    int activeDebugFrameId = 0;
+    QStringList debugWatchExpressions;
     std::unique_ptr<EditorTabsController> editorTabsController;
     std::unique_ptr<ProjectTreeController> projectTreeController;
     std::unique_ptr<BottomPanelController> bottomPanels;
@@ -199,6 +205,12 @@ private:
     void stepOverDebugSession();
     void stepIntoDebugSession();
     void stepOutDebugSession();
+    void refreshDebugInspection(int threadId);
+    void refreshDebugWatches();
+    void renderDebugVariables(const QVector<DapVariable> &variables);
+    void renderDebugCallStack(const QVector<DapStackFrame> &frames);
+    void addSelectedDebugVariableToWatch();
+    void addWatchExpression(const QString &expression);
     void updateBreadcrumbBar();
     void updateStatusIndicators();
     // Test-only snapshot for verifying MainWindow's registry integration.
