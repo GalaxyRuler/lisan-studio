@@ -113,6 +113,9 @@ private slots:
     void stageSelectedGitFile();
     void unstageSelectedGitFile();
     void commitStagedGitChanges();
+    void fetchGitRemote();
+    void pullGitRemote();
+    void pushGitRemote();
 
 private:
     EditorSurface *editor = nullptr;
@@ -147,6 +150,9 @@ private:
     QPushButton *gitUnstageButton = nullptr;
     QLineEdit *gitCommitMessageInput = nullptr;
     QPushButton *gitCommitButton = nullptr;
+    QPushButton *gitFetchButton = nullptr;
+    QPushButton *gitPullButton = nullptr;
+    QPushButton *gitPushButton = nullptr;
     QPlainTextEdit *debugPanel = nullptr;
     QWidget *debugContainerPanel = nullptr;
     QListWidget *debugVariablesPanel = nullptr;

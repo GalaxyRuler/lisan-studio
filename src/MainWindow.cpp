@@ -1161,10 +1161,19 @@ void MainWindow::buildUi()
     gitCommitMessageInput->setLayoutDirection(Qt::RightToLeft);
     gitCommitButton = new QPushButton(QString::fromUtf8("التزام"), gitToolbar);
     gitCommitButton->setObjectName(QStringLiteral("gitCommitButton"));
+    gitFetchButton = new QPushButton(QStringLiteral("Fetch"), gitToolbar);
+    gitFetchButton->setObjectName(QStringLiteral("gitFetchButton"));
+    gitPullButton = new QPushButton(QStringLiteral("Pull"), gitToolbar);
+    gitPullButton->setObjectName(QStringLiteral("gitPullButton"));
+    gitPushButton = new QPushButton(QStringLiteral("Push"), gitToolbar);
+    gitPushButton->setObjectName(QStringLiteral("gitPushButton"));
     gitToolbarLayout->addWidget(gitStageButton);
     gitToolbarLayout->addWidget(gitUnstageButton);
     gitToolbarLayout->addWidget(gitCommitMessageInput, 1);
     gitToolbarLayout->addWidget(gitCommitButton);
+    gitToolbarLayout->addWidget(gitFetchButton);
+    gitToolbarLayout->addWidget(gitPullButton);
+    gitToolbarLayout->addWidget(gitPushButton);
     gitStatusPanel = new QListWidget(gitContainerPanel);
     gitStatusPanel->setObjectName(QStringLiteral("gitStatusPanel"));
     gitStatusPanel->setLayoutDirection(Qt::RightToLeft);
@@ -1183,6 +1192,9 @@ void MainWindow::buildUi()
     connect(gitUnstageButton, &QPushButton::clicked, this, &MainWindow::unstageSelectedGitFile);
     connect(gitCommitButton, &QPushButton::clicked, this, &MainWindow::commitStagedGitChanges);
     connect(gitCommitMessageInput, &QLineEdit::returnPressed, this, &MainWindow::commitStagedGitChanges);
+    connect(gitFetchButton, &QPushButton::clicked, this, &MainWindow::fetchGitRemote);
+    connect(gitPullButton, &QPushButton::clicked, this, &MainWindow::pullGitRemote);
+    connect(gitPushButton, &QPushButton::clicked, this, &MainWindow::pushGitRemote);
     connect(gitStatusPanel, &QListWidget::itemClicked, this, [this](QListWidgetItem *item) {
         if (item) {
             renderGitDiffForPath(item->data(Qt::UserRole).toString());
@@ -4588,6 +4600,54 @@ void MainWindow::commitStagedGitChanges()
     gitCommitMessageInput->clear();
     updateStatusIndicators();
     setStatus(QString::fromUtf8("تم إنشاء الالتزام"));
+}
+
+void MainWindow::fetchGitRemote()
+{
+    if (!gitRepository.isOpen()) {
+        setStatus(QString::fromUtf8("لا يوجد مستودع Git مفتوح"));
+        return;
+    }
+
+    QString error;
+    if (!gitRepository.fetchRemote(QStringLiteral("origin"), &error)) {
+        setStatus(error);
+        return;
+    }
+    updateStatusIndicators();
+    setStatus(QString::fromUtf8("تم جلب تحديثات Git"));
+}
+
+void MainWindow::pullGitRemote()
+{
+    if (!gitRepository.isOpen()) {
+        setStatus(QString::fromUtf8("لا يوجد مستودع Git مفتوح"));
+        return;
+    }
+
+    QString error;
+    if (!gitRepository.pullFastForward(QStringLiteral("origin"), &error)) {
+        setStatus(error);
+        return;
+    }
+    updateStatusIndicators();
+    setStatus(QString::fromUtf8("تم سحب تحديثات Git"));
+}
+
+void MainWindow::pushGitRemote()
+{
+    if (!gitRepository.isOpen()) {
+        setStatus(QString::fromUtf8("لا يوجد مستودع Git مفتوح"));
+        return;
+    }
+
+    QString error;
+    if (!gitRepository.pushCurrentBranch(QStringLiteral("origin"), &error)) {
+        setStatus(error);
+        return;
+    }
+    updateStatusIndicators();
+    setStatus(QString::fromUtf8("تم دفع تغييرات Git"));
 }
 
 void MainWindow::writeOutput(const QString &title, const QString &text)

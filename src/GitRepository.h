@@ -42,6 +42,9 @@ public:
     bool stageFile(const QString &relativePath, QString *error = nullptr);
     bool unstageFile(const QString &relativePath, QString *error = nullptr);
     bool commitStaged(const QString &message, QString *error = nullptr);
+    bool fetchRemote(const QString &remoteName = QStringLiteral("origin"), QString *error = nullptr);
+    bool pushCurrentBranch(const QString &remoteName = QStringLiteral("origin"), QString *error = nullptr);
+    bool pullFastForward(const QString &remoteName = QStringLiteral("origin"), QString *error = nullptr);
     bool hasChanges(QString *error = nullptr) const;
 
     static bool isRepository(const QString &path);

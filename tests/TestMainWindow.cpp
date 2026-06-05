@@ -59,6 +59,7 @@ private slots:
     void exposesPremiumFutureBottomPanelTabs();
     void gitStatusPanelListsDirtyFilesAndShowsDiff();
     void gitCommitWorkflowStagesAndCommitsSelectedFile();
+    void gitRemoteControlsAreAvailableInGitPanel();
     void debugInspectorPanelsExistInsideDebugTab();
     void debugInspectorRendersVariablesWatchAndCallStack();
     void enforcesRtlDirectionAcrossShellContainers();
@@ -819,6 +820,15 @@ void TestMainWindow::gitCommitWorkflowStagesAndCommitsSelectedFile()
     QCOMPARE(statusPanel->count(), 0);
     QCOMPARE(git->text(), QStringLiteral("Git: main"));
     QCOMPARE(runGitOutput(root, {QStringLiteral("log"), QStringLiteral("-1"), QStringLiteral("--format=%s")}), QString::fromUtf8("تعديل من الواجهة"));
+}
+
+void TestMainWindow::gitRemoteControlsAreAvailableInGitPanel()
+{
+    MainWindow window;
+
+    QVERIFY(window.findChild<QPushButton *>(QStringLiteral("gitFetchButton")) != nullptr);
+    QVERIFY(window.findChild<QPushButton *>(QStringLiteral("gitPullButton")) != nullptr);
+    QVERIFY(window.findChild<QPushButton *>(QStringLiteral("gitPushButton")) != nullptr);
 }
 
 void TestMainWindow::debugInspectorPanelsExistInsideDebugTab()

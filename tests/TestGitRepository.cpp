@@ -6,6 +6,7 @@
 #include <QFile>
 #include <QProcess>
 #include <QTemporaryDir>
+#include <QUrl>
 
 class TestGitRepository : public QObject
 {
@@ -17,6 +18,9 @@ private slots:
     void returnsUnifiedDiffForModifiedUtf8File();
     void stagesAndUnstagesUtf8File();
     void commitsStagedUtf8FileAndCleansRepository();
+    void pushesCurrentBranchToLocalBareRemote();
+    void fetchesRemoteTrackingBranchFromLocalBareRemote();
+    void pullsFastForwardFromLocalBareRemote();
 };
 
 static void runGit(const QDir &root, const QStringList &arguments)
@@ -25,7 +29,24 @@ static void runGit(const QDir &root, const QStringList &arguments)
     git.setWorkingDirectory(root.absolutePath());
     git.start(QStringLiteral("git"), arguments);
     QVERIFY2(git.waitForFinished(10000), qPrintable(QStringLiteral("git timed out: %1").arg(arguments.join(QLatin1Char(' ')))));
-    QCOMPARE(git.exitCode(), 0);
+    if (git.exitCode() != 0) {
+        qFatal("%s", qPrintable(QStringLiteral("git failed: %1\n%2")
+            .arg(arguments.join(QLatin1Char(' ')), QString::fromUtf8(git.readAllStandardError()))));
+    }
+}
+
+static QString runGitOutput(const QDir &root, const QStringList &arguments)
+{
+    QProcess git;
+    git.setWorkingDirectory(root.absolutePath());
+    git.start(QStringLiteral("git"), arguments);
+    if (!git.waitForFinished(10000)) {
+        qFatal("git command timed out");
+    }
+    if (git.exitCode() != 0) {
+        qFatal("git command failed");
+    }
+    return QString::fromUtf8(git.readAllStandardOutput()).trimmed();
 }
 
 static QString writeFile(const QDir &root, const QString &relativePath, const QString &text)
@@ -161,6 +182,87 @@ void TestGitRepository::commitsStagedUtf8FileAndCleansRepository()
     QVERIFY(!repository.hasChanges(&error));
     QVERIFY2(error.isEmpty(), qPrintable(error));
     runGit(root, {QStringLiteral("log"), QStringLiteral("-1"), QStringLiteral("--format=%s")});
+}
+
+void TestGitRepository::pushesCurrentBranchToLocalBareRemote()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    QDir workspace(temp.path());
+    QDir root(workspace.filePath(QStringLiteral("repo")));
+    QDir bare(workspace.filePath(QStringLiteral("origin.git")));
+    QDir().mkpath(root.absolutePath());
+    runGit(workspace, {QStringLiteral("init"), QStringLiteral("--bare"), bare.absolutePath()});
+    createInitialCommit(root);
+    runGit(root, {QStringLiteral("remote"), QStringLiteral("add"), QStringLiteral("origin"), QUrl::fromLocalFile(bare.absolutePath()).toString()});
+
+    GitRepository repository;
+    QString error;
+    QVERIFY2(repository.open(root.absolutePath(), &error), qPrintable(error));
+    QVERIFY2(repository.pushCurrentBranch(QStringLiteral("origin"), &error), qPrintable(error));
+
+    QCOMPARE(runGitOutput(workspace, {QStringLiteral("--git-dir"), bare.absolutePath(), QStringLiteral("log"), QStringLiteral("-1"), QStringLiteral("--format=%s"), QStringLiteral("main")}), QStringLiteral("initial"));
+}
+
+void TestGitRepository::fetchesRemoteTrackingBranchFromLocalBareRemote()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    QDir workspace(temp.path());
+    QDir seed(workspace.filePath(QStringLiteral("seed")));
+    QDir local(workspace.filePath(QStringLiteral("local")));
+    QDir bare(workspace.filePath(QStringLiteral("origin.git")));
+    QDir().mkpath(seed.absolutePath());
+    runGit(workspace, {QStringLiteral("init"), QStringLiteral("--bare"), bare.absolutePath()});
+    createInitialCommit(seed);
+    runGit(seed, {QStringLiteral("remote"), QStringLiteral("add"), QStringLiteral("origin"), bare.absolutePath()});
+    runGit(seed, {QStringLiteral("push"), QStringLiteral("-u"), QStringLiteral("origin"), QStringLiteral("main")});
+    runGit(workspace, {QStringLiteral("--git-dir"), bare.absolutePath(), QStringLiteral("symbolic-ref"), QStringLiteral("HEAD"), QStringLiteral("refs/heads/main")});
+    runGit(workspace, {QStringLiteral("clone"), bare.absolutePath(), local.absolutePath()});
+    runGit(local, {QStringLiteral("remote"), QStringLiteral("set-url"), QStringLiteral("origin"), QUrl::fromLocalFile(bare.absolutePath()).toString()});
+
+    writeFile(seed, QStringLiteral("src/برنامج.apy"), QString::fromUtf8("اطبع(\"ثان\")\n"));
+    runGit(seed, {QStringLiteral("add"), QStringLiteral(".")});
+    runGit(seed, {QStringLiteral("commit"), QStringLiteral("-m"), QStringLiteral("second")});
+    runGit(seed, {QStringLiteral("push"), QStringLiteral("origin"), QStringLiteral("main")});
+
+    GitRepository repository;
+    QString error;
+    QVERIFY2(repository.open(local.absolutePath(), &error), qPrintable(error));
+    QVERIFY2(repository.fetchRemote(QStringLiteral("origin"), &error), qPrintable(error));
+
+    QCOMPARE(runGitOutput(local, {QStringLiteral("log"), QStringLiteral("-1"), QStringLiteral("--format=%s"), QStringLiteral("origin/main")}), QStringLiteral("second"));
+}
+
+void TestGitRepository::pullsFastForwardFromLocalBareRemote()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    QDir workspace(temp.path());
+    QDir seed(workspace.filePath(QStringLiteral("seed")));
+    QDir local(workspace.filePath(QStringLiteral("local")));
+    QDir bare(workspace.filePath(QStringLiteral("origin.git")));
+    QDir().mkpath(seed.absolutePath());
+    runGit(workspace, {QStringLiteral("init"), QStringLiteral("--bare"), bare.absolutePath()});
+    createInitialCommit(seed);
+    runGit(seed, {QStringLiteral("remote"), QStringLiteral("add"), QStringLiteral("origin"), bare.absolutePath()});
+    runGit(seed, {QStringLiteral("push"), QStringLiteral("-u"), QStringLiteral("origin"), QStringLiteral("main")});
+    runGit(workspace, {QStringLiteral("--git-dir"), bare.absolutePath(), QStringLiteral("symbolic-ref"), QStringLiteral("HEAD"), QStringLiteral("refs/heads/main")});
+    runGit(workspace, {QStringLiteral("clone"), bare.absolutePath(), local.absolutePath()});
+    runGit(local, {QStringLiteral("remote"), QStringLiteral("set-url"), QStringLiteral("origin"), QUrl::fromLocalFile(bare.absolutePath()).toString()});
+
+    writeFile(seed, QStringLiteral("src/برنامج.apy"), QString::fromUtf8("اطبع(\"ثان\")\n"));
+    runGit(seed, {QStringLiteral("add"), QStringLiteral(".")});
+    runGit(seed, {QStringLiteral("commit"), QStringLiteral("-m"), QStringLiteral("second")});
+    runGit(seed, {QStringLiteral("push"), QStringLiteral("origin"), QStringLiteral("main")});
+
+    GitRepository repository;
+    QString error;
+    QVERIFY2(repository.open(local.absolutePath(), &error), qPrintable(error));
+    QVERIFY2(repository.pullFastForward(QStringLiteral("origin"), &error), qPrintable(error));
+
+    QCOMPARE(runGitOutput(local, {QStringLiteral("log"), QStringLiteral("-1"), QStringLiteral("--format=%s")}), QStringLiteral("second"));
+    QVERIFY(!repository.hasChanges(&error));
 }
 
 QTEST_MAIN(TestGitRepository)

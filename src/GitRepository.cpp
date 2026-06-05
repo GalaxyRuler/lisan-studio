@@ -419,6 +419,166 @@ bool GitRepository::commitStaged(const QString &message, QString *error)
     return commitResult == 0;
 }
 
+bool GitRepository::fetchRemote(const QString &remoteName, QString *error)
+{
+    if (error) {
+        error->clear();
+    }
+    if (!repository) {
+        if (error) {
+            *error = QStringLiteral("لا يوجد مستودع Git مفتوح.");
+        }
+        return false;
+    }
+
+    git_remote *remote = nullptr;
+    const QByteArray remoteUtf8 = remoteName.toUtf8();
+    if (git_remote_lookup(&remote, repository, remoteUtf8.constData()) != 0) {
+        if (error) {
+            *error = lastError(QStringLiteral("تعذر العثور على remote في Git."));
+        }
+        return false;
+    }
+
+    git_fetch_options options = GIT_FETCH_OPTIONS_INIT;
+    const bool fetched = git_remote_fetch(remote, nullptr, &options, nullptr) == 0;
+    if (!fetched && error) {
+        *error = lastError(QStringLiteral("تعذر جلب تحديثات Git."));
+    }
+    git_remote_free(remote);
+    return fetched;
+}
+
+bool GitRepository::pushCurrentBranch(const QString &remoteName, QString *error)
+{
+    if (error) {
+        error->clear();
+    }
+    if (!repository) {
+        if (error) {
+            *error = QStringLiteral("لا يوجد مستودع Git مفتوح.");
+        }
+        return false;
+    }
+
+    const QString branch = currentBranch(error);
+    if (branch.isEmpty()) {
+        return false;
+    }
+
+    git_remote *remote = nullptr;
+    const QByteArray remoteUtf8 = remoteName.toUtf8();
+    if (git_remote_lookup(&remote, repository, remoteUtf8.constData()) != 0) {
+        if (error) {
+            *error = lastError(QStringLiteral("تعذر العثور على remote في Git."));
+        }
+        return false;
+    }
+
+    const QByteArray refSpecUtf8 = QStringLiteral("refs/heads/%1:refs/heads/%1").arg(branch).toUtf8();
+    char *refSpecValue = const_cast<char *>(refSpecUtf8.constData());
+    git_strarray refSpecs = {&refSpecValue, 1};
+    git_push_options options = GIT_PUSH_OPTIONS_INIT;
+    const bool pushed = git_remote_push(remote, &refSpecs, &options) == 0;
+    if (!pushed && error) {
+        *error = lastError(QStringLiteral("تعذر دفع Git."));
+    }
+    git_remote_free(remote);
+    return pushed;
+}
+
+bool GitRepository::pullFastForward(const QString &remoteName, QString *error)
+{
+    if (error) {
+        error->clear();
+    }
+    if (!fetchRemote(remoteName, error)) {
+        return false;
+    }
+
+    const QString branch = currentBranch(error);
+    if (branch.isEmpty()) {
+        return false;
+    }
+
+    const QString remoteRefName = QStringLiteral("refs/remotes/%1/%2").arg(remoteName, branch);
+    git_reference *remoteRef = nullptr;
+    const QByteArray remoteRefUtf8 = remoteRefName.toUtf8();
+    if (git_reference_lookup(&remoteRef, repository, remoteRefUtf8.constData()) != 0) {
+        if (error) {
+            *error = lastError(QStringLiteral("تعذر قراءة فرع remote في Git."));
+        }
+        return false;
+    }
+
+    git_annotated_commit *remoteCommit = nullptr;
+    if (git_annotated_commit_from_ref(&remoteCommit, repository, remoteRef) != 0) {
+        if (error) {
+            *error = lastError(QStringLiteral("تعذر تحليل تحديث Git."));
+        }
+        git_reference_free(remoteRef);
+        return false;
+    }
+
+    const git_annotated_commit *heads[] = {remoteCommit};
+    git_merge_analysis_t analysis = GIT_MERGE_ANALYSIS_NONE;
+    git_merge_preference_t preference = GIT_MERGE_PREFERENCE_NONE;
+    if (git_merge_analysis(&analysis, &preference, repository, heads, 1) != 0) {
+        if (error) {
+            *error = lastError(QStringLiteral("تعذر تحليل دمج Git."));
+        }
+        git_annotated_commit_free(remoteCommit);
+        git_reference_free(remoteRef);
+        return false;
+    }
+
+    if (analysis & GIT_MERGE_ANALYSIS_UP_TO_DATE) {
+        git_annotated_commit_free(remoteCommit);
+        git_reference_free(remoteRef);
+        return true;
+    }
+    if (!(analysis & GIT_MERGE_ANALYSIS_FASTFORWARD)) {
+        if (error) {
+            *error = QString::fromUtf8("السحب يتطلب دمجا غير سريع. افتح Git خارجي لحل التعارض.");
+        }
+        git_annotated_commit_free(remoteCommit);
+        git_reference_free(remoteRef);
+        return false;
+    }
+
+    QString statusError;
+    if (!statusEntries(&statusError).isEmpty()) {
+        if (error) {
+            *error = QString::fromUtf8("احفظ أو التزم بتغييراتك المحلية قبل السحب.");
+        }
+        git_annotated_commit_free(remoteCommit);
+        git_reference_free(remoteRef);
+        return false;
+    }
+    const git_oid *targetOid = git_reference_target(remoteRef);
+    git_object *targetCommit = nullptr;
+    if (!targetOid || git_object_lookup(&targetCommit, repository, targetOid, GIT_OBJECT_COMMIT) != 0) {
+        if (error) {
+            *error = lastError(QStringLiteral("تعذر قراءة التزام remote."));
+        }
+        git_annotated_commit_free(remoteCommit);
+        git_reference_free(remoteRef);
+        return false;
+    }
+
+    git_checkout_options checkoutOptions = GIT_CHECKOUT_OPTIONS_INIT;
+    checkoutOptions.checkout_strategy = GIT_CHECKOUT_FORCE;
+    const bool reset = git_reset(repository, targetCommit, GIT_RESET_HARD, &checkoutOptions) == 0;
+    if (!reset && error) {
+        *error = lastError(QStringLiteral("تعذر تحديث الفرع المحلي."));
+    }
+
+    git_object_free(targetCommit);
+    git_annotated_commit_free(remoteCommit);
+    git_reference_free(remoteRef);
+    return reset;
+}
+
 bool GitRepository::hasChanges(QString *error) const
 {
     return !statusEntries(error).isEmpty();
