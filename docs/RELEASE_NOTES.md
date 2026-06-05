@@ -1,3 +1,34 @@
+# v0.2.2-beta (2026-06-05)
+
+Phase B V2 release: workbench recovery, search truncation visibility,
+and command ID stability.
+
+## Added
+
+- Dirty untitled buffers are autosaved while editing and can be recovered
+  after a non-orderly shutdown. Graceful shutdown clears the recovery
+  sentinel.
+- Project search now reports when a scan hits the configured file cap, so
+  users can tell the difference between complete and truncated results.
+- Command IDs now use dotted camelCase consistently across registered
+  workbench commands, command surfaces, shortcuts, and tests.
+
+## Changed
+
+- Legacy shortcut JSON using V1 hyphenated command IDs is migrated during
+  import, preserving user bindings and exporting canonical IDs afterward.
+- ADR-0015 documents the public command ID convention for future extension,
+  LSP, debugger, terminal, and refactor commands.
+
+## Known v0.2.2-beta limitations
+
+- Draft recovery currently prompts only when the previous session left the
+  workbench sentinel uncleared and saved draft payloads exist.
+- The search truncation cap is surfaced in status text, but there is not yet
+  a full search-index progress UI.
+- Push, CI, tag creation, and release publication remain operator-owned
+  steps after this in-repo release prep.
+
 # v0.2.1-beta (2026-06-05)
 
 Phase A V2 release: multi-cursor editing now covers the deferred
