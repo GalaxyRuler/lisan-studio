@@ -6,6 +6,7 @@
 #include "DocumentRegistry.h"
 #include "EditorTabsController.h"
 #include "EditorSurface.h"
+#include "LspClient.h"
 #include "OutputTranscript.h"
 #include "ProjectModel.h"
 #include "ProjectTreeController.h"
@@ -145,6 +146,7 @@ private:
     SettingsStore settings;
     std::function<RuntimeDiagnostics(int)> runtimeDiagnosticsProvider;
     RuntimeOrchestrator runtimeOrchestrator;
+    LspClient lspClient;
     CommandRegistry commandRegistry;
     DocumentRegistry documentRegistry;
     DocumentChangePoller documentChangePoller;
@@ -152,6 +154,9 @@ private:
     WorkspaceSettings workspaceSettings;
     OutputTranscript outputTranscript;
     OutputTranscriptFilter outputFilter;
+    QString lspDocumentUri;
+    int lspDocumentVersion = 0;
+    bool lspDocumentOpen = false;
     std::unique_ptr<EditorTabsController> editorTabsController;
     std::unique_ptr<ProjectTreeController> projectTreeController;
     std::unique_ptr<BottomPanelController> bottomPanels;
@@ -167,6 +172,10 @@ private:
     void applyThemePreference();
     void applyShortcutSettings();
     void refreshCurrentEditorUi(bool includeProblems);
+    void configureLanguageServer();
+    void syncCurrentEditorToLanguageServer(bool reopenDocument);
+    void notifyLanguageServerOfSave();
+    void closeLanguageServerDocument();
     void updateBreadcrumbBar();
     void updateStatusIndicators();
     // Test-only snapshot for verifying MainWindow's registry integration.

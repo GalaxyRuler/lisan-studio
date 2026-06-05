@@ -48,6 +48,7 @@
 #include <QTextStream>
 #include <QToolButton>
 #include <QStandardPaths>
+#include <QUrl>
 #include <QVBoxLayout>
 #include <QtConcurrent>
 
@@ -228,6 +229,11 @@ static QString languageModeStatusText(const QString &path)
     return QString::fromUtf8("نص عادي");
 }
 
+static bool isApySourcePath(const QString &path)
+{
+    return QFileInfo(path).suffix().compare(QStringLiteral("apy"), Qt::CaseInsensitive) == 0;
+}
+
 static QLabel *createStatusIndicator(const QString &objectName, const QString &text, QWidget *parent)
 {
     auto *label = new QLabel(text, parent);
@@ -291,12 +297,14 @@ MainWindow::MainWindow(QWidget *parent, const QString &settingsPath)
     : QMainWindow(parent),
       settings(settingsPath),
       runtimeOrchestrator(this),
+      lspClient(this),
       documentChangePoller(&documentRegistry)
 {
     const bool promptForDraftRecovery = settings.hasNonOrderlyShutdown();
     settings.markWorkbenchSessionStarted();
 
     buildUi();
+    configureLanguageServer();
     connect(&runtimeOrchestrator, &RuntimeOrchestrator::outputCleared, this, [this]() {
         showOutputPanel();
         outputTranscript.clear();
@@ -872,12 +880,20 @@ void MainWindow::buildUi()
             surface->setProperty("untitledDraftAutosaveConnected", true);
             connect(surface->document(), &QTextDocument::contentsChanged, this, &MainWindow::scheduleUntitledDraftAutosave);
         }
+        if (surface && !surface->property("lspDocumentSyncConnected").toBool()) {
+            surface->setProperty("lspDocumentSyncConnected", true);
+            connect(surface->document(), &QTextDocument::contentsChanged, this, [this]() {
+                syncCurrentEditorToLanguageServer(false);
+            });
+        }
         if (!surface || surface->totalCursorCount() < EditorSurface::kSoftCursorCap) {
             multiCursorSoftCapNoticeShown = false;
         }
+        syncCurrentEditorToLanguageServer(true);
         refreshCurrentEditorUi(true);
     });
     connect(editorTabsController.get(), &EditorTabsController::pathChanged, this, [this](DocumentId, const QString &) {
+        syncCurrentEditorToLanguageServer(true);
         refreshCurrentEditorUi(false);
     });
     connect(editorTabsController.get(), &EditorTabsController::dirtyStateChanged, this, [this](DocumentId, bool) {
@@ -1062,6 +1078,7 @@ void MainWindow::saveFile()
         QMessageBox::warning(this, QString::fromUtf8("تعذر الحفظ"), error);
         return;
     }
+    notifyLanguageServerOfSave();
     setStatus(QString::fromUtf8("تم الحفظ"));
 }
 
@@ -1086,6 +1103,7 @@ void MainWindow::saveFileAs()
         QMessageBox::warning(this, QString::fromUtf8("تعذر الحفظ"), error);
         return;
     }
+    notifyLanguageServerOfSave();
     setStatus(QString::fromUtf8("تم الحفظ"));
 }
 
@@ -3017,6 +3035,94 @@ void MainWindow::refreshCurrentEditorUi(bool includeProblems)
     if (includeProblems) {
         refreshEditorProblems();
     }
+}
+
+void MainWindow::configureLanguageServer()
+{
+    QProcessEnvironment environment = QProcessEnvironment::systemEnvironment();
+    environment.remove(QStringLiteral("PYTHONHOME"));
+    environment.remove(QStringLiteral("PYTHONPATH"));
+    environment.insert(QStringLiteral("PYTHONNOUSERSITE"), QStringLiteral("1"));
+    environment.insert(QStringLiteral("PYTHONUTF8"), QStringLiteral("1"));
+    environment.insert(QStringLiteral("PYTHONIOENCODING"), QStringLiteral("utf-8"));
+
+    LspServerCommand command;
+    command.program = runtimeOrchestrator.pythonExecutablePath();
+    command.arguments = {QStringLiteral("-m"), QStringLiteral("arabicpython.lsp.server")};
+    command.workingDirectory = projectRoot.isEmpty() ? QDir::homePath() : projectRoot;
+    command.environment = environment;
+    lspClient.setServerCommand(command);
+}
+
+void MainWindow::syncCurrentEditorToLanguageServer(bool reopenDocument)
+{
+    if (!editor) {
+        closeLanguageServerDocument();
+        return;
+    }
+
+    const QString path = editor->currentFilePath();
+    if (path.isEmpty() || !isApySourcePath(path)) {
+        closeLanguageServerDocument();
+        return;
+    }
+
+    if (!QFileInfo::exists(runtimeOrchestrator.pythonExecutablePath())) {
+        return;
+    }
+
+    if (!lspClient.isRunning()) {
+        configureLanguageServer();
+        const QString rootPath = projectRoot.isEmpty() ? QFileInfo(path).absolutePath() : projectRoot;
+        QString error;
+        if (!lspClient.startAndInitialize(QUrl::fromLocalFile(rootPath).toString(), 1000, &error)) {
+            return;
+        }
+    }
+
+    const QString uri = QUrl::fromLocalFile(path).toString();
+    if (reopenDocument || !lspDocumentOpen || lspDocumentUri != uri) {
+        closeLanguageServerDocument();
+        lspDocumentUri = uri;
+        lspDocumentVersion = 1;
+        lspDocumentOpen = true;
+        lspClient.openDocument(lspDocumentUri, QStringLiteral("apy"), lspDocumentVersion, editor->toPlainText());
+        return;
+    }
+
+    ++lspDocumentVersion;
+    lspClient.changeDocument(lspDocumentUri, lspDocumentVersion, editor->toPlainText());
+}
+
+void MainWindow::notifyLanguageServerOfSave()
+{
+    if (!editor) {
+        return;
+    }
+
+    const QString path = editor->currentFilePath();
+    const QString uri = QUrl::fromLocalFile(path).toString();
+    if (lspClient.isRunning() && lspDocumentOpen && lspDocumentUri == uri) {
+        lspClient.saveDocument(uri, editor->toPlainText());
+        return;
+    }
+
+    syncCurrentEditorToLanguageServer(true);
+}
+
+void MainWindow::closeLanguageServerDocument()
+{
+    if (!lspDocumentOpen || lspDocumentUri.isEmpty() || !lspClient.isRunning()) {
+        lspDocumentOpen = false;
+        lspDocumentUri.clear();
+        lspDocumentVersion = 0;
+        return;
+    }
+
+    lspClient.closeDocument(lspDocumentUri);
+    lspDocumentOpen = false;
+    lspDocumentUri.clear();
+    lspDocumentVersion = 0;
 }
 
 void MainWindow::updateStatusIndicators()
