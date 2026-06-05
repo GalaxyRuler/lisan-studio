@@ -104,7 +104,7 @@ This is the source of truth for "where are we in V2." Update on every state tran
 | V2-B1 | Incremental autosave for untitled drafts | none | ◕ | da8fd43 | — | Dirty untitled drafts autosave every 5s and interrupted sessions prompt recovery |
 | V2-B2 | MainWindow truncation-test seam | none | ◕ | 790f832 | — | Search truncation fixture now uses a 20-file cap seam |
 | V2-B3 | Command-id style ADR + migration | none | ◕ | e9715ac | — | ADR-0015 landed; command IDs now use dotted camelCase with shortcut JSON migration |
-| — | **v0.2.2-beta cut** (phase B close) | V2-B1..3 | □ | — | — | Release-cut slice |
+| — | **v0.2.2-beta cut** (phase B close) | V2-B1..3 | ◕ | 5d89795 | — | In-repo release prep landed; push/GHA/tag/publish still pending |
 
 ### Phase C — LSP foundation
 
