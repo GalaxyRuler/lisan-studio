@@ -849,9 +849,6 @@ void MainWindow::buildUi()
                     multiCursorSoftCapNoticeShown = false;
                 }
             });
-            connect(surface, &EditorSurface::multiCursorImeRejected, this, [this]() {
-                setStatus(QString::fromUtf8("تعذر إدخال IME مع مؤشرات متعددة"));
-            });
         }
         if (!surface || surface->totalCursorCount() < EditorSurface::kSoftCursorCap) {
             multiCursorSoftCapNoticeShown = false;

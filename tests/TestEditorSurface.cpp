@@ -53,6 +53,8 @@ private slots:
     void multiCursorTabIndentsEachCursorLineByOneIndent();
     void multiCursorShiftTabDedentsEachCursorLineByOneIndent();
     void multiCursorIndentIsSingleUndoStep();
+    void arabicImeCompositionProducesIdenticalCommittedTextAtEveryCursor();
+    void imeCompositionWithSecondaryCursorsPreservesSingleUndoStep();
     void selectAllFindMatchesAsCursorsConvertsFindHighlights();
     void altColumnDragGeneratesOneCursorPerLineInRectangle();
     void altColumnDragWithZeroWidthColumnsGeneratesZeroWidthCursors();
@@ -947,6 +949,59 @@ void TestEditorSurface::multiCursorIndentIsSingleUndoStep()
 
     QTest::keyClick(&editor, Qt::Key_Tab);
     QCOMPARE(editor.toPlainText(), QStringLiteral("    alpha\n    beta\n    gamma\n"));
+    QVERIFY(editor.document()->isModified());
+
+    QTest::keyClick(&editor, Qt::Key_Z, Qt::ControlModifier);
+    QCOMPARE(editor.toPlainText(), original);
+    QVERIFY(!editor.document()->isModified());
+}
+
+void TestEditorSurface::arabicImeCompositionProducesIdenticalCommittedTextAtEveryCursor()
+{
+    EditorSurface editor;
+    editor.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&editor));
+    editor.setPlainText(QString::fromUtf8("سطر1\nسطر2\nسطر3\n"));
+
+    QTextCursor cursor(editor.document()->findBlockByNumber(0));
+    cursor.movePosition(QTextCursor::EndOfBlock);
+    editor.setTextCursor(cursor);
+    const QTextBlock second = editor.document()->findBlockByNumber(1);
+    const QTextBlock third = editor.document()->findBlockByNumber(2);
+    QVERIFY(editor.addCursorAtPosition(second.position() + second.length() - 1));
+    QVERIFY(editor.addCursorAtPosition(third.position() + third.length() - 1));
+
+    QInputMethodEvent preedit(QString::fromUtf8("مرح"), {});
+    QApplication::sendEvent(&editor, &preedit);
+
+    QInputMethodEvent commit;
+    commit.setCommitString(QString::fromUtf8("مرحبا"));
+    QApplication::sendEvent(&editor, &commit);
+
+    QCOMPARE(editor.toPlainText(), QString::fromUtf8("سطر1مرحبا\nسطر2مرحبا\nسطر3مرحبا\n"));
+}
+
+void TestEditorSurface::imeCompositionWithSecondaryCursorsPreservesSingleUndoStep()
+{
+    EditorSurface editor;
+    editor.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&editor));
+    const QString original = QString::fromUtf8("سطر1\nسطر2\nسطر3\n");
+    editor.setPlainText(original);
+    editor.document()->setModified(false);
+
+    QTextCursor cursor(editor.document()->findBlockByNumber(0));
+    cursor.movePosition(QTextCursor::EndOfBlock);
+    editor.setTextCursor(cursor);
+    const QTextBlock second = editor.document()->findBlockByNumber(1);
+    const QTextBlock third = editor.document()->findBlockByNumber(2);
+    QVERIFY(editor.addCursorAtPosition(second.position() + second.length() - 1));
+    QVERIFY(editor.addCursorAtPosition(third.position() + third.length() - 1));
+
+    QInputMethodEvent commit;
+    commit.setCommitString(QString::fromUtf8("مرحبا"));
+    QApplication::sendEvent(&editor, &commit);
+    QCOMPARE(editor.toPlainText(), QString::fromUtf8("سطر1مرحبا\nسطر2مرحبا\nسطر3مرحبا\n"));
     QVERIFY(editor.document()->isModified());
 
     QTest::keyClick(&editor, Qt::Key_Z, Qt::ControlModifier);

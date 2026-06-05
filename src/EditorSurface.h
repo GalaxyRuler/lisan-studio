@@ -72,7 +72,6 @@ signals:
     void dirtyStateChanged(bool dirty);
     void cursorSoftCapReached(int totalCursors);
     void cursorCountChanged(int totalCursors);
-    void multiCursorImeRejected();
 
 private:
     QString filePath;

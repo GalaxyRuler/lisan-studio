@@ -1300,12 +1300,65 @@ void EditorSurface::keyPressEvent(QKeyEvent *event)
 
 void EditorSurface::inputMethodEvent(QInputMethodEvent *event)
 {
-    if (!secondaryCursors.isEmpty()) {
-        emit multiCursorImeRejected();
-        event->ignore();
+    if (secondaryCursors.isEmpty()) {
+        QPlainTextEdit::inputMethodEvent(event);
         return;
     }
-    QPlainTextEdit::inputMethodEvent(event);
+
+    const QString committedText = event->commitString();
+    if (committedText.isEmpty()) {
+        event->accept();
+        return;
+    }
+
+    struct CursorEditItem
+    {
+        QTextCursor cursor;
+        int secondaryIndex = -1;
+        bool primary = false;
+    };
+
+    QVector<CursorEditItem> items;
+    items.reserve(totalCursorCount());
+    items.push_back({textCursor(), -1, true});
+    for (int i = 0; i < secondaryCursors.size(); ++i) {
+        items.push_back({secondaryCursors.at(i), i, false});
+    }
+    std::sort(items.begin(), items.end(), [event](const CursorEditItem &left, const CursorEditItem &right) {
+        return left.cursor.position() + event->replacementStart()
+            > right.cursor.position() + event->replacementStart();
+    });
+
+    QVector<QTextCursor> updatedSecondaries = secondaryCursors;
+    QTextCursor updatedPrimary = textCursor();
+    QTextCursor editBlockCursor = textCursor();
+    editBlockCursor.beginEditBlock();
+    for (CursorEditItem &item : items) {
+        QTextCursor cursor = item.cursor;
+        if (event->replacementStart() != 0 || event->replacementLength() > 0) {
+            const int replacementStart = qBound(0,
+                cursor.position() + event->replacementStart(),
+                document()->characterCount() - 1);
+            const int replacementEnd = qBound(0,
+                replacementStart + event->replacementLength(),
+                document()->characterCount() - 1);
+            cursor.setPosition(replacementStart);
+            cursor.setPosition(replacementEnd, QTextCursor::KeepAnchor);
+        }
+        cursor.insertText(committedText);
+
+        if (item.primary) {
+            updatedPrimary = cursor;
+        } else if (item.secondaryIndex >= 0 && item.secondaryIndex < updatedSecondaries.size()) {
+            updatedSecondaries[item.secondaryIndex] = cursor;
+        }
+    }
+    editBlockCursor.endEditBlock();
+
+    secondaryCursors = updatedSecondaries;
+    setTextCursor(updatedPrimary);
+    viewport()->update();
+    event->accept();
 }
 
 void EditorSurface::paintEvent(QPaintEvent *event)
