@@ -10,6 +10,8 @@
 #include <QStringList>
 #include <QVector>
 
+#include "JsonMessageFraming.h"
+
 struct LspServerCommand
 {
     QString program;
@@ -119,7 +121,7 @@ public:
 private:
     LspServerCommand command;
     QProcess process;
-    QByteArray incomingBuffer;
+    JsonMessageBuffer incomingBuffer;
     int nextRequestId = 1;
     LspInitializeResult lastInitializeResult;
     QMap<int, QJsonObject> responses;
@@ -129,6 +131,5 @@ private:
     void writePayload(const QJsonObject &payload);
     bool waitForResponse(int requestId, QJsonObject *response, int timeoutMs, QString *error);
     void readAvailableMessages();
-    void parseBufferedMessages();
     void applyInitializeResult(const QJsonObject &result);
 };

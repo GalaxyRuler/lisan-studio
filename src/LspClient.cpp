@@ -3,7 +3,6 @@
 #include <QElapsedTimer>
 #include <QFileInfo>
 #include <QJsonArray>
-#include <QJsonDocument>
 #include <QJsonValue>
 
 namespace {
@@ -705,10 +704,7 @@ void LspClient::writePayload(const QJsonObject &payload)
         return;
     }
 
-    const QByteArray body = QJsonDocument(payload).toJson(QJsonDocument::Compact);
-    const QByteArray header = QByteArrayLiteral("Content-Length: ") + QByteArray::number(body.size()) + QByteArrayLiteral("\r\n\r\n");
-    process.write(header);
-    process.write(body);
+    process.write(encodeJsonMessage(payload));
     process.waitForBytesWritten(1000);
 }
 
@@ -750,53 +746,8 @@ bool LspClient::waitForResponse(int requestId, QJsonObject *response, int timeou
 void LspClient::readAvailableMessages()
 {
     incomingBuffer.append(process.readAllStandardOutput());
-    parseBufferedMessages();
-}
-
-void LspClient::parseBufferedMessages()
-{
-    while (true) {
-        const int headerEnd = incomingBuffer.indexOf("\r\n\r\n");
-        if (headerEnd < 0) {
-            return;
-        }
-
-        const QByteArray header = incomingBuffer.left(headerEnd);
-        int contentLength = -1;
-        const QList<QByteArray> lines = header.split('\n');
-        for (QByteArray line : lines) {
-            line = line.trimmed();
-            const int separator = line.indexOf(':');
-            if (separator < 0) {
-                continue;
-            }
-            const QByteArray name = line.left(separator).trimmed().toLower();
-            if (name == QByteArrayLiteral("content-length")) {
-                contentLength = line.mid(separator + 1).trimmed().toInt();
-                break;
-            }
-        }
-
-        if (contentLength < 0) {
-            incomingBuffer.remove(0, headerEnd + 4);
-            continue;
-        }
-
-        const int messageStart = headerEnd + 4;
-        if (incomingBuffer.size() < messageStart + contentLength) {
-            return;
-        }
-
-        const QByteArray body = incomingBuffer.mid(messageStart, contentLength);
-        incomingBuffer.remove(0, messageStart + contentLength);
-
-        QJsonParseError parseError;
-        const QJsonDocument document = QJsonDocument::fromJson(body, &parseError);
-        if (parseError.error != QJsonParseError::NoError || !document.isObject()) {
-            continue;
-        }
-
-        const QJsonObject object = document.object();
+    const QVector<QJsonObject> messages = incomingBuffer.takeMessages();
+    for (const QJsonObject &object : messages) {
         if (object.contains(QStringLiteral("id"))) {
             responses.insert(object.value(QStringLiteral("id")).toInt(), object);
         }

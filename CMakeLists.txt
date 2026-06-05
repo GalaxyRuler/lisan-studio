@@ -72,6 +72,10 @@ add_library(acs_core
     src/RuntimeHistory.cpp
     src/RuntimeProblemParser.h
     src/RuntimeProblemParser.cpp
+    src/JsonMessageFraming.h
+    src/JsonMessageFraming.cpp
+    src/DapClient.h
+    src/DapClient.cpp
     src/TerminalProfileModel.h
     src/TerminalProfileModel.cpp
     src/TerminalLinkParser.h
@@ -183,6 +187,12 @@ qt_add_executable(acs_lsp_client_tests
 
 target_link_libraries(acs_lsp_client_tests PRIVATE acs_core Qt6::Test lsp)
 
+qt_add_executable(acs_dap_client_tests
+    tests/TestDapClient.cpp
+)
+
+target_link_libraries(acs_dap_client_tests PRIVATE acs_core Qt6::Test)
+
 add_test(NAME acs_editor_tests COMMAND acs_editor_tests)
 add_test(NAME acs_editor_tabs_controller_tests COMMAND acs_editor_tabs_controller_tests)
 add_test(NAME acs_project_tree_controller_tests COMMAND acs_project_tree_controller_tests)
@@ -194,3 +204,4 @@ add_test(NAME acs_main_window_tests COMMAND acs_main_window_tests)
 add_test(NAME acs_editor_torture_tests COMMAND acs_editor_torture_tests)
 add_test(NAME acs_untitled_draft_recovery_tests COMMAND acs_untitled_draft_recovery_tests)
 add_test(NAME acs_lsp_client_tests COMMAND acs_lsp_client_tests)
+add_test(NAME acs_dap_client_tests COMMAND acs_dap_client_tests)
