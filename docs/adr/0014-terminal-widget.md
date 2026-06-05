@@ -2,8 +2,9 @@
 
 ## Status
 
-Accepted (2026-06-05) - implement V2 terminal support with a Windows
-ConPTY backend behind Lisan-owned terminal UI surfaces.
+Accepted (2026-06-05) - implement V2 terminal support with a tested
+Windows process backend behind Lisan-owned terminal UI surfaces. Keep ConPTY
+as the next backend upgrade only after command-input behavior is proven.
 
 ## Context
 
@@ -17,28 +18,35 @@ are interactive, long-running, and capable of arbitrary workspace mutation.
 The V1/V2 trust model must remain the gate: untrusted workspaces can show the
 terminal panel and explanation, but must not spawn a shell.
 
-Windows terminal integration should use the platform pseudo-console API
-rather than a plain `QProcess` pipe, because many shells and console programs
-depend on terminal semantics for prompts, control sequences, and interactive
-input.
+Windows terminal integration ideally uses the platform pseudo-console API
+because many shells and console programs depend on terminal semantics for
+prompts, control sequences, and interactive input. During V2-F1 validation,
+the raw ConPTY prototype could spawn `cmd.exe` and read its prompt, but command
+input written through the pipe did not reach the shell reliably in the current
+Windows/Qt toolchain. A public V2 needs a working terminal path more than it
+needs an unproven backend claim.
 
 ## Decision
 
-Implement a Lisan-owned `ConPtyBackend` using Windows ConPTY APIs:
-`CreatePseudoConsole`, anonymous pipes, `STARTUPINFOEX`, and an asynchronous
-read pump that emits UTF-8/console output into Qt.
+Implement a Lisan-owned `TerminalBackend` using explicit `QProcess` program
+and argument lists, merged output channels, stdin writes, process-exit
+signals, and the existing workspace-trust gate. This lands the validated shell
+execution boundary for V2.
 
 The V2 UI will bind this backend into the existing terminal bottom panel with
-a shell picker for PowerShell and cmd. QTermWidget remains the preferred
-long-term terminal renderer if it proves reliable on Windows, but V2 will not
-block public-readiness on vendoring a Linux-first widget that cannot be
-verified in the current Windows toolchain. The renderer boundary stays narrow
-so QTermWidget or another terminal widget can replace the text surface later.
+a shell picker for PowerShell and cmd. ConPTY and QTermWidget remain preferred
+long-term upgrades if they prove reliable on Windows, but V2 will not block
+public-readiness on a backend or renderer that cannot be verified in the
+current Windows toolchain. The renderer/backend boundary stays narrow so
+ConPTY, QTermWidget, or another terminal widget can replace the text surface
+later.
 
 ## Rationale
 
-- ConPTY is the native Windows terminal boundary and supports real interactive
-  shells better than ordinary process pipes.
+- `QProcess` is the terminal boundary that passed command-input and exit
+  propagation tests in the current toolchain.
+- ConPTY is still the stronger native Windows terminal direction, but the
+  prototype is deferred until its stdin behavior is reproducible.
 - Keeping the backend Lisan-owned lets tests cover spawn, write, read, and
   exit behavior without depending on a GUI terminal widget.
 - The existing trust and terminal profile model already provide the right
@@ -49,8 +57,8 @@ so QTermWidget or another terminal widget can replace the text surface later.
 
 ## Alternatives considered
 
-1. **QProcess-only terminal.** Rejected because it does not provide terminal
-   semantics for interactive console applications.
+1. **ConPTY-first terminal.** Deferred because the V2-F1 prototype did not
+   reliably deliver command input to `cmd.exe` despite successful spawn/read.
 2. **QTermWidget-first integration.** Deferred for V2 because the Windows
    build and ConPTY wiring risk is higher than the backend itself.
 3. **Embed an external terminal emulator.** Rejected for V2 because it would
@@ -60,7 +68,7 @@ so QTermWidget or another terminal widget can replace the text surface later.
 
 ## Consequences
 
-- Phase F must add Windows-specific backend code guarded in CMake and tests.
+- Phase F must add backend code guarded by CMake and tests.
 - GUI terminal rendering in V2 is intentionally basic: command input, output,
   shell picker, and trust gate first; richer ANSI rendering can follow.
 - Public distribution still requires installed-app terminal QA in an isolated
@@ -70,7 +78,7 @@ so QTermWidget or another terminal widget can replace the text surface later.
 
 Implementation slices gated by this ADR must prove:
 
-- spawning `cmd.exe` through ConPTY succeeds;
+- spawning `cmd.exe` through the terminal backend succeeds;
 - writing `echo hello\r\n` produces `hello` in the terminal output buffer;
 - multi-line input/output works;
 - process exit propagates to Qt;

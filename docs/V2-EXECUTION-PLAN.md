@@ -139,9 +139,9 @@ This is the source of truth for "where are we in V2." Update on every state tran
 
 | Slice | Title | Depends on | Status | Commit | Release | Notes |
 |---|---|---|---|---|---|---|
-| V2-F0 | ADR-0014 | none | ◕ | b4b2eab | — | ConPTY backend + Lisan-owned terminal UI accepted; QTermWidget deferred unless Windows integration is proven safe |
-| V2-F1 | Windows ConPTY backend | V2-F0 | □ | — | — | `src/ConPtyBackend.{h,cpp}`; new ctest binary |
-| V2-F2 | QTermWidget integration + multi-shell picker | V2-F1 | □ | — | — | Second submodule (qtermwidget); closes V2 |
+| V2-F0 | ADR-0014 | none | ◕ | b4b2eab | — | Lisan-owned terminal backend + UI accepted; raw ConPTY/QTermWidget deferred until Windows input/rendering proof is safe |
+| V2-F1 | Windows terminal backend | V2-F0 | □ | — | — | `src/TerminalBackend.{h,cpp}`; new ctest binary |
+| V2-F2 | Terminal UI integration + multi-shell picker | V2-F1 | □ | — | — | Text-backed terminal panel first; ConPTY/QTermWidget remain upgrade paths |
 | — | **v0.5.0-beta cut** (V2 milestone close) | V2-F2 | □ | — | — | Final V2 release; archive ROADMAP-V2 |
 
 ## Sample Codex prompt template (V2-A1 worked example)

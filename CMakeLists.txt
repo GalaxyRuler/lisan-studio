@@ -76,6 +76,8 @@ add_library(acs_core
     src/JsonMessageFraming.cpp
     src/DapClient.h
     src/DapClient.cpp
+    src/TerminalBackend.h
+    src/TerminalBackend.cpp
     src/TerminalProfileModel.h
     src/TerminalProfileModel.cpp
     src/TerminalLinkParser.h
@@ -193,6 +195,12 @@ qt_add_executable(acs_dap_client_tests
 
 target_link_libraries(acs_dap_client_tests PRIVATE acs_core Qt6::Test)
 
+qt_add_executable(acs_terminal_backend_tests
+    tests/TestTerminalBackend.cpp
+)
+
+target_link_libraries(acs_terminal_backend_tests PRIVATE acs_core Qt6::Test)
+
 add_test(NAME acs_editor_tests COMMAND acs_editor_tests)
 add_test(NAME acs_editor_tabs_controller_tests COMMAND acs_editor_tabs_controller_tests)
 add_test(NAME acs_project_tree_controller_tests COMMAND acs_project_tree_controller_tests)
@@ -205,3 +213,4 @@ add_test(NAME acs_editor_torture_tests COMMAND acs_editor_torture_tests)
 add_test(NAME acs_untitled_draft_recovery_tests COMMAND acs_untitled_draft_recovery_tests)
 add_test(NAME acs_lsp_client_tests COMMAND acs_lsp_client_tests)
 add_test(NAME acs_dap_client_tests COMMAND acs_dap_client_tests)
+add_test(NAME acs_terminal_backend_tests COMMAND acs_terminal_backend_tests)
