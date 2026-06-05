@@ -121,7 +121,7 @@ This is the source of truth for "where are we in V2." Update on every state tran
 | Slice | Title | Depends on | Status | Commit | Release | Notes |
 |---|---|---|---|---|---|---|
 | V2-D1 | Go-to-definition + find-references | V2-C3 | ◕ | 91d488b | — | LSP definition/references requests, Ctrl+Click/F12 navigation, and References panel landed; validate.ps1 passes 11/11 |
-| V2-D2 | Rename refactor | V2-D1 | □ | — | — | F2; synergy with V1.5 multi-cursor |
+| V2-D2 | Rename refactor | V2-D1 | ◕ | 89b2f38 | — | F2 rename, LSP workspace-edit parsing, multi-file preview, and validated rollback path landed; validate.ps1 passes 11/11 |
 | V2-D3 | Semantic highlighting + outline + workspace symbols | V2-D2 | □ | — | — | Layers on top of ApyHighlighter |
 | — | **v0.3.2-beta cut** (phase D close) | V2-D3 | □ | — | — | Release-cut slice |
 
