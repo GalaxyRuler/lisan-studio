@@ -129,7 +129,7 @@ This is the source of truth for "where are we in V2." Update on every state tran
 
 | Slice | Title | Depends on | Status | Commit | Release | Notes |
 |---|---|---|---|---|---|---|
-| V2-E0 | ADR-0013 | none | □ | — | — | Docs-only |
+| V2-E0 | ADR-0013 | none | ◕ | 99c49da | — | debugpy + Lisan-owned Qt DAP client accepted |
 | V2-E1 | DAP client transport + initialize + launch | V2-E0, V2-C2 | □ | — | — | Reuse LSP's JSON-RPC primitives |
 | V2-E2 | Breakpoints + step + continue | V2-E1 | □ | — | — | New DebugController; F5/F10/F11 |
 | V2-E3 | Locals + watch + call stack | V2-E2 | □ | — | — | New Variables panel in BottomPanelController |
