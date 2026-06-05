@@ -26,9 +26,11 @@
 #include <QIcon>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QInputDialog>
 #include <QKeySequenceEdit>
 #include <QListWidget>
 #include <QListWidgetItem>
+#include <QMap>
 #include <QMessageBox>
 #include <QMouseEvent>
 #include <QPainter>
@@ -227,6 +229,58 @@ static QString languageModeStatusText(const QString &path)
         return QString::fromUtf8("نص");
     }
     return QString::fromUtf8("نص عادي");
+}
+
+static bool offsetForLspPosition(const QString &text, int targetLine, int targetCharacter, int *offset)
+{
+    if (!offset || targetLine < 0 || targetCharacter < 0) {
+        return false;
+    }
+
+    int line = 0;
+    int lineStart = 0;
+    for (int i = 0; i <= text.size(); ++i) {
+        const bool atEnd = i == text.size();
+        const bool atNewline = !atEnd && text.at(i) == QLatin1Char('\n');
+        if (!atEnd && !atNewline) {
+            continue;
+        }
+
+        if (line == targetLine) {
+            const int lineEnd = atNewline ? i : text.size();
+            const int logicalLineEnd = lineEnd > lineStart && text.at(lineEnd - 1) == QLatin1Char('\r')
+                ? lineEnd - 1
+                : lineEnd;
+            if (targetCharacter > logicalLineEnd - lineStart) {
+                return false;
+            }
+            *offset = lineStart + targetCharacter;
+            return true;
+        }
+
+        ++line;
+        lineStart = i + 1;
+    }
+
+    return false;
+}
+
+static bool textEditToDocumentEdit(const QString &text, const LspTextEdit &lspEdit, DocumentTextEdit *documentEdit)
+{
+    int startOffset = -1;
+    int endOffset = -1;
+    if (!offsetForLspPosition(text, lspEdit.startLine, lspEdit.startCharacter, &startOffset)
+        || !offsetForLspPosition(text, lspEdit.endLine, lspEdit.endCharacter, &endOffset)
+        || endOffset < startOffset) {
+        return false;
+    }
+
+    if (documentEdit) {
+        documentEdit->start = startOffset;
+        documentEdit->length = endOffset - startOffset;
+        documentEdit->replacement = lspEdit.newText;
+    }
+    return true;
 }
 
 static bool isApySourcePath(const QString &path)
@@ -678,6 +732,7 @@ void MainWindow::buildUi()
         requestLanguageServerDefinition(cursor.blockNumber(), cursor.position() - cursor.block().position());
     });
     connect(addTextOnlyMenuAction(editMenu, QString::fromUtf8("إيجاد المراجع"), QKeySequence(QStringLiteral("Shift+F12")), QStringLiteral("lsp.findReferences")), &QAction::triggered, this, &MainWindow::requestLanguageServerReferences);
+    connect(addTextOnlyMenuAction(editMenu, QString::fromUtf8("إعادة تسمية الرمز"), QKeySequence(QStringLiteral("F2")), QStringLiteral("lsp.renameSymbol")), &QAction::triggered, this, &MainWindow::requestLanguageServerRename);
     // Esc is handled directly by EditorSurface so the app-level action does not steal normal editor cancellation.
     connect(addTextOnlyMenuAction(editMenu, QString::fromUtf8("الرجوع إلى مؤشر واحد"), QKeySequence(), QStringLiteral("cursor.collapseToSingle")), &QAction::triggered, this, &MainWindow::collapseToSingleCursorAction);
     connect(addTextOnlyMenuAction(editMenu, QString::fromUtf8("إدراج اطبع"), QKeySequence(), QStringLiteral("snippet.insertPrint")), &QAction::triggered, this, &MainWindow::insertPrintSnippet);
@@ -1484,6 +1539,14 @@ void MainWindow::registerWorkbenchCommands()
         QKeySequence(QStringLiteral("Shift+F12")),
         QString::fromUtf8("مراجع رمز language server references"),
         [this]() { requestLanguageServerReferences(); },
+        [this]() { return editor != nullptr; });
+    registerCommand(
+        QStringLiteral("lsp.renameSymbol"),
+        QString::fromUtf8("إعادة تسمية الرمز"),
+        QString::fromUtf8("تحرير"),
+        QKeySequence(QStringLiteral("F2")),
+        QString::fromUtf8("إعادة تسمية refactor rename symbol language server"),
+        [this]() { requestLanguageServerRename(); },
         [this]() { return editor != nullptr; });
     registerCommand(
         QStringLiteral("snippet.insertPrint"),
@@ -2405,6 +2468,188 @@ void MainWindow::renderReferences(const QVector<LspLocation> &locations)
         referencesPanel->setItemWidget(item, rowWidget);
     }
     showReferencesPanel();
+}
+
+void MainWindow::renderRenamePreview(const LspWorkspaceEdit &edit)
+{
+    referencesPanel->clear();
+    for (const LspTextEdit &textEdit : edit.edits) {
+        const QString path = QUrl(textEdit.uri).toLocalFile();
+        auto *item = new QListWidgetItem(referencesPanel);
+        item->setData(Qt::UserRole, textEdit.uri);
+        item->setData(Qt::UserRole + 1, textEdit.startLine + 1);
+        item->setData(Qt::UserRole + 2, textEdit.startCharacter + 1);
+        item->setToolTip(QString::fromUtf8("%1\n%2:%3 -> %4")
+            .arg(QDir::toNativeSeparators(path.isEmpty() ? textEdit.uri : path))
+            .arg(textEdit.startLine + 1)
+            .arg(textEdit.startCharacter + 1)
+            .arg(textEdit.newText));
+        item->setText(QString::fromUtf8("إعادة تسمية: %1، السطر %2")
+            .arg(path.isEmpty() ? textEdit.uri : QFileInfo(path).fileName())
+            .arg(textEdit.startLine + 1));
+
+        auto *rowWidget = new QWidget(referencesPanel);
+        rowWidget->setObjectName(QStringLiteral("renamePreviewRow"));
+        rowWidget->setLayoutDirection(Qt::RightToLeft);
+        rowWidget->setMinimumHeight(72);
+        auto *rowLayout = new QVBoxLayout(rowWidget);
+        rowLayout->setContentsMargins(16, 12, 16, 12);
+        rowLayout->setSpacing(4);
+
+        auto *fileLabel = new QLabel(path.isEmpty() ? textEdit.uri : QDir::toNativeSeparators(path), rowWidget);
+        fileLabel->setObjectName(QStringLiteral("renamePreviewFileLabel"));
+        fileLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        fileLabel->setLayoutDirection(Qt::LeftToRight);
+        fileLabel->setStyleSheet(QStringLiteral("color: #E8ECF2; font-weight: 600;"));
+
+        auto *detailLabel = new QLabel(QString::fromUtf8("السطر %1، العمود %2 -> %3")
+                .arg(textEdit.startLine + 1)
+                .arg(textEdit.startCharacter + 1)
+                .arg(textEdit.newText),
+            rowWidget);
+        detailLabel->setObjectName(QStringLiteral("renamePreviewDetailLabel"));
+        detailLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        detailLabel->setLayoutDirection(Qt::RightToLeft);
+        detailLabel->setStyleSheet(QStringLiteral("color: #AEC6FF;"));
+
+        rowLayout->addWidget(fileLabel);
+        rowLayout->addWidget(detailLabel);
+        item->setSizeHint(QSize(rowWidget->sizeHint().width(), 72));
+        referencesPanel->setItemWidget(item, rowWidget);
+    }
+    showReferencesPanel();
+}
+
+bool MainWindow::applyWorkspaceEdit(const LspWorkspaceEdit &edit, QString *error)
+{
+    if (error) {
+        error->clear();
+    }
+    if (edit.edits.isEmpty()) {
+        setStatus(QString::fromUtf8("لا توجد تعديلات لإعادة التسمية"));
+        return true;
+    }
+
+    QMap<QString, QVector<LspTextEdit>> editsByPath;
+    for (const LspTextEdit &textEdit : edit.edits) {
+        const QString localPath = QUrl(textEdit.uri).toLocalFile();
+        if (localPath.isEmpty()) {
+            if (error) {
+                *error = QString::fromUtf8("تعديل إعادة التسمية لا يحتوي مسارا صالحا.");
+            }
+            return false;
+        }
+        const QString path = QFileInfo(localPath).absoluteFilePath();
+        editsByPath[path].append(textEdit);
+    }
+
+    const QStringList dirtyPaths = editorTabsController ? editorTabsController->dirtyFilePaths() : QStringList {};
+    for (const QString &dirtyPath : dirtyPaths) {
+        const QString normalizedDirtyPath = QFileInfo(dirtyPath).absoluteFilePath();
+        if (editsByPath.contains(normalizedDirtyPath)) {
+            if (error) {
+                *error = QString::fromUtf8("احفظ الملفات المفتوحة قبل إعادة التسمية.");
+            }
+            setStatus(error ? *error : QString());
+            return false;
+        }
+    }
+
+    struct PreparedFile
+    {
+        QString originalText;
+        QString updatedText;
+    };
+
+    QMap<QString, PreparedFile> preparedFiles;
+    for (auto it = editsByPath.begin(); it != editsByPath.end(); ++it) {
+        const QString path = it.key();
+        if (!QFileInfo::exists(path)) {
+            if (error) {
+                *error = QString::fromUtf8("ملف إعادة التسمية غير موجود: %1").arg(QDir::toNativeSeparators(path));
+            }
+            return false;
+        }
+
+        QString loadError;
+        const DocumentLoadResult loaded = DocumentFileIO::loadUtf8(path, &loadError);
+        if (!loadError.isEmpty()) {
+            if (error) {
+                *error = loadError;
+            }
+            return false;
+        }
+
+        QVector<DocumentTextEdit> documentEdits;
+        documentEdits.reserve(it.value().size());
+        for (const LspTextEdit &lspEdit : it.value()) {
+            DocumentTextEdit documentEdit;
+            if (!textEditToDocumentEdit(loaded.text, lspEdit, &documentEdit)) {
+                if (error) {
+                    *error = QString::fromUtf8("نطاق إعادة التسمية غير صالح: %1").arg(QDir::toNativeSeparators(path));
+                }
+                return false;
+            }
+            documentEdits.append(documentEdit);
+        }
+
+        std::sort(documentEdits.begin(), documentEdits.end(), [](const DocumentTextEdit &left, const DocumentTextEdit &right) {
+            return left.start < right.start;
+        });
+        int previousEnd = -1;
+        for (const DocumentTextEdit &documentEdit : documentEdits) {
+            if (documentEdit.start < previousEnd) {
+                if (error) {
+                    *error = QString::fromUtf8("تعديلات إعادة التسمية متداخلة: %1").arg(QDir::toNativeSeparators(path));
+                }
+                return false;
+            }
+            previousEnd = documentEdit.start + documentEdit.length;
+        }
+
+        QString updatedText = loaded.text;
+        std::sort(documentEdits.begin(), documentEdits.end(), [](const DocumentTextEdit &left, const DocumentTextEdit &right) {
+            return left.start > right.start;
+        });
+        for (const DocumentTextEdit &documentEdit : documentEdits) {
+            updatedText.replace(documentEdit.start, documentEdit.length, documentEdit.replacement);
+        }
+        preparedFiles.insert(path, {loaded.text, updatedText});
+    }
+
+    QStringList writtenPaths;
+    for (auto it = preparedFiles.begin(); it != preparedFiles.end(); ++it) {
+        QString saveError;
+        if (!DocumentFileIO::saveUtf8Atomically(it.key(), it.value().updatedText, &saveError)) {
+            for (const QString &writtenPath : writtenPaths) {
+                QString ignoredError;
+                DocumentFileIO::saveUtf8Atomically(writtenPath, preparedFiles.value(writtenPath).originalText, &ignoredError);
+            }
+            if (error) {
+                *error = saveError;
+            }
+            setStatus(saveError);
+            return false;
+        }
+        writtenPaths.append(it.key());
+    }
+
+    for (const QString &path : writtenPaths) {
+        const DocumentId id = documentRegistry.findByPath(path);
+        if (!id.isValid()) {
+            continue;
+        }
+        QString reloadError;
+        documentRegistry.reloadFromDisk(id, &reloadError);
+        EditorSurface *surface = editorTabsController ? editorTabsController->surfaceForDocument(id) : nullptr;
+        if (surface) {
+            surface->openFile(path, &reloadError);
+        }
+    }
+
+    renderRenamePreview(edit);
+    setStatus(QString::fromUtf8("تم تطبيق %1 تعديلات إعادة تسمية في %2 ملف").arg(edit.edits.size()).arg(preparedFiles.size()));
+    return true;
 }
 
 void MainWindow::renderProjectReplacePreview(const QVector<ProjectReplacePreviewRow> &rows)
@@ -3331,6 +3576,48 @@ void MainWindow::requestLanguageServerReferences()
         &error);
     if (error.isEmpty()) {
         renderReferences(locations);
+    }
+}
+
+void MainWindow::requestLanguageServerRename()
+{
+    if (!editor) {
+        return;
+    }
+
+    const QTextCursor cursor = editor->textCursor();
+    bool accepted = false;
+    const QString newName = QInputDialog::getText(
+        this,
+        QString::fromUtf8("إعادة تسمية الرمز"),
+        QString::fromUtf8("الاسم الجديد:"),
+        QLineEdit::Normal,
+        cursor.selectedText(),
+        &accepted);
+    if (!accepted || newName.trimmed().isEmpty()) {
+        return;
+    }
+
+    syncCurrentEditorToLanguageServer(false);
+    if (!lspClient.isRunning() || !lspDocumentOpen) {
+        setStatus(QString::fromUtf8("خادم اللغة غير جاهز لإعادة التسمية"));
+        return;
+    }
+
+    QString error;
+    const LspWorkspaceEdit edit = lspClient.requestRename(
+        lspDocumentUri,
+        cursor.blockNumber(),
+        cursor.position() - cursor.block().position(),
+        newName.trimmed(),
+        1000,
+        &error);
+    if (!error.isEmpty()) {
+        setStatus(error);
+        return;
+    }
+    if (!applyWorkspaceEdit(edit, &error) && !error.isEmpty()) {
+        setStatus(error);
     }
 }
 

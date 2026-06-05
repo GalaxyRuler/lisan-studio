@@ -23,6 +23,7 @@ private slots:
     void hoverRequestParsesMarkdownAndStaysWithinBudget();
     void definitionRequestParsesLocation();
     void referencesRequestParsesLocations();
+    void renameRequestParsesWorkspaceEdit();
 };
 
 namespace {
@@ -139,6 +140,27 @@ while running:
                     "range": {"start": {"line": 4, "character": 2}, "end": {"line": 4, "character": 6}},
                 },
             ],
+        })
+    elif method == "textDocument/rename":
+        write_message({
+            "jsonrpc": "2.0",
+            "id": message["id"],
+            "result": {
+                "changes": {
+                    "file:///workspace/main.apy": [
+                        {
+                            "range": {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 3}},
+                            "newText": message.get("params", {}).get("newName", "قيمة"),
+                        }
+                    ],
+                    "file:///workspace/lib.apy": [
+                        {
+                            "range": {"start": {"line": 2, "character": 4}, "end": {"line": 2, "character": 7}},
+                            "newText": message.get("params", {}).get("newName", "قيمة"),
+                        }
+                    ],
+                },
+            },
         })
     elif method == "exit":
         running = False
@@ -391,6 +413,54 @@ void TestLspClient::referencesRequestParsesLocations()
     QVERIFY(messages.at(2).value(QStringLiteral("params")).toObject()
         .value(QStringLiteral("context")).toObject()
         .value(QStringLiteral("includeDeclaration")).toBool());
+}
+
+void TestLspClient::renameRequestParsesWorkspaceEdit()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString logPath = dir.filePath(QStringLiteral("lsp-log.jsonl"));
+    const QString scriptPath = writeMockServer(dir);
+    QVERIFY(!scriptPath.isEmpty());
+
+    LspClient client;
+    client.setServerCommand(mockServerCommand(scriptPath, logPath));
+
+    QString error;
+    QVERIFY2(client.startAndInitialize(QStringLiteral("file:///workspace"), 5000, &error), qPrintable(error));
+
+    const LspWorkspaceEdit edit = client.requestRename(
+        QStringLiteral("file:///workspace/main.apy"),
+        0,
+        1,
+        QString::fromUtf8("قيمة"),
+        5000,
+        &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error));
+    QCOMPARE(edit.edits.size(), 2);
+    auto editForUri = [&edit](const QString &uri) {
+        for (const LspTextEdit &textEdit : edit.edits) {
+            if (textEdit.uri == uri) {
+                return textEdit;
+            }
+        }
+        return LspTextEdit {};
+    };
+    const LspTextEdit mainEdit = editForUri(QStringLiteral("file:///workspace/main.apy"));
+    const LspTextEdit libEdit = editForUri(QStringLiteral("file:///workspace/lib.apy"));
+    QCOMPARE(mainEdit.uri, QStringLiteral("file:///workspace/main.apy"));
+    QCOMPARE(mainEdit.startLine, 0);
+    QCOMPARE(mainEdit.startCharacter, 0);
+    QCOMPARE(mainEdit.endCharacter, 3);
+    QCOMPARE(mainEdit.newText, QString::fromUtf8("قيمة"));
+    QCOMPARE(libEdit.uri, QStringLiteral("file:///workspace/lib.apy"));
+    QCOMPARE(libEdit.startLine, 2);
+    QCOMPARE(libEdit.startCharacter, 4);
+
+    QVERIFY(waitForMethodCount(logPath, 3));
+    const QVector<QJsonObject> messages = readLogMessages(logPath);
+    QCOMPARE(messages.at(2).value(QStringLiteral("method")).toString(), QStringLiteral("textDocument/rename"));
+    QCOMPARE(messages.at(2).value(QStringLiteral("params")).toObject().value(QStringLiteral("newName")).toString(), QString::fromUtf8("قيمة"));
 }
 
 QTEST_MAIN(TestLspClient)

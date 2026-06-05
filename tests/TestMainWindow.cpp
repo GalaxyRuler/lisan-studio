@@ -103,6 +103,8 @@ private slots:
     void projectSearchShowsClickableResultRows();
     void projectSearchFindsCurrentUnsavedEditorImmediately();
     void referencesPanelPopulatesAndOpensLocations();
+    void renameWorkspaceEditAppliesAcrossFilesAndShowsPreview();
+    void renameWorkspaceEditRollsBackWhenAnyEditIsInvalid();
     void overlappingFindInProjectReleasesPriorSearchWatcher();
     void mainWindowSurfacesSearchTruncationInStatusBar();
     void mainWindowDoesNotSurfaceTruncationWhenScanCompletes();
@@ -892,6 +894,7 @@ void TestMainWindow::commandPaletteExposesRegisteredWorkbenchCommands()
         QStringLiteral("editor.findInFile"),
         QStringLiteral("lsp.findReferences"),
         QStringLiteral("lsp.goToDefinition"),
+        QStringLiteral("lsp.renameSymbol"),
         QStringLiteral("run.formatCurrentFile"),
         QStringLiteral("run.lintCurrentFile"),
         QStringLiteral("file.new"),
@@ -1040,6 +1043,7 @@ void TestMainWindow::coreCommandSurfacesDeclareRegisteredCommandIds()
         QStringLiteral("editor.findInFile"),
         QStringLiteral("lsp.findReferences"),
         QStringLiteral("lsp.goToDefinition"),
+        QStringLiteral("lsp.renameSymbol"),
         QStringLiteral("run.formatCurrentFile"),
         QStringLiteral("run.lintCurrentFile"),
         QStringLiteral("file.new"),
@@ -2263,6 +2267,74 @@ void TestMainWindow::referencesPanelPopulatesAndOpensLocations()
     auto *editor = window.findChild<EditorSurface *>(QStringLiteral("editorSurface"));
     QVERIFY(editor != nullptr);
     QCOMPARE(editor->textCursor().blockNumber(), 2);
+}
+
+void TestMainWindow::renameWorkspaceEditAppliesAcrossFilesAndShowsPreview()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    QDir root(temp.path());
+    const QString firstPath = writeFile(root, QStringLiteral("main.apy"), QString::fromUtf8("عدد = 1\nاطبع(عدد)\n"));
+    const QString secondPath = writeFile(root, QStringLiteral("lib.apy"), QString::fromUtf8("اطبع(عدد)\n"));
+
+    MainWindow window;
+    QVERIFY(window.openPath(root.absolutePath()));
+
+    LspWorkspaceEdit edit;
+    edit.edits.append({QUrl::fromLocalFile(firstPath).toString(), 0, 0, 0, 3, QString::fromUtf8("قيمة")});
+    edit.edits.append({QUrl::fromLocalFile(firstPath).toString(), 1, 5, 1, 8, QString::fromUtf8("قيمة")});
+    edit.edits.append({QUrl::fromLocalFile(secondPath).toString(), 0, 5, 0, 8, QString::fromUtf8("قيمة")});
+
+    QString error;
+    QVERIFY2(window.applyWorkspaceEdit(edit, &error), qPrintable(error));
+
+    QFile firstFile(firstPath);
+    QFile secondFile(secondPath);
+    QVERIFY(firstFile.open(QIODevice::ReadOnly));
+    QVERIFY(secondFile.open(QIODevice::ReadOnly));
+    QString firstText = QString::fromUtf8(firstFile.readAll());
+    QString secondText = QString::fromUtf8(secondFile.readAll());
+    firstText.replace(QStringLiteral("\r\n"), QStringLiteral("\n"));
+    secondText.replace(QStringLiteral("\r\n"), QStringLiteral("\n"));
+    QCOMPARE(firstText, QString::fromUtf8("قيمة = 1\nاطبع(قيمة)\n"));
+    QCOMPARE(secondText, QString::fromUtf8("اطبع(قيمة)\n"));
+
+    auto *panel = window.findChild<QListWidget *>(QStringLiteral("referencesPanel"));
+    QVERIFY(panel != nullptr);
+    QCOMPARE(panel->count(), 3);
+    QVERIFY(panel->item(0)->text().contains(QString::fromUtf8("إعادة تسمية")));
+    QVERIFY(panel->item(0)->toolTip().contains(QString::fromUtf8("قيمة")));
+}
+
+void TestMainWindow::renameWorkspaceEditRollsBackWhenAnyEditIsInvalid()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    QDir root(temp.path());
+    const QString firstPath = writeFile(root, QStringLiteral("main.apy"), QString::fromUtf8("عدد = 1\n"));
+    const QString secondPath = writeFile(root, QStringLiteral("lib.apy"), QString::fromUtf8("اطبع(عدد)\n"));
+
+    MainWindow window;
+    QVERIFY(window.openPath(root.absolutePath()));
+
+    LspWorkspaceEdit edit;
+    edit.edits.append({QUrl::fromLocalFile(firstPath).toString(), 0, 0, 0, 3, QString::fromUtf8("قيمة")});
+    edit.edits.append({QUrl::fromLocalFile(secondPath).toString(), 20, 0, 20, 3, QString::fromUtf8("قيمة")});
+
+    QString error;
+    QVERIFY(!window.applyWorkspaceEdit(edit, &error));
+    QVERIFY(!error.isEmpty());
+
+    QFile firstFile(firstPath);
+    QFile secondFile(secondPath);
+    QVERIFY(firstFile.open(QIODevice::ReadOnly));
+    QVERIFY(secondFile.open(QIODevice::ReadOnly));
+    QString firstText = QString::fromUtf8(firstFile.readAll());
+    QString secondText = QString::fromUtf8(secondFile.readAll());
+    firstText.replace(QStringLiteral("\r\n"), QStringLiteral("\n"));
+    secondText.replace(QStringLiteral("\r\n"), QStringLiteral("\n"));
+    QCOMPARE(firstText, QString::fromUtf8("عدد = 1\n"));
+    QCOMPARE(secondText, QString::fromUtf8("اطبع(عدد)\n"));
 }
 
 void TestMainWindow::overlappingFindInProjectReleasesPriorSearchWatcher()

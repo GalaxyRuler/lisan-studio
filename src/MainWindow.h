@@ -182,6 +182,7 @@ private:
     void requestLanguageServerHover(int line, int character, const QPoint &viewportPosition);
     void requestLanguageServerDefinition(int line, int character);
     void requestLanguageServerReferences();
+    void requestLanguageServerRename();
     void updateBreadcrumbBar();
     void updateStatusIndicators();
     // Test-only snapshot for verifying MainWindow's registry integration.
@@ -199,6 +200,8 @@ private:
     void renderSearchResults(const QVector<SearchResultRow> &rows);
     void renderReferences(const QVector<LspLocation> &locations);
     void renderReferencesForTest(const QVector<LspLocation> &locations) { renderReferences(locations); }
+    void renderRenamePreview(const LspWorkspaceEdit &edit);
+    bool applyWorkspaceEdit(const LspWorkspaceEdit &edit, QString *error = nullptr);
     void renderProjectReplacePreview(const QVector<ProjectReplacePreviewRow> &rows);
     void setProjectReplaceFileAccepted(const QString &path, bool accepted);
     QVector<ProjectReplacePreviewRow> acceptedProjectReplaceRows() const;

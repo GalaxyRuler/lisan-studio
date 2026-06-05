@@ -50,6 +50,21 @@ struct LspLocation
     int character = 0;
 };
 
+struct LspTextEdit
+{
+    QString uri;
+    int startLine = 0;
+    int startCharacter = 0;
+    int endLine = 0;
+    int endCharacter = 0;
+    QString newText;
+};
+
+struct LspWorkspaceEdit
+{
+    QVector<LspTextEdit> edits;
+};
+
 class LspClient final : public QObject
 {
     Q_OBJECT
@@ -73,6 +88,7 @@ public:
     LspHoverResult requestHover(const QString &uri, int line, int character, int timeoutMs = 5000, QString *error = nullptr);
     QVector<LspLocation> requestDefinition(const QString &uri, int line, int character, int timeoutMs = 5000, QString *error = nullptr);
     QVector<LspLocation> requestReferences(const QString &uri, int line, int character, bool includeDeclaration = true, int timeoutMs = 5000, QString *error = nullptr);
+    LspWorkspaceEdit requestRename(const QString &uri, int line, int character, const QString &newName, int timeoutMs = 5000, QString *error = nullptr);
     void shutdown(int timeoutMs = 2000);
 
 private:

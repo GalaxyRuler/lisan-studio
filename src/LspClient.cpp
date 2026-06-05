@@ -118,6 +118,64 @@ QVector<LspLocation> locationsFromValue(const QJsonValue &value)
     }
     return locations;
 }
+
+LspTextEdit textEditFromObject(const QString &uri, const QJsonObject &object)
+{
+    LspTextEdit edit;
+    edit.uri = uri;
+    const QJsonObject range = object.value(QStringLiteral("range")).toObject();
+    const QJsonObject start = range.value(QStringLiteral("start")).toObject();
+    const QJsonObject end = range.value(QStringLiteral("end")).toObject();
+    edit.startLine = start.value(QStringLiteral("line")).toInt();
+    edit.startCharacter = start.value(QStringLiteral("character")).toInt();
+    edit.endLine = end.value(QStringLiteral("line")).toInt();
+    edit.endCharacter = end.value(QStringLiteral("character")).toInt();
+    edit.newText = object.value(QStringLiteral("newText")).toString();
+    return edit;
+}
+
+void appendTextEditsForUri(QVector<LspTextEdit> *edits, const QString &uri, const QJsonArray &array)
+{
+    if (!edits || uri.isEmpty()) {
+        return;
+    }
+    for (const QJsonValue &value : array) {
+        if (value.isObject()) {
+            edits->append(textEditFromObject(uri, value.toObject()));
+        }
+    }
+}
+
+LspWorkspaceEdit workspaceEditFromObject(const QJsonObject &object)
+{
+    LspWorkspaceEdit workspaceEdit;
+
+    const QJsonObject changes = object.value(QStringLiteral("changes")).toObject();
+    for (auto it = changes.begin(); it != changes.end(); ++it) {
+        appendTextEditsForUri(&workspaceEdit.edits, it.key(), it.value().toArray());
+    }
+
+    const QJsonArray documentChanges = object.value(QStringLiteral("documentChanges")).toArray();
+    for (const QJsonValue &value : documentChanges) {
+        if (!value.isObject()) {
+            continue;
+        }
+        const QJsonObject documentChange = value.toObject();
+        const QString uri = documentChange.value(QStringLiteral("textDocument")).toObject().value(QStringLiteral("uri")).toString();
+        appendTextEditsForUri(&workspaceEdit.edits, uri, documentChange.value(QStringLiteral("edits")).toArray());
+    }
+
+    std::sort(workspaceEdit.edits.begin(), workspaceEdit.edits.end(), [](const LspTextEdit &left, const LspTextEdit &right) {
+        if (left.uri != right.uri) {
+            return left.uri < right.uri;
+        }
+        if (left.startLine != right.startLine) {
+            return left.startLine < right.startLine;
+        }
+        return left.startCharacter < right.startCharacter;
+    });
+    return workspaceEdit;
+}
 }
 
 LspClient::LspClient(QObject *parent)
@@ -383,6 +441,35 @@ QVector<LspLocation> LspClient::requestReferences(const QString &uri, int line, 
         return {};
     }
     return locationsFromValue(response.value(QStringLiteral("result")));
+}
+
+LspWorkspaceEdit LspClient::requestRename(const QString &uri, int line, int character, const QString &newName, int timeoutMs, QString *error)
+{
+    if (error) {
+        error->clear();
+    }
+    if (process.state() == QProcess::NotRunning) {
+        if (error) {
+            *error = QStringLiteral("LSP server is not running.");
+        }
+        return {};
+    }
+
+    QJsonObject params = textDocumentPositionParams(uri, line, character);
+    params.insert(QStringLiteral("newName"), newName);
+
+    const int requestId = sendRequest(QStringLiteral("textDocument/rename"), params);
+    QJsonObject response;
+    if (!waitForResponse(requestId, &response, timeoutMs, error)) {
+        return {};
+    }
+    if (response.contains(QStringLiteral("error"))) {
+        if (error) {
+            *error = response.value(QStringLiteral("error")).toObject().value(QStringLiteral("message")).toString();
+        }
+        return {};
+    }
+    return workspaceEditFromObject(response.value(QStringLiteral("result")).toObject());
 }
 
 void LspClient::shutdown(int timeoutMs)
