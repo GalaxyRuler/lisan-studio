@@ -114,7 +114,7 @@ This is the source of truth for "where are we in V2." Update on every state tran
 | V2-C1 | Apython translation-shim LSP server | V2-C0 | ◕ | lughat-althuban:6f1e4de | — | `lughat-althuban-lsp` entrypoint and stdio LSP contract landed in apython worktree |
 | V2-C2 | LSP client integration in EditorSurface | V2-C0, V2-C1 | ◕ | ec0c044 | — | lsp-framework submodule + Qt LspClient landed; validate.ps1 now passes 11/11 |
 | V2-C3 | Completion + hover | V2-C2 | ◕ | d16e9c3 | — | Completion popup + hover tooltip UI binding landed; validate.ps1 passes 11/11 |
-| — | **v0.3.0-beta cut** (phase C close) | V2-C3 | □ | — | — | First V2 minor release |
+| — | **v0.3.0-beta cut** (phase C close) | V2-C3 | ◕ | 9dbc414 | — | In-repo release prep landed; MSI artifact built locally; push/GHA/tag/publish/signing still pending |
 
 ### Phase D — LSP advanced
 
