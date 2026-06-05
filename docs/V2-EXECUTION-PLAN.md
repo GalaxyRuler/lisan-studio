@@ -141,8 +141,8 @@ This is the source of truth for "where are we in V2." Update on every state tran
 |---|---|---|---|---|---|---|
 | V2-F0 | ADR-0014 | none | ◕ | b4b2eab | — | Lisan-owned terminal backend + UI accepted; raw ConPTY/QTermWidget deferred until Windows input/rendering proof is safe |
 | V2-F1 | Windows terminal backend | V2-F0 | ◕ | 990c9b2 | — | `TerminalBackend` process-backed shell execution landed; cmd spawn/write/read/exit tests pass; validate.ps1 passes 13/13 |
-| V2-F2 | Terminal UI integration + multi-shell picker | V2-F1 | ◕ | 32065fd | — | Terminal tab now has shell picker, command input, stop control, persisted profile, trusted execution path, and UI command-input test coverage |
-| — | **v0.5.0-beta cut** (V2 milestone close) | V2-F2 | □ | — | — | Final V2 release; archive ROADMAP-V2 |
+| V2-F2 | Terminal UI integration + multi-shell picker | V2-F1 | ◕ | 32065fd | v0.5.0-beta | Terminal tab now has shell picker, command input, stop control, persisted profile, trusted execution path, and UI command-input test coverage |
+| — | **v0.5.0-beta cut** (V2 milestone close) | V2-F2 | ◕ | 969bfdb | v0.5.0-beta | Release prep landed. Local MSI artifact built: `147C1B88BC37EA7834D976CA7E25718F11C51BE64A444C099A7DFB83573C110E` (69,198,344 bytes); signing/GHA/tag/publish/manual installed-app QA still pending |
 
 ## Sample Codex prompt template (V2-A1 worked example)
 
