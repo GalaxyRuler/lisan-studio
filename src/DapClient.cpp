@@ -125,6 +125,70 @@ bool DapClient::launch(const DapLaunchRequest &request, int timeoutMs, QString *
     return responseSucceeded(response, error);
 }
 
+bool DapClient::setBreakpoints(const QString &sourcePath, const QVector<int> &lines, int timeoutMs, QString *error)
+{
+    if (error) {
+        error->clear();
+    }
+    if (process.state() == QProcess::NotRunning) {
+        if (error) {
+            *error = QStringLiteral("DAP server is not running.");
+        }
+        return false;
+    }
+
+    QJsonArray breakpoints;
+    for (const int line : lines) {
+        if (line > 0) {
+            breakpoints.append(QJsonObject{{QStringLiteral("line"), line}});
+        }
+    }
+
+    QJsonObject source;
+    source.insert(QStringLiteral("path"), sourcePath);
+
+    QJsonObject arguments;
+    arguments.insert(QStringLiteral("source"), source);
+    arguments.insert(QStringLiteral("breakpoints"), breakpoints);
+
+    const int requestSequence = sendRequest(QStringLiteral("setBreakpoints"), arguments);
+    QJsonObject response;
+    if (!waitForResponse(requestSequence, &response, timeoutMs, error)) {
+        return false;
+    }
+    return responseSucceeded(response, error);
+}
+
+bool DapClient::configurationDone(int timeoutMs, QString *error)
+{
+    const int requestSequence = sendRequest(QStringLiteral("configurationDone"), QJsonObject{});
+    QJsonObject response;
+    if (!waitForResponse(requestSequence, &response, timeoutMs, error)) {
+        return false;
+    }
+    return responseSucceeded(response, error);
+}
+
+bool DapClient::continueExecution(int threadId, int timeoutMs, QString *error)
+{
+    return requestThreadCommand(QStringLiteral("continue"), threadId, timeoutMs, error);
+}
+
+bool DapClient::stepOver(int threadId, int timeoutMs, QString *error)
+{
+    return requestThreadCommand(QStringLiteral("next"), threadId, timeoutMs, error);
+}
+
+bool DapClient::stepInto(int threadId, int timeoutMs, QString *error)
+{
+    return requestThreadCommand(QStringLiteral("stepIn"), threadId, timeoutMs, error);
+}
+
+bool DapClient::stepOut(int threadId, int timeoutMs, QString *error)
+{
+    return requestThreadCommand(QStringLiteral("stepOut"), threadId, timeoutMs, error);
+}
+
 void DapClient::disconnect(int timeoutMs)
 {
     if (process.state() == QProcess::NotRunning) {
@@ -207,8 +271,41 @@ void DapClient::readAvailableMessages()
     for (const QJsonObject &object : messages) {
         if (object.value(QStringLiteral("type")).toString() == QStringLiteral("response")) {
             responses.insert(object.value(QStringLiteral("request_seq")).toInt(), object);
+            continue;
+        }
+        if (object.value(QStringLiteral("type")).toString() != QStringLiteral("event")) {
+            continue;
+        }
+        const QString event = object.value(QStringLiteral("event")).toString();
+        const QJsonObject body = object.value(QStringLiteral("body")).toObject();
+        if (event == QStringLiteral("stopped")) {
+            emit stopped(body.value(QStringLiteral("reason")).toString(), body.value(QStringLiteral("threadId")).toInt());
+        } else if (event == QStringLiteral("continued")) {
+            emit continued(body.value(QStringLiteral("threadId")).toInt());
+        } else if (event == QStringLiteral("terminated")) {
+            emit terminated();
         }
     }
+}
+
+bool DapClient::requestThreadCommand(const QString &commandName, int threadId, int timeoutMs, QString *error)
+{
+    if (error) {
+        error->clear();
+    }
+    if (process.state() == QProcess::NotRunning) {
+        if (error) {
+            *error = QStringLiteral("DAP server is not running.");
+        }
+        return false;
+    }
+
+    const int requestSequence = sendRequest(commandName, QJsonObject{{QStringLiteral("threadId"), threadId}});
+    QJsonObject response;
+    if (!waitForResponse(requestSequence, &response, timeoutMs, error)) {
+        return false;
+    }
+    return responseSucceeded(response, error);
 }
 
 bool DapClient::responseSucceeded(const QJsonObject &response, QString *error) const

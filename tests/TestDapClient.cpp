@@ -6,6 +6,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonDocument>
+#include <QJsonArray>
 #include <QJsonObject>
 #include <QProcessEnvironment>
 #include <QTemporaryDir>
@@ -18,6 +19,8 @@ class TestDapClient : public QObject
 private slots:
     void initializeHandshakeReadsCapabilities();
     void launchRequestSerializesProgramArgumentsAndWorkingDirectory();
+    void setBreakpointsRequestSerializesSourceLines();
+    void runControlRequestsRoundTripAndStoppedEventsReachSignals();
 };
 
 namespace {
@@ -90,7 +93,38 @@ while running:
             "supportsConfigurationDoneRequest": True,
             "supportsRestartRequest": False,
         })
+    elif command == "setBreakpoints":
+        response(message, {
+            "breakpoints": [
+                {"id": 1, "verified": True, "line": bp.get("line", 0)}
+                for bp in message.get("arguments", {}).get("breakpoints", [])
+            ]
+        })
+    elif command == "configurationDone":
+        response(message)
     elif command == "launch":
+        response(message)
+        write_message({
+            "seq": seq,
+            "type": "event",
+            "event": "stopped",
+            "body": {"reason": "breakpoint", "threadId": 7},
+        })
+        seq += 1
+    elif command == "continue":
+        response(message)
+        write_message({
+            "seq": seq,
+            "type": "event",
+            "event": "continued",
+            "body": {"threadId": message.get("arguments", {}).get("threadId", 0)},
+        })
+        seq += 1
+    elif command == "next":
+        response(message)
+    elif command == "stepIn":
+        response(message)
+    elif command == "stepOut":
         response(message)
     elif command == "disconnect":
         response(message)
@@ -205,6 +239,73 @@ void TestDapClient::launchRequestSerializesProgramArgumentsAndWorkingDirectory()
     QCOMPARE(arguments.value(QStringLiteral("cwd")).toString(), QStringLiteral("C:/project"));
     QVERIFY(arguments.value(QStringLiteral("stopOnEntry")).toBool());
     QCOMPARE(arguments.value(QStringLiteral("args")).toArray().size(), 2);
+}
+
+void TestDapClient::setBreakpointsRequestSerializesSourceLines()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString logPath = dir.filePath(QStringLiteral("dap-log.jsonl"));
+    const QString scriptPath = writeMockServer(dir);
+    QVERIFY(!scriptPath.isEmpty());
+
+    DapClient client;
+    client.setServerCommand(mockServerCommand(scriptPath, logPath));
+
+    QString error;
+    QVERIFY2(client.startAndInitialize(5000, &error), qPrintable(error));
+    QVERIFY2(client.setBreakpoints(QStringLiteral("C:/project/main.apy"), {3, 8}, 5000, &error), qPrintable(error));
+
+    QVERIFY(waitForMethodCount(logPath, 2));
+    const QVector<QJsonObject> messages = readLogMessages(logPath);
+    QCOMPARE(messages.at(1).value(QStringLiteral("command")).toString(), QStringLiteral("setBreakpoints"));
+    const QJsonObject arguments = messages.at(1).value(QStringLiteral("arguments")).toObject();
+    QCOMPARE(arguments.value(QStringLiteral("source")).toObject().value(QStringLiteral("path")).toString(), QStringLiteral("C:/project/main.apy"));
+    const QJsonArray breakpoints = arguments.value(QStringLiteral("breakpoints")).toArray();
+    QCOMPARE(breakpoints.size(), 2);
+    QCOMPARE(breakpoints.at(0).toObject().value(QStringLiteral("line")).toInt(), 3);
+    QCOMPARE(breakpoints.at(1).toObject().value(QStringLiteral("line")).toInt(), 8);
+}
+
+void TestDapClient::runControlRequestsRoundTripAndStoppedEventsReachSignals()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString logPath = dir.filePath(QStringLiteral("dap-log.jsonl"));
+    const QString scriptPath = writeMockServer(dir);
+    QVERIFY(!scriptPath.isEmpty());
+
+    DapClient client;
+    client.setServerCommand(mockServerCommand(scriptPath, logPath));
+    QSignalSpy stoppedSpy(&client, &DapClient::stopped);
+    QSignalSpy continuedSpy(&client, &DapClient::continued);
+
+    QString error;
+    QVERIFY2(client.startAndInitialize(5000, &error), qPrintable(error));
+    QVERIFY2(client.configurationDone(5000, &error), qPrintable(error));
+
+    DapLaunchRequest launch;
+    launch.program = QStringLiteral("C:/project/main.apy");
+    launch.workingDirectory = QStringLiteral("C:/project");
+    QVERIFY2(client.launch(launch, 5000, &error), qPrintable(error));
+    QTRY_VERIFY(!stoppedSpy.isEmpty());
+    QCOMPARE(stoppedSpy.first().at(0).toString(), QStringLiteral("breakpoint"));
+    QCOMPARE(stoppedSpy.first().at(1).toInt(), 7);
+
+    QVERIFY2(client.continueExecution(7, 5000, &error), qPrintable(error));
+    QTRY_VERIFY(!continuedSpy.isEmpty());
+    QCOMPARE(continuedSpy.first().at(0).toInt(), 7);
+    QVERIFY2(client.stepOver(7, 5000, &error), qPrintable(error));
+    QVERIFY2(client.stepInto(7, 5000, &error), qPrintable(error));
+    QVERIFY2(client.stepOut(7, 5000, &error), qPrintable(error));
+
+    QVERIFY(waitForMethodCount(logPath, 7));
+    const QVector<QJsonObject> messages = readLogMessages(logPath);
+    QCOMPARE(messages.at(1).value(QStringLiteral("command")).toString(), QStringLiteral("configurationDone"));
+    QCOMPARE(messages.at(3).value(QStringLiteral("command")).toString(), QStringLiteral("continue"));
+    QCOMPARE(messages.at(4).value(QStringLiteral("command")).toString(), QStringLiteral("next"));
+    QCOMPARE(messages.at(5).value(QStringLiteral("command")).toString(), QStringLiteral("stepIn"));
+    QCOMPARE(messages.at(6).value(QStringLiteral("command")).toString(), QStringLiteral("stepOut"));
 }
 
 QTEST_MAIN(TestDapClient)

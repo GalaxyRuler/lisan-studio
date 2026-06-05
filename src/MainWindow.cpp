@@ -644,7 +644,7 @@ void MainWindow::buildUi()
     runAction = makeAction(lightPlayIcon(), QString::fromUtf8("تشغيل"), &MainWindow::runCurrentFile);
     runAction->setObjectName(QStringLiteral("runAction"));
     runAction->setProperty("commandId", QStringLiteral("run.currentFile"));
-    runAction->setShortcut(QKeySequence(QStringLiteral("F5")));
+    runAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+F5")));
     runAction->setShortcutContext(Qt::ApplicationShortcut);
     cancelRunAction = makeAction(style()->standardIcon(QStyle::SP_MediaStop), QString::fromUtf8("إيقاف"), &MainWindow::cancelRuntimeProcess);
     cancelRunAction->setObjectName(QStringLiteral("cancelRunAction"));
@@ -751,6 +751,10 @@ void MainWindow::buildUi()
     connect(addTextOnlyMenuAction(viewMenu, QString::fromUtf8("فتح طرفية PowerShell"), QKeySequence(), QStringLiteral("terminal.openPowerShell")), &QAction::triggered, this, &MainWindow::openPowerShellTerminal);
     connect(addTextOnlyMenuAction(toolsMenu, QString::fromUtf8("فحص"), QKeySequence(), QStringLiteral("run.lintCurrentFile")), &QAction::triggered, this, &MainWindow::lintCurrentFile);
     connect(addTextOnlyMenuAction(toolsMenu, QString::fromUtf8("تنسيق"), QKeySequence(), QStringLiteral("run.formatCurrentFile")), &QAction::triggered, this, &MainWindow::formatCurrentFile);
+    connect(addTextOnlyMenuAction(toolsMenu, QString::fromUtf8("بدء أو متابعة التصحيح"), QKeySequence(QStringLiteral("F5")), QStringLiteral("debug.continue")), &QAction::triggered, this, &MainWindow::continueDebugSession);
+    connect(addTextOnlyMenuAction(toolsMenu, QString::fromUtf8("خطوة فوق"), QKeySequence(QStringLiteral("F10")), QStringLiteral("debug.stepOver")), &QAction::triggered, this, &MainWindow::stepOverDebugSession);
+    connect(addTextOnlyMenuAction(toolsMenu, QString::fromUtf8("خطوة داخل"), QKeySequence(QStringLiteral("F11")), QStringLiteral("debug.stepInto")), &QAction::triggered, this, &MainWindow::stepIntoDebugSession);
+    connect(addTextOnlyMenuAction(toolsMenu, QString::fromUtf8("خروج من الدالة"), QKeySequence(QStringLiteral("Shift+F11")), QStringLiteral("debug.stepOut")), &QAction::triggered, this, &MainWindow::stepOutDebugSession);
     connect(addTextOnlyMenuAction(toolsMenu, QString::fromUtf8("الثقة بمساحة العمل"), QKeySequence(), QStringLiteral("workspace.trust")), &QAction::triggered, this, &MainWindow::trustCurrentWorkspace);
     connect(addTextOnlyMenuAction(toolsMenu, QString::fromUtf8("إلغاء الثقة بمساحة العمل"), QKeySequence(), QStringLiteral("workspace.untrust")), &QAction::triggered, this, &MainWindow::untrustCurrentWorkspace);
     settingsAction->setIconVisibleInMenu(false);
@@ -1597,14 +1601,46 @@ void MainWindow::registerWorkbenchCommands()
         QStringLiteral("run.currentFile"),
         QString::fromUtf8("تشغيل الملف الحالي"),
         QString::fromUtf8("تشغيل"),
-        QKeySequence(QStringLiteral("F5")),
+        QKeySequence(QStringLiteral("Ctrl+F5")),
         QString::fromUtf8("تشغيل run current file"),
         [this]() { runCurrentFile(); });
+    registerCommand(
+        QStringLiteral("debug.continue"),
+        QString::fromUtf8("بدء أو متابعة التصحيح"),
+        QString::fromUtf8("تصحيح"),
+        QKeySequence(QStringLiteral("F5")),
+        QString::fromUtf8("تصحيح متابعة تشغيل breakpoint continue debug"),
+        [this]() { continueDebugSession(); },
+        [this]() { return editor != nullptr; });
+    registerCommand(
+        QStringLiteral("debug.stepOver"),
+        QString::fromUtf8("خطوة فوق"),
+        QString::fromUtf8("تصحيح"),
+        QKeySequence(QStringLiteral("F10")),
+        QString::fromUtf8("تصحيح خطوة فوق step over next"),
+        [this]() { stepOverDebugSession(); },
+        [this]() { return debugSessionActive && debugSessionPaused; });
+    registerCommand(
+        QStringLiteral("debug.stepInto"),
+        QString::fromUtf8("خطوة داخل"),
+        QString::fromUtf8("تصحيح"),
+        QKeySequence(QStringLiteral("F11")),
+        QString::fromUtf8("تصحيح خطوة داخل step into"),
+        [this]() { stepIntoDebugSession(); },
+        [this]() { return debugSessionActive && debugSessionPaused; });
+    registerCommand(
+        QStringLiteral("debug.stepOut"),
+        QString::fromUtf8("خروج من الدالة"),
+        QString::fromUtf8("تصحيح"),
+        QKeySequence(QStringLiteral("Shift+F11")),
+        QString::fromUtf8("تصحيح خروج خطوة step out"),
+        [this]() { stepOutDebugSession(); },
+        [this]() { return debugSessionActive && debugSessionPaused; });
     registerCommand(
         QStringLiteral("run.rerunLast"),
         QString::fromUtf8("إعادة آخر تشغيل"),
         QString::fromUtf8("تشغيل"),
-        QKeySequence(QStringLiteral("Ctrl+F5")),
+        QKeySequence(QStringLiteral("Ctrl+Shift+F5")),
         QString::fromUtf8("إعادة آخر تشغيل rerun last run history"),
         [this]() { rerunLastRuntimeAction(); },
         [this]() { return runtimeOrchestrator.hasHistory(); });
@@ -3825,6 +3861,80 @@ void MainWindow::requestLanguageServerWorkspaceSymbols()
         return;
     }
     openWorkspaceSymbolPicker(symbols);
+}
+
+void MainWindow::continueDebugSession()
+{
+    if (!editor) {
+        return;
+    }
+    if (!outputDock->isVisible()) {
+        outputDock->show();
+    }
+    if (bottomPanelTabs && debugPanel) {
+        bottomPanelTabs->setCurrentWidget(debugPanel);
+    }
+    outputDock->raise();
+
+    if (!debugSessionActive) {
+        debugSessionActive = true;
+        debugSessionPaused = true;
+        activeDebugThreadId = 1;
+        debugPanel->setPlainText(QString::fromUtf8("جلسة التصحيح جاهزة. سيتم ربط debugpy الكامل في مسار التشغيل الحي."));
+        setStatus(QString::fromUtf8("تم بدء جلسة التصحيح"));
+        return;
+    }
+
+    QString error;
+    if (debugSessionPaused && dapClient.isRunning() && !dapClient.continueExecution(activeDebugThreadId, 500, &error)) {
+        setStatus(error);
+        return;
+    }
+    debugSessionPaused = false;
+    debugPanel->appendPlainText(QString::fromUtf8("متابعة التنفيذ"));
+    setStatus(QString::fromUtf8("متابعة التصحيح"));
+}
+
+void MainWindow::stepOverDebugSession()
+{
+    if (!debugSessionActive || !debugSessionPaused) {
+        return;
+    }
+    QString error;
+    if (dapClient.isRunning() && !dapClient.stepOver(activeDebugThreadId, 500, &error)) {
+        setStatus(error);
+        return;
+    }
+    debugPanel->appendPlainText(QString::fromUtf8("خطوة فوق"));
+    setStatus(QString::fromUtf8("خطوة فوق"));
+}
+
+void MainWindow::stepIntoDebugSession()
+{
+    if (!debugSessionActive || !debugSessionPaused) {
+        return;
+    }
+    QString error;
+    if (dapClient.isRunning() && !dapClient.stepInto(activeDebugThreadId, 500, &error)) {
+        setStatus(error);
+        return;
+    }
+    debugPanel->appendPlainText(QString::fromUtf8("خطوة داخل"));
+    setStatus(QString::fromUtf8("خطوة داخل"));
+}
+
+void MainWindow::stepOutDebugSession()
+{
+    if (!debugSessionActive || !debugSessionPaused) {
+        return;
+    }
+    QString error;
+    if (dapClient.isRunning() && !dapClient.stepOut(activeDebugThreadId, 500, &error)) {
+        setStatus(error);
+        return;
+    }
+    debugPanel->appendPlainText(QString::fromUtf8("خروج من الدالة"));
+    setStatus(QString::fromUtf8("خروج من الدالة"));
 }
 
 void MainWindow::updateStatusIndicators()

@@ -59,6 +59,7 @@ private slots:
     void completionPopupDisplaysItemsAndAcceptsSelection();
     void hoverTooltipSurfaceStoresMarkdown();
     void semanticTokensLayerOnTopOfApyHighlighter();
+    void lineNumberMarginClickTogglesBreakpoints();
     void ctrlClickRequestsDefinitionAtIdentifier();
     void selectAllFindMatchesAsCursorsConvertsFindHighlights();
     void altColumnDragGeneratesOneCursorPerLineInRectangle();
@@ -1085,6 +1086,34 @@ void TestEditorSurface::semanticTokensLayerOnTopOfApyHighlighter()
 
     editor.setSemanticTokens({});
     QCOMPARE(editor.semanticTokenSelectionCountForTest(), 0);
+}
+
+void TestEditorSurface::lineNumberMarginClickTogglesBreakpoints()
+{
+    EditorSurface editor;
+    editor.setPlainText(QString::fromUtf8("س = ١\nاطبع(س)\n"));
+    editor.resize(640, 360);
+    editor.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&editor));
+
+    auto *lineNumbers = editor.findChild<QWidget *>(QStringLiteral("lineNumberArea"));
+    QVERIFY(lineNumbers != nullptr);
+    QSignalSpy spy(&editor, &EditorSurface::breakpointToggled);
+
+    QTest::mouseClick(lineNumbers, Qt::LeftButton, Qt::NoModifier, QPoint(lineNumbers->width() / 2, editor.fontMetrics().height() / 2));
+
+    QVERIFY(editor.hasBreakpointAtLine(1));
+    QCOMPARE(editor.breakpointLinesForTest(), QVector<int>({1}));
+    QCOMPARE(spy.size(), 1);
+    QCOMPARE(spy.first().at(0).toInt(), 1);
+    QVERIFY(spy.first().at(1).toBool());
+
+    QTest::mouseClick(lineNumbers, Qt::LeftButton, Qt::NoModifier, QPoint(lineNumbers->width() / 2, editor.fontMetrics().height() / 2));
+
+    QVERIFY(!editor.hasBreakpointAtLine(1));
+    QVERIFY(editor.breakpointLinesForTest().isEmpty());
+    QCOMPARE(spy.size(), 2);
+    QVERIFY(!spy.at(1).at(1).toBool());
 }
 
 void TestEditorSurface::ctrlClickRequestsDefinitionAtIdentifier()

@@ -265,6 +265,11 @@ protected:
         editorSurface->lineNumberAreaPaintEvent(event);
     }
 
+    void mousePressEvent(QMouseEvent *event) override
+    {
+        editorSurface->lineNumberAreaMousePressEvent(event);
+    }
+
 private:
     EditorSurface *editorSurface = nullptr;
 };
@@ -855,6 +860,44 @@ int EditorSurface::lineNumberAreaWidth() const
     return 12 + fontMetrics().horizontalAdvance(QLatin1Char('9')) * digits;
 }
 
+bool EditorSurface::hasBreakpointAtLine(int line) const
+{
+    return breakpointLines.contains(line);
+}
+
+bool EditorSurface::setBreakpointAtLine(int line, bool enabled)
+{
+    if (line < 1 || line > blockCount()) {
+        return false;
+    }
+    const bool currentlyEnabled = breakpointLines.contains(line);
+    if (currentlyEnabled == enabled) {
+        return false;
+    }
+    if (enabled) {
+        breakpointLines.insert(line);
+    } else {
+        breakpointLines.remove(line);
+    }
+    if (lineNumberArea) {
+        lineNumberArea->update();
+    }
+    emit breakpointToggled(line, enabled);
+    return true;
+}
+
+bool EditorSurface::toggleBreakpointAtLine(int line)
+{
+    return setBreakpointAtLine(line, !hasBreakpointAtLine(line));
+}
+
+QVector<int> EditorSurface::breakpointLinesForTest() const
+{
+    QVector<int> lines = breakpointLines.values().toVector();
+    std::sort(lines.begin(), lines.end());
+    return lines;
+}
+
 QMenu *EditorSurface::createEditorContextMenu(QWidget *parent)
 {
     auto *menu = new QMenu(parent ? parent : this);
@@ -992,6 +1035,15 @@ void EditorSurface::lineNumberAreaPaintEvent(QPaintEvent *event)
     while (block.isValid() && top <= event->rect().bottom()) {
         if (block.isVisible() && bottom >= event->rect().top()) {
             const QString number = QString::number(blockNumber + 1);
+            if (breakpointLines.contains(blockNumber + 1)) {
+                const int diameter = qMin(10, qMax(6, fontMetrics().height() - 4));
+                const QRect markerRect(4, top + (fontMetrics().height() - diameter) / 2, diameter, diameter);
+                painter.setPen(Qt::NoPen);
+                painter.setBrush(QColor(QStringLiteral("#D84F4F")));
+                painter.drawEllipse(markerRect);
+                painter.setBrush(Qt::NoBrush);
+                painter.setPen(QColor(173, 181, 189));
+            }
             painter.drawText(
                 0,
                 top,
@@ -1006,6 +1058,40 @@ void EditorSurface::lineNumberAreaPaintEvent(QPaintEvent *event)
         bottom = top + qRound(blockBoundingRect(block).height());
         ++blockNumber;
     }
+}
+
+void EditorSurface::lineNumberAreaMousePressEvent(QMouseEvent *event)
+{
+    if (!event || event->button() != Qt::LeftButton) {
+        if (event) {
+            event->ignore();
+        }
+        return;
+    }
+    const int line = lineNumberForViewportY(event->pos().y());
+    if (line >= 1) {
+        toggleBreakpointAtLine(line);
+        event->accept();
+        return;
+    }
+    event->ignore();
+}
+
+int EditorSurface::lineNumberForViewportY(int y) const
+{
+    QTextBlock block = firstVisibleBlock();
+    int top = qRound(blockBoundingGeometry(block).translated(contentOffset()).top());
+    int bottom = top + qRound(blockBoundingRect(block).height());
+
+    while (block.isValid() && top <= viewport()->rect().bottom()) {
+        if (block.isVisible() && y >= top && y <= bottom) {
+            return block.blockNumber() + 1;
+        }
+        block = block.next();
+        top = bottom;
+        bottom = top + qRound(blockBoundingRect(block).height());
+    }
+    return -1;
 }
 
 QString EditorSurface::unicodeName(QChar ch)

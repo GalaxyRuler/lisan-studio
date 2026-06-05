@@ -650,7 +650,7 @@ void TestMainWindow::usesSingleRtlTopCommandBarWithMenuButtons()
     QVERIFY(runButton != nullptr);
     QCOMPARE(runButton->toolButtonStyle(), Qt::ToolButtonTextBesideIcon);
     QCOMPARE(runButton->text(), QString::fromUtf8("تشغيل"));
-    QCOMPARE(runButton->defaultAction()->shortcut(), QKeySequence(QStringLiteral("F5")));
+    QCOMPARE(runButton->defaultAction()->shortcut(), QKeySequence(QStringLiteral("Ctrl+F5")));
     QVERIFY(!runButton->icon().isNull());
     const QImage runIcon = runButton->icon().pixmap(24, 24).toImage();
     bool hasReadablePlayPixel = false;
@@ -899,6 +899,10 @@ void TestMainWindow::commandPaletteExposesRegisteredWorkbenchCommands()
         QStringLiteral("lsp.goToDefinition"),
         QStringLiteral("lsp.renameSymbol"),
         QStringLiteral("lsp.workspaceSymbol"),
+        QStringLiteral("debug.continue"),
+        QStringLiteral("debug.stepInto"),
+        QStringLiteral("debug.stepOut"),
+        QStringLiteral("debug.stepOver"),
         QStringLiteral("run.formatCurrentFile"),
         QStringLiteral("run.lintCurrentFile"),
         QStringLiteral("file.new"),
@@ -1049,6 +1053,10 @@ void TestMainWindow::coreCommandSurfacesDeclareRegisteredCommandIds()
         QStringLiteral("lsp.goToDefinition"),
         QStringLiteral("lsp.renameSymbol"),
         QStringLiteral("lsp.workspaceSymbol"),
+        QStringLiteral("debug.continue"),
+        QStringLiteral("debug.stepInto"),
+        QStringLiteral("debug.stepOut"),
+        QStringLiteral("debug.stepOver"),
         QStringLiteral("run.formatCurrentFile"),
         QStringLiteral("run.lintCurrentFile"),
         QStringLiteral("file.new"),

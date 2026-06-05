@@ -4,6 +4,7 @@
 #include "CommandRegistry.h"
 #include "DocumentChangePoller.h"
 #include "DocumentRegistry.h"
+#include "DapClient.h"
 #include "EditorTabsController.h"
 #include "EditorSurface.h"
 #include "LspClient.h"
@@ -150,6 +151,7 @@ private:
     SettingsStore settings;
     std::function<RuntimeDiagnostics(int)> runtimeDiagnosticsProvider;
     RuntimeOrchestrator runtimeOrchestrator;
+    DapClient dapClient;
     LspClient lspClient;
     CommandRegistry commandRegistry;
     DocumentRegistry documentRegistry;
@@ -161,6 +163,9 @@ private:
     QString lspDocumentUri;
     int lspDocumentVersion = 0;
     bool lspDocumentOpen = false;
+    bool debugSessionActive = false;
+    bool debugSessionPaused = false;
+    int activeDebugThreadId = 0;
     std::unique_ptr<EditorTabsController> editorTabsController;
     std::unique_ptr<ProjectTreeController> projectTreeController;
     std::unique_ptr<BottomPanelController> bottomPanels;
@@ -188,6 +193,10 @@ private:
     void requestLanguageServerSemanticTokens();
     void requestLanguageServerDocumentSymbols();
     void requestLanguageServerWorkspaceSymbols();
+    void continueDebugSession();
+    void stepOverDebugSession();
+    void stepIntoDebugSession();
+    void stepOutDebugSession();
     void updateBreadcrumbBar();
     void updateStatusIndicators();
     // Test-only snapshot for verifying MainWindow's registry integration.

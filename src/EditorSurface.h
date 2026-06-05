@@ -10,6 +10,7 @@
 #include <QMenu>
 #include <QMouseEvent>
 #include <QPlainTextEdit>
+#include <QSet>
 #include <QStringList>
 #include <QTimer>
 #include <QVector>
@@ -83,6 +84,11 @@ public:
     void collapseToSinglePrimaryCursor();
     int lineNumberAreaWidth() const;
     void lineNumberAreaPaintEvent(QPaintEvent *event);
+    void lineNumberAreaMousePressEvent(QMouseEvent *event);
+    bool hasBreakpointAtLine(int line) const;
+    bool setBreakpointAtLine(int line, bool enabled);
+    bool toggleBreakpointAtLine(int line);
+    QVector<int> breakpointLinesForTest() const;
     QMenu *createEditorContextMenu(QWidget *parent = nullptr);
     void showCompletionItems(const QVector<EditorCompletionItem> &items);
     void showHoverMarkdown(const QString &markdown, const QPoint &viewportPosition);
@@ -100,6 +106,7 @@ signals:
     void completionRequested(int line, int character);
     void hoverRequested(int line, int character, QPoint viewportPosition);
     void definitionRequested(int line, int character);
+    void breakpointToggled(int line, bool enabled);
 
 private:
     QString filePath;
@@ -121,6 +128,7 @@ private:
     QTimer hoverRequestTimer;
     QVector<QTextCursor> secondaryCursors;
     QVector<EditorSemanticToken> semanticTokens;
+    QSet<int> breakpointLines;
     QTextCursor altColumnDragAnchor;
     QPoint pendingHoverViewportPosition;
     QString lastHoverMarkdown;
@@ -132,6 +140,7 @@ private:
     void refreshFindMatches(bool selectFirst = true);
     void updateEditorExtraSelections();
     QVector<int> matchingDelimiterPositions() const;
+    int lineNumberForViewportY(int y) const;
     void paintIndentationGuides(QPainter *painter);
     void paintSecondaryCarets(QPainter *painter);
     QVector<QTextCursor> allCursorsInDocumentOrderDescending() const;

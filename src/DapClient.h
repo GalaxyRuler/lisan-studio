@@ -49,7 +49,18 @@ public:
     DapInitializeResult initializeResult() const;
 
     bool launch(const DapLaunchRequest &request, int timeoutMs = 5000, QString *error = nullptr);
+    bool setBreakpoints(const QString &sourcePath, const QVector<int> &lines, int timeoutMs = 5000, QString *error = nullptr);
+    bool configurationDone(int timeoutMs = 5000, QString *error = nullptr);
+    bool continueExecution(int threadId, int timeoutMs = 5000, QString *error = nullptr);
+    bool stepOver(int threadId, int timeoutMs = 5000, QString *error = nullptr);
+    bool stepInto(int threadId, int timeoutMs = 5000, QString *error = nullptr);
+    bool stepOut(int threadId, int timeoutMs = 5000, QString *error = nullptr);
     void disconnect(int timeoutMs = 2000);
+
+signals:
+    void stopped(const QString &reason, int threadId);
+    void continued(int threadId);
+    void terminated();
 
 private:
     DapServerCommand command;
@@ -63,5 +74,6 @@ private:
     void writePayload(const QJsonObject &payload);
     bool waitForResponse(int requestSequence, QJsonObject *response, int timeoutMs, QString *error);
     void readAvailableMessages();
+    bool requestThreadCommand(const QString &commandName, int threadId, int timeoutMs, QString *error);
     bool responseSucceeded(const QJsonObject &response, QString *error) const;
 };
