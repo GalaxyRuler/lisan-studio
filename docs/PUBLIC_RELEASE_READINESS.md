@@ -13,7 +13,7 @@ candidate and a public release. The canonical slice tracker remains
 - Release candidate: `v0.5.0-beta`
 - Local MSI: `artifacts/LisanStudio-0.5.0-beta.msi`
 - MSI size: 69,198,344 bytes
-- MSI SHA256: `147C1B88BC37EA7834D976CA7E25718F11C51BE64A444C099A7DFB83573C110E`
+- MSI SHA256: `982F6A12D8BACC24402163BC177A0FD6CEA0737740ACBF83ACFA22EC2E9AB298`
 - Signing status: `AuthenticodeStatus: NotSigned`, signer `None`
 
 ## Gate Status
@@ -23,7 +23,7 @@ candidate and a public release. The canonical slice tracker remains
 | Source branch published | Done | `codex/v2-public-use` pushed to `origin` |
 | Draft PR opened | Done | PR #9: <https://github.com/GalaxyRuler/lisan-studio/pull/9> |
 | Local validation | Done | `./scripts/validate.ps1` passed 13/13 |
-| Local package validation | Done | `./scripts/package.ps1 -ProductVersion 0.5.0 ...` passed package-time validation 13/13 |
+| Local package validation | Done | `./scripts/package.ps1 -ProductVersion 0.5.0 ...` passed package-time validation 13/13 from commit `b206fe2` |
 | GitHub Actions MSI evidence | Pending | Run <https://github.com/GalaxyRuler/lisan-studio/actions/runs/27007455061> is queued; `lisanstudio-qa` self-hosted runner is currently offline |
 | Installed-app QA | Pending | Must run inside `LisanStudio-QA`; do not run GUI/MSI install or uninstall on active WHITEDRAGON |
 | Authenticode signing | Repo hook ready / external key pending | `scripts/package.ps1` supports optional thumbprint-based `signtool.exe` signing via `-SigningCertificateThumbprint` or `LISAN_SIGNING_CERT_THUMBPRINT`. A real OV/EV certificate, key storage, and CI secret/variable configuration remain external release gates |
