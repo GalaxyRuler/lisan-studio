@@ -21,6 +21,8 @@ private slots:
     void documentSyncNotificationsReachMockServerInOrder();
     void completionRequestParsesItemsAndStaysWithinBudget();
     void hoverRequestParsesMarkdownAndStaysWithinBudget();
+    void definitionRequestParsesLocation();
+    void referencesRequestParsesLocations();
 };
 
 namespace {
@@ -113,6 +115,30 @@ while running:
             "jsonrpc": "2.0",
             "id": message["id"],
             "result": {"contents": {"kind": "markdown", "value": "**اطبع** -> `print(value)`"}},
+        })
+    elif method == "textDocument/definition":
+        write_message({
+            "jsonrpc": "2.0",
+            "id": message["id"],
+            "result": {
+                "uri": "file:///workspace/lib.apy",
+                "range": {"start": {"line": 4, "character": 2}, "end": {"line": 4, "character": 6}},
+            },
+        })
+    elif method == "textDocument/references":
+        write_message({
+            "jsonrpc": "2.0",
+            "id": message["id"],
+            "result": [
+                {
+                    "uri": "file:///workspace/main.apy",
+                    "range": {"start": {"line": 1, "character": 4}, "end": {"line": 1, "character": 8}},
+                },
+                {
+                    "uri": "file:///workspace/lib.apy",
+                    "range": {"start": {"line": 4, "character": 2}, "end": {"line": 4, "character": 6}},
+                },
+            ],
         })
     elif method == "exit":
         running = False
@@ -307,6 +333,64 @@ void TestLspClient::hoverRequestParsesMarkdownAndStaysWithinBudget()
     const QJsonObject position = messages.at(2).value(QStringLiteral("params")).toObject().value(QStringLiteral("position")).toObject();
     QCOMPARE(position.value(QStringLiteral("line")).toInt(), 2);
     QCOMPARE(position.value(QStringLiteral("character")).toInt(), 8);
+}
+
+void TestLspClient::definitionRequestParsesLocation()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString logPath = dir.filePath(QStringLiteral("lsp-log.jsonl"));
+    const QString scriptPath = writeMockServer(dir);
+    QVERIFY(!scriptPath.isEmpty());
+
+    LspClient client;
+    client.setServerCommand(mockServerCommand(scriptPath, logPath));
+
+    QString error;
+    QVERIFY2(client.startAndInitialize(QStringLiteral("file:///workspace"), 5000, &error), qPrintable(error));
+
+    const QVector<LspLocation> locations = client.requestDefinition(QStringLiteral("file:///workspace/main.apy"), 1, 4, 5000, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error));
+    QCOMPARE(locations.size(), 1);
+    QCOMPARE(locations.first().uri, QStringLiteral("file:///workspace/lib.apy"));
+    QCOMPARE(locations.first().line, 4);
+    QCOMPARE(locations.first().character, 2);
+
+    QVERIFY(waitForMethodCount(logPath, 3));
+    const QVector<QJsonObject> messages = readLogMessages(logPath);
+    QCOMPARE(messages.at(2).value(QStringLiteral("method")).toString(), QStringLiteral("textDocument/definition"));
+}
+
+void TestLspClient::referencesRequestParsesLocations()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString logPath = dir.filePath(QStringLiteral("lsp-log.jsonl"));
+    const QString scriptPath = writeMockServer(dir);
+    QVERIFY(!scriptPath.isEmpty());
+
+    LspClient client;
+    client.setServerCommand(mockServerCommand(scriptPath, logPath));
+
+    QString error;
+    QVERIFY2(client.startAndInitialize(QStringLiteral("file:///workspace"), 5000, &error), qPrintable(error));
+
+    const QVector<LspLocation> locations = client.requestReferences(QStringLiteral("file:///workspace/main.apy"), 1, 4, true, 5000, &error);
+    QVERIFY2(error.isEmpty(), qPrintable(error));
+    QCOMPARE(locations.size(), 2);
+    QCOMPARE(locations.at(0).uri, QStringLiteral("file:///workspace/main.apy"));
+    QCOMPARE(locations.at(0).line, 1);
+    QCOMPARE(locations.at(0).character, 4);
+    QCOMPARE(locations.at(1).uri, QStringLiteral("file:///workspace/lib.apy"));
+    QCOMPARE(locations.at(1).line, 4);
+    QCOMPARE(locations.at(1).character, 2);
+
+    QVERIFY(waitForMethodCount(logPath, 3));
+    const QVector<QJsonObject> messages = readLogMessages(logPath);
+    QCOMPARE(messages.at(2).value(QStringLiteral("method")).toString(), QStringLiteral("textDocument/references"));
+    QVERIFY(messages.at(2).value(QStringLiteral("params")).toObject()
+        .value(QStringLiteral("context")).toObject()
+        .value(QStringLiteral("includeDeclaration")).toBool());
 }
 
 QTEST_MAIN(TestLspClient)

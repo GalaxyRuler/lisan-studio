@@ -34,6 +34,7 @@
 #include <QToolBar>
 #include <QToolButton>
 #include <QTextCursor>
+#include <QUrl>
 
 class TestMainWindow : public QObject
 {
@@ -101,6 +102,7 @@ private slots:
     void trustGrantCancelDoesNotAppendAudit();
     void projectSearchShowsClickableResultRows();
     void projectSearchFindsCurrentUnsavedEditorImmediately();
+    void referencesPanelPopulatesAndOpensLocations();
     void overlappingFindInProjectReleasesPriorSearchWatcher();
     void mainWindowSurfacesSearchTruncationInStatusBar();
     void mainWindowDoesNotSurfaceTruncationWhenScanCompletes();
@@ -701,12 +703,13 @@ void TestMainWindow::exposesPremiumFutureBottomPanelTabs()
     auto *tabs = window.findChild<QTabWidget *>(QStringLiteral("bottomPanelTabs"));
     QVERIFY(tabs != nullptr);
     QCOMPARE(tabs->layoutDirection(), Qt::RightToLeft);
-    QCOMPARE(tabs->count(), 5);
+    QCOMPARE(tabs->count(), 6);
     QCOMPARE(tabs->tabText(0), QString::fromUtf8("الطرفية"));
     QCOMPARE(tabs->tabText(1), QString::fromUtf8("الإخراج"));
     QCOMPARE(tabs->tabText(2), QString::fromUtf8("المشاكل"));
     QCOMPARE(tabs->tabText(3), QString::fromUtf8("نتائج البحث"));
-    QCOMPARE(tabs->tabText(4), QString::fromUtf8("التصحيح"));
+    QCOMPARE(tabs->tabText(4), QString::fromUtf8("المراجع"));
+    QCOMPARE(tabs->tabText(5), QString::fromUtf8("التصحيح"));
 }
 
 void TestMainWindow::enforcesRtlDirectionAcrossShellContainers()
@@ -887,6 +890,8 @@ void TestMainWindow::commandPaletteExposesRegisteredWorkbenchCommands()
         QStringLiteral("editor.toggleTrimTrailingWhitespace"),
         QStringLiteral("editor.toggleVisibleWhitespace"),
         QStringLiteral("editor.findInFile"),
+        QStringLiteral("lsp.findReferences"),
+        QStringLiteral("lsp.goToDefinition"),
         QStringLiteral("run.formatCurrentFile"),
         QStringLiteral("run.lintCurrentFile"),
         QStringLiteral("file.new"),
@@ -1033,6 +1038,8 @@ void TestMainWindow::coreCommandSurfacesDeclareRegisteredCommandIds()
         QStringLiteral("editor.toggleTrimTrailingWhitespace"),
         QStringLiteral("editor.toggleVisibleWhitespace"),
         QStringLiteral("editor.findInFile"),
+        QStringLiteral("lsp.findReferences"),
+        QStringLiteral("lsp.goToDefinition"),
         QStringLiteral("run.formatCurrentFile"),
         QStringLiteral("run.lintCurrentFile"),
         QStringLiteral("file.new"),
@@ -2213,6 +2220,49 @@ void TestMainWindow::projectSearchFindsCurrentUnsavedEditorImmediately()
     QCOMPARE(results->item(0)->data(Qt::UserRole).toString(), QString());
     QCOMPARE(results->item(0)->data(Qt::UserRole + 1).toInt(), 3);
     QVERIFY(results->item(0)->toolTip().contains(QStringLiteral("adult")));
+}
+
+void TestMainWindow::referencesPanelPopulatesAndOpensLocations()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    QDir root(temp.path());
+    const QString filePath = writeFile(
+        root,
+        QStringLiteral("src/main.apy"),
+        QString::fromUtf8("س = 1\nاطبع(س)\nاطبع(س)\n"));
+
+    MainWindow window;
+    window.resize(1000, 700);
+    QVERIFY(window.openPath(root.absolutePath()));
+
+    QVector<LspLocation> references;
+    references.append({QUrl::fromLocalFile(filePath).toString(), 1, 4});
+    references.append({QUrl::fromLocalFile(filePath).toString(), 2, 4});
+    window.renderReferencesForTest(references);
+
+    auto *panel = window.findChild<QListWidget *>(QStringLiteral("referencesPanel"));
+    QVERIFY(panel != nullptr);
+    QCOMPARE(panel->layoutDirection(), Qt::RightToLeft);
+    QCOMPARE(panel->count(), 2);
+    QCOMPARE(panel->item(0)->data(Qt::UserRole).toString(), QUrl::fromLocalFile(filePath).toString());
+    QCOMPARE(panel->item(0)->data(Qt::UserRole + 1).toInt(), 2);
+    QCOMPARE(panel->item(0)->data(Qt::UserRole + 2).toInt(), 5);
+
+    auto *tabs = window.findChild<QTabWidget *>(QStringLiteral("bottomPanelTabs"));
+    QVERIFY(tabs != nullptr);
+    QCOMPARE(tabs->currentWidget(), panel);
+
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    panel->setFocus();
+    panel->setCurrentRow(1);
+    QTest::keyClick(panel, Qt::Key_Return);
+
+    QCOMPARE(QDir::toNativeSeparators(window.currentEditorPath()), QDir::toNativeSeparators(filePath));
+    auto *editor = window.findChild<EditorSurface *>(QStringLiteral("editorSurface"));
+    QVERIFY(editor != nullptr);
+    QCOMPARE(editor->textCursor().blockNumber(), 2);
 }
 
 void TestMainWindow::overlappingFindInProjectReleasesPriorSearchWatcher()

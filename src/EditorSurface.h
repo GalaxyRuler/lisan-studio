@@ -89,6 +89,7 @@ signals:
     void cursorCountChanged(int totalCursors);
     void completionRequested(int line, int character);
     void hoverRequested(int line, int character, QPoint viewportPosition);
+    void definitionRequested(int line, int character);
 
 private:
     QString filePath;

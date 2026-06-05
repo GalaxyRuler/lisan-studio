@@ -761,20 +761,23 @@ void TestProjectSearchRuntime::bottomPanelControllerMapsStableIdsAndSelections()
     QPlainTextEdit output;
     QListWidget problems;
     QListWidget search;
+    QListWidget references;
     QPlainTextEdit debug;
 
     tabs.addTab(&terminal, QString::fromUtf8("الطرفية"));
     tabs.addTab(&output, QString::fromUtf8("الإخراج"));
     tabs.addTab(&problems, QString::fromUtf8("المشاكل"));
     tabs.addTab(&search, QString::fromUtf8("نتائج البحث"));
+    tabs.addTab(&references, QString::fromUtf8("المراجع"));
     tabs.addTab(&debug, QString::fromUtf8("التصحيح"));
 
-    BottomPanelController controller(&tabs, &output, &terminal, &problems, &search, &debug);
+    BottomPanelController controller(&tabs, &output, &terminal, &problems, &search, &references, &debug);
 
     QCOMPARE(controller.panelId(&terminal), QStringLiteral("terminal"));
     QCOMPARE(controller.panelId(&output), QStringLiteral("output"));
     QCOMPARE(controller.panelId(&problems), QStringLiteral("problems"));
     QCOMPARE(controller.panelId(&search), QStringLiteral("search"));
+    QCOMPARE(controller.panelId(&references), QStringLiteral("references"));
     QCOMPARE(controller.panelId(&debug), QStringLiteral("debug"));
     QCOMPARE(controller.panelId(nullptr), QStringLiteral("terminal"));
 
@@ -782,6 +785,7 @@ void TestProjectSearchRuntime::bottomPanelControllerMapsStableIdsAndSelections()
     QCOMPARE(controller.panelForId(QStringLiteral("output")), &output);
     QCOMPARE(controller.panelForId(QStringLiteral("problems")), &problems);
     QCOMPARE(controller.panelForId(QStringLiteral("search")), &search);
+    QCOMPARE(controller.panelForId(QStringLiteral("references")), &references);
     QCOMPARE(controller.panelForId(QStringLiteral("debug")), &debug);
     QCOMPARE(controller.panelForId(QStringLiteral("missing")), &terminal);
 
@@ -793,6 +797,8 @@ void TestProjectSearchRuntime::bottomPanelControllerMapsStableIdsAndSelections()
     QCOMPARE(tabs.currentWidget(), &problems);
     controller.showSearchResultsPanel();
     QCOMPARE(tabs.currentWidget(), &search);
+    controller.showReferencesPanel();
+    QCOMPARE(tabs.currentWidget(), &references);
 }
 
 void TestProjectSearchRuntime::runtimeProblemParserExtractsArabicSyntaxLine()

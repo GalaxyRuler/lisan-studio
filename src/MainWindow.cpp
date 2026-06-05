@@ -670,6 +670,14 @@ void MainWindow::buildUi()
     connect(addTextOnlyMenuAction(editMenu, QString::fromUtf8("إضافة مؤشر أسفل"), QKeySequence(QStringLiteral("Ctrl+Alt+Down")), QStringLiteral("cursor.addBelow")), &QAction::triggered, this, &MainWindow::addCursorBelowAction);
     connect(addTextOnlyMenuAction(editMenu, QString::fromUtf8("إضافة مؤشر عند المطابقة التالية"), QKeySequence(QStringLiteral("Ctrl+D")), QStringLiteral("cursor.addAtNextMatch")), &QAction::triggered, this, &MainWindow::addCursorAtNextMatchAction);
     connect(addTextOnlyMenuAction(editMenu, QString::fromUtf8("تحديد كل المطابقات"), QKeySequence(QStringLiteral("Ctrl+Shift+L")), QStringLiteral("cursor.selectAllMatches")), &QAction::triggered, this, &MainWindow::selectAllCursorMatchesAction);
+    connect(addTextOnlyMenuAction(editMenu, QString::fromUtf8("انتقال إلى التعريف"), QKeySequence(QStringLiteral("F12")), QStringLiteral("lsp.goToDefinition")), &QAction::triggered, this, [this]() {
+        if (!editor) {
+            return;
+        }
+        const QTextCursor cursor = editor->textCursor();
+        requestLanguageServerDefinition(cursor.blockNumber(), cursor.position() - cursor.block().position());
+    });
+    connect(addTextOnlyMenuAction(editMenu, QString::fromUtf8("إيجاد المراجع"), QKeySequence(QStringLiteral("Shift+F12")), QStringLiteral("lsp.findReferences")), &QAction::triggered, this, &MainWindow::requestLanguageServerReferences);
     // Esc is handled directly by EditorSurface so the app-level action does not steal normal editor cancellation.
     connect(addTextOnlyMenuAction(editMenu, QString::fromUtf8("الرجوع إلى مؤشر واحد"), QKeySequence(), QStringLiteral("cursor.collapseToSingle")), &QAction::triggered, this, &MainWindow::collapseToSingleCursorAction);
     connect(addTextOnlyMenuAction(editMenu, QString::fromUtf8("إدراج اطبع"), QKeySequence(), QStringLiteral("snippet.insertPrint")), &QAction::triggered, this, &MainWindow::insertPrintSnippet);
@@ -895,6 +903,11 @@ void MainWindow::buildUi()
                     requestLanguageServerHover(line, character, viewportPosition);
                 }
             });
+            connect(surface, &EditorSurface::definitionRequested, this, [this, surface](int line, int character) {
+                if (surface == editor) {
+                    requestLanguageServerDefinition(line, character);
+                }
+            });
         }
         if (!surface || surface->totalCursorCount() < EditorSurface::kSoftCursorCap) {
             multiCursorSoftCapNoticeShown = false;
@@ -971,6 +984,16 @@ void MainWindow::buildUi()
     connect(searchResultsPanel, &QListWidget::itemActivated, this, &MainWindow::openSearchResult);
     connect(searchResultsPanel, &QListWidget::itemDoubleClicked, this, &MainWindow::openSearchResult);
 
+    referencesPanel = new QListWidget(bottomPanelTabs);
+    referencesPanel->setObjectName(QStringLiteral("referencesPanel"));
+    referencesPanel->setLayoutDirection(Qt::RightToLeft);
+    referencesPanel->setWordWrap(true);
+    referencesPanel->setUniformItemSizes(false);
+    referencesPanel->setToolTip(QString::fromUtf8("مراجع الرمز من خادم اللغة. اضغط Enter أو انقر مرتين للفتح."));
+    connect(referencesPanel, &QListWidget::itemClicked, this, &MainWindow::openReferenceResult);
+    connect(referencesPanel, &QListWidget::itemActivated, this, &MainWindow::openReferenceResult);
+    connect(referencesPanel, &QListWidget::itemDoubleClicked, this, &MainWindow::openReferenceResult);
+
     auto *arabicDebugPanel = new ArabicPlaceholderPlainTextEdit(bottomPanelTabs);
     debugPanel = arabicDebugPanel;
     debugPanel->setObjectName(QStringLiteral("debugPanel"));
@@ -982,6 +1005,7 @@ void MainWindow::buildUi()
     bottomPanelTabs->addTab(outputPanel, QString::fromUtf8("الإخراج"));
     bottomPanelTabs->addTab(problemsPanel, QString::fromUtf8("المشاكل"));
     bottomPanelTabs->addTab(searchResultsPanel, QString::fromUtf8("نتائج البحث"));
+    bottomPanelTabs->addTab(referencesPanel, QString::fromUtf8("المراجع"));
     bottomPanelTabs->addTab(debugPanel, QString::fromUtf8("التصحيح"));
     bottomPanels = std::make_unique<BottomPanelController>(
         bottomPanelTabs,
@@ -989,6 +1013,7 @@ void MainWindow::buildUi()
         terminalPanel,
         problemsPanel,
         searchResultsPanel,
+        referencesPanel,
         debugPanel);
 
     outputDock = new QDockWidget(QString::fromUtf8("اللوحة السفلية"), this);
@@ -1438,6 +1463,28 @@ void MainWindow::registerWorkbenchCommands()
         QString::fromUtf8("مؤشر واحد إلغاء المؤشرات المتعددة collapse cursors"),
         [this]() { collapseToSingleCursorAction(); },
         [this]() { return editor != nullptr && editor->totalCursorCount() > 1; });
+    registerCommand(
+        QStringLiteral("lsp.goToDefinition"),
+        QString::fromUtf8("انتقال إلى التعريف"),
+        QString::fromUtf8("تحرير"),
+        QKeySequence(QStringLiteral("F12")),
+        QString::fromUtf8("تعريف رمز انتقال language server definition"),
+        [this]() {
+            if (!editor) {
+                return;
+            }
+            const QTextCursor cursor = editor->textCursor();
+            requestLanguageServerDefinition(cursor.blockNumber(), cursor.position() - cursor.block().position());
+        },
+        [this]() { return editor != nullptr; });
+    registerCommand(
+        QStringLiteral("lsp.findReferences"),
+        QString::fromUtf8("إيجاد المراجع"),
+        QString::fromUtf8("تحرير"),
+        QKeySequence(QStringLiteral("Shift+F12")),
+        QString::fromUtf8("مراجع رمز language server references"),
+        [this]() { requestLanguageServerReferences(); },
+        [this]() { return editor != nullptr; });
     registerCommand(
         QStringLiteral("snippet.insertPrint"),
         QString::fromUtf8("إدراج اطبع"),
@@ -2317,6 +2364,49 @@ void MainWindow::renderSearchResults(const QVector<SearchResultRow> &rows)
     showSearchResultsPanel();
 }
 
+void MainWindow::renderReferences(const QVector<LspLocation> &locations)
+{
+    referencesPanel->clear();
+    for (const LspLocation &location : locations) {
+        const QString path = QUrl(location.uri).toLocalFile();
+        auto *item = new QListWidgetItem(referencesPanel);
+        item->setData(Qt::UserRole, location.uri);
+        item->setData(Qt::UserRole + 1, location.line + 1);
+        item->setData(Qt::UserRole + 2, location.character + 1);
+        item->setToolTip(QString::fromUtf8("%1\n%2:%3")
+            .arg(QDir::toNativeSeparators(path.isEmpty() ? location.uri : path))
+            .arg(location.line + 1)
+            .arg(location.character + 1));
+        item->setText(QString::fromUtf8("%1، السطر %2").arg(path.isEmpty() ? location.uri : QFileInfo(path).fileName()).arg(location.line + 1));
+
+        auto *rowWidget = new QWidget(referencesPanel);
+        rowWidget->setObjectName(QStringLiteral("referenceResultRow"));
+        rowWidget->setLayoutDirection(Qt::RightToLeft);
+        rowWidget->setMinimumHeight(64);
+        auto *rowLayout = new QVBoxLayout(rowWidget);
+        rowLayout->setContentsMargins(16, 12, 16, 12);
+        rowLayout->setSpacing(4);
+
+        auto *fileLabel = new QLabel(path.isEmpty() ? location.uri : QDir::toNativeSeparators(path), rowWidget);
+        fileLabel->setObjectName(QStringLiteral("referenceResultFileLabel"));
+        fileLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        fileLabel->setLayoutDirection(path.isEmpty() ? Qt::LeftToRight : Qt::LeftToRight);
+        fileLabel->setStyleSheet(QStringLiteral("color: #E8ECF2; font-weight: 600;"));
+
+        auto *lineLabel = new QLabel(QString::fromUtf8("السطر %1، العمود %2").arg(location.line + 1).arg(location.character + 1), rowWidget);
+        lineLabel->setObjectName(QStringLiteral("referenceResultLineLabel"));
+        lineLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        lineLabel->setLayoutDirection(Qt::RightToLeft);
+        lineLabel->setStyleSheet(QStringLiteral("color: #AEC6FF;"));
+
+        rowLayout->addWidget(fileLabel);
+        rowLayout->addWidget(lineLabel);
+        item->setSizeHint(QSize(rowWidget->sizeHint().width(), 64));
+        referencesPanel->setItemWidget(item, rowWidget);
+    }
+    showReferencesPanel();
+}
+
 void MainWindow::renderProjectReplacePreview(const QVector<ProjectReplacePreviewRow> &rows)
 {
     searchResultsPanel->clear();
@@ -2509,6 +2599,22 @@ void MainWindow::openProblemResult(QListWidgetItem *item)
         openEditorFile(path);
     }
     goToEditorLine(line);
+}
+
+void MainWindow::openReferenceResult(QListWidgetItem *item)
+{
+    if (!item) {
+        return;
+    }
+
+    const QString uri = item->data(Qt::UserRole).toString();
+    const QString path = QUrl(uri).toLocalFile();
+    const int line = item->data(Qt::UserRole + 1).toInt();
+    const int column = item->data(Qt::UserRole + 2).toInt();
+    if (!path.isEmpty() && QFileInfo(path).isFile()) {
+        openEditorFile(path);
+    }
+    goToEditorLocation(line, column);
 }
 
 void MainWindow::clearEditorsForDeletedPath(const QString &path)
@@ -3178,6 +3284,56 @@ void MainWindow::requestLanguageServerHover(int line, int character, const QPoin
     }
 }
 
+void MainWindow::requestLanguageServerDefinition(int line, int character)
+{
+    if (!editor) {
+        return;
+    }
+
+    syncCurrentEditorToLanguageServer(false);
+    if (!lspClient.isRunning() || !lspDocumentOpen) {
+        return;
+    }
+
+    QString error;
+    const QVector<LspLocation> locations = lspClient.requestDefinition(lspDocumentUri, line, character, 500, &error);
+    if (!error.isEmpty() || locations.isEmpty()) {
+        return;
+    }
+
+    const LspLocation location = locations.first();
+    const QString path = QUrl(location.uri).toLocalFile();
+    if (!path.isEmpty() && QFileInfo(path).isFile()) {
+        openEditorFile(path);
+    }
+    goToEditorLocation(location.line + 1, location.character + 1);
+}
+
+void MainWindow::requestLanguageServerReferences()
+{
+    if (!editor) {
+        return;
+    }
+
+    const QTextCursor cursor = editor->textCursor();
+    syncCurrentEditorToLanguageServer(false);
+    if (!lspClient.isRunning() || !lspDocumentOpen) {
+        return;
+    }
+
+    QString error;
+    const QVector<LspLocation> locations = lspClient.requestReferences(
+        lspDocumentUri,
+        cursor.blockNumber(),
+        cursor.position() - cursor.block().position(),
+        true,
+        500,
+        &error);
+    if (error.isEmpty()) {
+        renderReferences(locations);
+    }
+}
+
 void MainWindow::updateStatusIndicators()
 {
     if (!statusEncodingLabel || !statusLineEndingLabel || !statusIndentationLabel || !statusLanguageModeLabel || !statusRuntimeLabel || !statusGitLabel) {
@@ -3245,6 +3401,18 @@ void MainWindow::showSearchResultsPanel()
     }
     if (bottomPanels) {
         bottomPanels->showSearchResultsPanel();
+    }
+    outputDock->raise();
+    resizeDocks({outputDock}, {190}, Qt::Vertical);
+}
+
+void MainWindow::showReferencesPanel()
+{
+    if (!outputDock->isVisible()) {
+        outputDock->show();
+    }
+    if (bottomPanels) {
+        bottomPanels->showReferencesPanel();
     }
     outputDock->raise();
     resizeDocks({outputDock}, {190}, Qt::Vertical);

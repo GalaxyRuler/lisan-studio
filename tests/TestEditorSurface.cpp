@@ -58,6 +58,7 @@ private slots:
     void completionRequestSignalReportsCursorPosition();
     void completionPopupDisplaysItemsAndAcceptsSelection();
     void hoverTooltipSurfaceStoresMarkdown();
+    void ctrlClickRequestsDefinitionAtIdentifier();
     void selectAllFindMatchesAsCursorsConvertsFindHighlights();
     void altColumnDragGeneratesOneCursorPerLineInRectangle();
     void altColumnDragWithZeroWidthColumnsGeneratesZeroWidthCursors();
@@ -1065,6 +1066,25 @@ void TestEditorSurface::hoverTooltipSurfaceStoresMarkdown()
     editor.showHoverMarkdown(QStringLiteral("**اطبع** -> `print(value)`"), QPoint(8, 8));
 
     QCOMPARE(editor.visibleHoverTextForTest(), QStringLiteral("**اطبع** -> `print(value)`"));
+}
+
+void TestEditorSurface::ctrlClickRequestsDefinitionAtIdentifier()
+{
+    EditorSurface editor;
+    editor.setPlainText(QString::fromUtf8("اطبع(س)\n"));
+    editor.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&editor));
+
+    const QTextCursor cursor = cursorAtLineColumn(editor, 0, 2);
+    const QPoint clickPoint = editor.cursorRect(cursor).center();
+    QSignalSpy spy(&editor, &EditorSurface::definitionRequested);
+
+    QTest::mouseClick(editor.viewport(), Qt::LeftButton, Qt::ControlModifier, clickPoint);
+
+    QCOMPARE(spy.size(), 1);
+    QCOMPARE(spy.at(0).at(0).toInt(), 0);
+    QCOMPARE(spy.at(0).at(1).toInt(), 2);
+    QCOMPARE(editor.totalCursorCount(), 1);
 }
 
 void TestEditorSurface::selectAllFindMatchesAsCursorsConvertsFindHighlights()

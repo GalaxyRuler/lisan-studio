@@ -94,6 +94,7 @@ private slots:
     void replaceAllInFileMatches();
     void openSearchResult(QListWidgetItem *item);
     void openProblemResult(QListWidgetItem *item);
+    void openReferenceResult(QListWidgetItem *item);
     void openSettings();
     void pollOpenDocumentChanges();
     void addCursorAboveAction();
@@ -121,6 +122,7 @@ private:
     QPlainTextEdit *terminalPanel = nullptr;
     QListWidget *problemsPanel = nullptr;
     QListWidget *searchResultsPanel = nullptr;
+    QListWidget *referencesPanel = nullptr;
     QPlainTextEdit *debugPanel = nullptr;
     QTabWidget *bottomPanelTabs = nullptr;
     QDockWidget *outputDock = nullptr;
@@ -178,6 +180,8 @@ private:
     void closeLanguageServerDocument();
     void requestLanguageServerCompletion(int line, int character);
     void requestLanguageServerHover(int line, int character, const QPoint &viewportPosition);
+    void requestLanguageServerDefinition(int line, int character);
+    void requestLanguageServerReferences();
     void updateBreadcrumbBar();
     void updateStatusIndicators();
     // Test-only snapshot for verifying MainWindow's registry integration.
@@ -189,9 +193,12 @@ private:
     void showTerminalPanel();
     void showProblemsPanel();
     void showSearchResultsPanel();
+    void showReferencesPanel();
     QVector<SearchResultRow> currentEditorSearchResults(const QString &query) const;
     QVector<ProjectReplacePreviewRow> currentEditorReplacePreviewRows(const QString &query, const QString &replacement) const;
     void renderSearchResults(const QVector<SearchResultRow> &rows);
+    void renderReferences(const QVector<LspLocation> &locations);
+    void renderReferencesForTest(const QVector<LspLocation> &locations) { renderReferences(locations); }
     void renderProjectReplacePreview(const QVector<ProjectReplacePreviewRow> &rows);
     void setProjectReplaceFileAccepted(const QString &path, bool accepted);
     QVector<ProjectReplacePreviewRow> acceptedProjectReplaceRows() const;

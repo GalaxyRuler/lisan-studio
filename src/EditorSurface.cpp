@@ -1242,7 +1242,7 @@ void EditorSurface::mousePressEvent(QMouseEvent *event)
 
     if (event->button() == Qt::LeftButton && event->modifiers() == Qt::ControlModifier) {
         const QTextCursor cursor = cursorForPosition(event->pos());
-        addCursorAtPosition(cursor.position());
+        emit definitionRequested(cursor.blockNumber(), cursor.position() - cursor.block().position());
         event->accept();
         return;
     }

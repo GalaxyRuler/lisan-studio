@@ -75,6 +75,49 @@ QString hoverContentsText(const QJsonValue &value)
     }
     return parts.join(QStringLiteral("\n\n"));
 }
+
+LspLocation locationFromObject(const QJsonObject &object)
+{
+    LspLocation location;
+    location.uri = object.value(QStringLiteral("uri")).toString();
+    QJsonObject range = object.value(QStringLiteral("range")).toObject();
+    if (location.uri.isEmpty()) {
+        location.uri = object.value(QStringLiteral("targetUri")).toString();
+        range = object.value(QStringLiteral("targetSelectionRange")).toObject();
+        if (range.isEmpty()) {
+            range = object.value(QStringLiteral("targetRange")).toObject();
+        }
+    }
+    const QJsonObject start = range.value(QStringLiteral("start")).toObject();
+    location.line = start.value(QStringLiteral("line")).toInt();
+    location.character = start.value(QStringLiteral("character")).toInt();
+    return location;
+}
+
+QVector<LspLocation> locationsFromValue(const QJsonValue &value)
+{
+    QVector<LspLocation> locations;
+    if (value.isObject()) {
+        const LspLocation location = locationFromObject(value.toObject());
+        if (!location.uri.isEmpty()) {
+            locations.append(location);
+        }
+        return locations;
+    }
+
+    const QJsonArray array = value.toArray();
+    locations.reserve(array.size());
+    for (const QJsonValue &item : array) {
+        if (!item.isObject()) {
+            continue;
+        }
+        const LspLocation location = locationFromObject(item.toObject());
+        if (!location.uri.isEmpty()) {
+            locations.append(location);
+        }
+    }
+    return locations;
+}
 }
 
 LspClient::LspClient(QObject *parent)
@@ -283,6 +326,63 @@ LspHoverResult LspClient::requestHover(const QString &uri, int line, int charact
     hover.markdown = hoverContentsText(result.value(QStringLiteral("contents")));
     hover.hasContent = !hover.markdown.trimmed().isEmpty();
     return hover;
+}
+
+QVector<LspLocation> LspClient::requestDefinition(const QString &uri, int line, int character, int timeoutMs, QString *error)
+{
+    if (error) {
+        error->clear();
+    }
+    if (process.state() == QProcess::NotRunning) {
+        if (error) {
+            *error = QStringLiteral("LSP server is not running.");
+        }
+        return {};
+    }
+
+    const int requestId = sendRequest(QStringLiteral("textDocument/definition"), textDocumentPositionParams(uri, line, character));
+    QJsonObject response;
+    if (!waitForResponse(requestId, &response, timeoutMs, error)) {
+        return {};
+    }
+    if (response.contains(QStringLiteral("error"))) {
+        if (error) {
+            *error = response.value(QStringLiteral("error")).toObject().value(QStringLiteral("message")).toString();
+        }
+        return {};
+    }
+    return locationsFromValue(response.value(QStringLiteral("result")));
+}
+
+QVector<LspLocation> LspClient::requestReferences(const QString &uri, int line, int character, bool includeDeclaration, int timeoutMs, QString *error)
+{
+    if (error) {
+        error->clear();
+    }
+    if (process.state() == QProcess::NotRunning) {
+        if (error) {
+            *error = QStringLiteral("LSP server is not running.");
+        }
+        return {};
+    }
+
+    QJsonObject params = textDocumentPositionParams(uri, line, character);
+    QJsonObject context;
+    context.insert(QStringLiteral("includeDeclaration"), includeDeclaration);
+    params.insert(QStringLiteral("context"), context);
+
+    const int requestId = sendRequest(QStringLiteral("textDocument/references"), params);
+    QJsonObject response;
+    if (!waitForResponse(requestId, &response, timeoutMs, error)) {
+        return {};
+    }
+    if (response.contains(QStringLiteral("error"))) {
+        if (error) {
+            *error = response.value(QStringLiteral("error")).toObject().value(QStringLiteral("message")).toString();
+        }
+        return {};
+    }
+    return locationsFromValue(response.value(QStringLiteral("result")));
 }
 
 void LspClient::shutdown(int timeoutMs)

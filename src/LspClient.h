@@ -43,6 +43,13 @@ struct LspHoverResult
     bool hasContent = false;
 };
 
+struct LspLocation
+{
+    QString uri;
+    int line = 0;
+    int character = 0;
+};
+
 class LspClient final : public QObject
 {
     Q_OBJECT
@@ -64,6 +71,8 @@ public:
     void closeDocument(const QString &uri);
     QVector<LspCompletionItem> requestCompletion(const QString &uri, int line, int character, int timeoutMs = 5000, QString *error = nullptr);
     LspHoverResult requestHover(const QString &uri, int line, int character, int timeoutMs = 5000, QString *error = nullptr);
+    QVector<LspLocation> requestDefinition(const QString &uri, int line, int character, int timeoutMs = 5000, QString *error = nullptr);
+    QVector<LspLocation> requestReferences(const QString &uri, int line, int character, bool includeDeclaration = true, int timeoutMs = 5000, QString *error = nullptr);
     void shutdown(int timeoutMs = 2000);
 
 private:
