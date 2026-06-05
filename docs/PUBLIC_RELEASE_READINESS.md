@@ -26,7 +26,7 @@ candidate and a public release. The canonical slice tracker remains
 | Local package validation | Done | `./scripts/package.ps1 -ProductVersion 0.5.0 ...` passed package-time validation 13/13 |
 | GitHub Actions MSI evidence | Pending | Run <https://github.com/GalaxyRuler/lisan-studio/actions/runs/27007455061> is queued; `lisanstudio-qa` self-hosted runner is currently offline |
 | Installed-app QA | Pending | Must run inside `LisanStudio-QA`; do not run GUI/MSI install or uninstall on active WHITEDRAGON |
-| Authenticode signing | Pending / external | No signing certificate or key infrastructure is configured. ADR-0010 says public distribution requires a valid Authenticode signature and a signing follow-up slice when adopted |
+| Authenticode signing | Repo hook ready / external key pending | `scripts/package.ps1` supports optional thumbprint-based `signtool.exe` signing via `-SigningCertificateThumbprint` or `LISAN_SIGNING_CERT_THUMBPRINT`. A real OV/EV certificate, key storage, and CI secret/variable configuration remain external release gates |
 | Tag and GitHub release | Pending | Wait for PR review/merge, MSI evidence, signing decision, and operator release approval |
 
 ## Runner Evidence
@@ -58,3 +58,17 @@ creation, VM start/stop, checkpointing, Hyper-V mutation, MSI install/uninstall,
 or GUI automation. Because the self-hosted runner is offline, the queued GitHub
 Actions run is the correct non-desktop handoff point until the operator brings
 `LisanStudio-QA` online or approves runner lifecycle work.
+
+## Signing Inputs
+
+The package script signs only when a certificate thumbprint is supplied. It
+does not accept, print, or commit private-key material.
+
+Expected release-run inputs:
+
+- `LISAN_SIGNING_CERT_THUMBPRINT`: secret containing the installed certificate
+  thumbprint.
+- `LISAN_SIGNTOOL_PATH`: optional repository/environment variable for a
+  non-default `signtool.exe` path.
+- `LISAN_TIMESTAMP_URL`: optional repository/environment variable, defaulting
+  locally to `http://timestamp.digicert.com`.

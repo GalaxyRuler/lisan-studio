@@ -73,6 +73,7 @@ private slots:
     void settingsStorePersistsShortcutSettingsJson();
     void packageScriptDerivesMsiArtifactNameFromProductVersion();
     void packageScriptStampsInstallerBuildId();
+    void packageScriptSupportsOptionalAuthenticodeSigning();
     void releaseEvidenceScriptDerivesMsiPathFromProductVersion();
     void workspaceSettingsStoreDefaultsWhenMissingOrInvalid();
     void workspaceSettingsStorePersistsTrustAndEditorPreferences();
@@ -980,6 +981,23 @@ void TestProjectSearchRuntime::packageScriptStampsInstallerBuildId()
 
     QVERIFY(wxsSource.contains(QStringLiteral("Name=\"BuildId\"")));
     QVERIFY(wxsSource.contains(QStringLiteral("$(var.BuildId)")));
+}
+
+void TestProjectSearchRuntime::packageScriptSupportsOptionalAuthenticodeSigning()
+{
+    QString scriptPath = QDir::current().absoluteFilePath(QStringLiteral("scripts/package.ps1"));
+    if (!QFileInfo::exists(scriptPath)) {
+        scriptPath = QDir::current().absoluteFilePath(QStringLiteral("../scripts/package.ps1"));
+    }
+    QFile script(scriptPath);
+    QVERIFY2(script.open(QIODevice::ReadOnly | QIODevice::Text), qPrintable(scriptPath));
+    const QString source = QString::fromUtf8(script.readAll());
+
+    QVERIFY(source.contains(QStringLiteral("[string]$SigningCertificateThumbprint")));
+    QVERIFY(source.contains(QStringLiteral("LISAN_SIGNING_CERT_THUMBPRINT")));
+    QVERIFY(source.contains(QStringLiteral("signtool.exe")));
+    QVERIFY(source.contains(QStringLiteral("/sha1")));
+    QVERIFY(source.contains(QStringLiteral("Write-SigningStatus")));
 }
 
 void TestProjectSearchRuntime::releaseEvidenceScriptDerivesMsiPathFromProductVersion()
