@@ -770,6 +770,7 @@ void TestProjectSearchRuntime::bottomPanelControllerMapsStableIdsAndSelections()
     QListWidget search;
     QListWidget references;
     QListWidget outline;
+    QPlainTextEdit git;
     QPlainTextEdit debug;
 
     tabs.addTab(&terminal, QString::fromUtf8("الطرفية"));
@@ -778,9 +779,10 @@ void TestProjectSearchRuntime::bottomPanelControllerMapsStableIdsAndSelections()
     tabs.addTab(&search, QString::fromUtf8("نتائج البحث"));
     tabs.addTab(&references, QString::fromUtf8("المراجع"));
     tabs.addTab(&outline, QString::fromUtf8("المخطط"));
+    tabs.addTab(&git, QStringLiteral("Git"));
     tabs.addTab(&debug, QString::fromUtf8("التصحيح"));
 
-    BottomPanelController controller(&tabs, &output, &terminal, &problems, &search, &references, &outline, &debug);
+    BottomPanelController controller(&tabs, &output, &terminal, &problems, &search, &references, &outline, &git, &debug);
 
     QCOMPARE(controller.panelId(&terminal), QStringLiteral("terminal"));
     QCOMPARE(controller.panelId(&output), QStringLiteral("output"));
@@ -788,6 +790,7 @@ void TestProjectSearchRuntime::bottomPanelControllerMapsStableIdsAndSelections()
     QCOMPARE(controller.panelId(&search), QStringLiteral("search"));
     QCOMPARE(controller.panelId(&references), QStringLiteral("references"));
     QCOMPARE(controller.panelId(&outline), QStringLiteral("outline"));
+    QCOMPARE(controller.panelId(&git), QStringLiteral("git"));
     QCOMPARE(controller.panelId(&debug), QStringLiteral("debug"));
     QCOMPARE(controller.panelId(nullptr), QStringLiteral("terminal"));
 
@@ -797,6 +800,7 @@ void TestProjectSearchRuntime::bottomPanelControllerMapsStableIdsAndSelections()
     QCOMPARE(controller.panelForId(QStringLiteral("search")), &search);
     QCOMPARE(controller.panelForId(QStringLiteral("references")), &references);
     QCOMPARE(controller.panelForId(QStringLiteral("outline")), &outline);
+    QCOMPARE(controller.panelForId(QStringLiteral("git")), &git);
     QCOMPARE(controller.panelForId(QStringLiteral("debug")), &debug);
     QCOMPARE(controller.panelForId(QStringLiteral("missing")), &terminal);
 
@@ -894,6 +898,10 @@ void TestProjectSearchRuntime::settingsStorePersistsWorkbenchSession()
 
     SavedWorkbenchSession session;
     session.projectRoot = QString::fromUtf8("C:/مشروع");
+    session.projectRoots = {
+        QString::fromUtf8("C:/مشروع"),
+        QString::fromUtf8("D:/حزمة"),
+    };
     session.openFiles = {
         QString::fromUtf8("C:/مشروع/main.apy"),
         QString::fromUtf8("C:/مشروع/src/ثانوي.apy"),
@@ -909,6 +917,7 @@ void TestProjectSearchRuntime::settingsStorePersistsWorkbenchSession()
     SettingsStore reloaded(temp.path() + QStringLiteral("/settings.ini"));
     const SavedWorkbenchSession loaded = reloaded.savedWorkbenchSession();
     QCOMPARE(loaded.projectRoot, QString::fromUtf8("C:/مشروع"));
+    QCOMPARE(loaded.projectRoots, session.projectRoots);
     QCOMPARE(loaded.openFiles, session.openFiles);
     QCOMPARE(loaded.untitledDrafts, session.untitledDrafts);
     QCOMPARE(loaded.activeFileIndex, 1);

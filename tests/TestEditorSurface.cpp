@@ -42,6 +42,7 @@ private slots:
     void indentationGuidesCanBeToggledAndComputed();
     void lineNumberAreaScalesAndStaysVisibleForLongFiles();
     void lineNumbersStayOnRightEdgeForArabicEditing();
+    void blameAnnotationsExpandGutterAndExposeLineSummaries();
     void emptyEditorPlaceholderPaintsFromRight();
     void addCursorAtPositionRespectsHardCapAndReturnsFalse();
     void addCursorAtPositionDedupesAgainstPrimaryAndSecondaries();
@@ -658,6 +659,25 @@ void TestEditorSurface::lineNumbersStayOnRightEdgeForArabicEditing()
     const QTextOption option = editor.document()->defaultTextOption();
     QCOMPARE(option.textDirection(), Qt::RightToLeft);
     QCOMPARE(option.alignment() & Qt::AlignHorizontal_Mask, Qt::AlignRight);
+}
+
+void TestEditorSurface::blameAnnotationsExpandGutterAndExposeLineSummaries()
+{
+    EditorSurface editor;
+    editor.setPlainText(QString::fromUtf8("س = ١\nاطبع(س)\n"));
+    const int initialWidth = editor.lineNumberAreaWidth();
+
+    editor.setBlameAnnotations({
+        {1, QStringLiteral("abc1234"), QStringLiteral("initial")},
+        {2, QStringLiteral("def5678"), QStringLiteral("second")},
+    });
+
+    QVERIFY(editor.lineNumberAreaWidth() > initialWidth);
+    QCOMPARE(editor.blameTextForLineForTest(2), QStringLiteral("def5678 second"));
+
+    editor.clearBlameAnnotations();
+    QCOMPARE(editor.blameTextForLineForTest(2), QString());
+    QCOMPARE(editor.lineNumberAreaWidth(), initialWidth);
 }
 
 void TestEditorSurface::emptyEditorPlaceholderPaintsFromRight()

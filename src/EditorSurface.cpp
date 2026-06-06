@@ -857,7 +857,16 @@ int EditorSurface::lineNumberAreaWidth() const
         ++digits;
     }
 
-    return 12 + fontMetrics().horizontalAdvance(QLatin1Char('9')) * digits;
+    const int numberWidth = 12 + fontMetrics().horizontalAdvance(QLatin1Char('9')) * digits;
+    if (blameAnnotations.isEmpty()) {
+        return numberWidth;
+    }
+
+    int blameWidth = 0;
+    for (const EditorBlameAnnotation &annotation : blameAnnotations) {
+        blameWidth = qMax(blameWidth, fontMetrics().horizontalAdvance(blameTextForLineForTest(annotation.lineNumber)));
+    }
+    return numberWidth + 14 + qMin(blameWidth, 260);
 }
 
 bool EditorSurface::hasBreakpointAtLine(int line) const
@@ -994,6 +1003,43 @@ void EditorSurface::setSemanticTokens(const QVector<EditorSemanticToken> &tokens
     updateEditorExtraSelections();
 }
 
+void EditorSurface::setBlameAnnotations(const QVector<EditorBlameAnnotation> &annotations)
+{
+    blameAnnotations = annotations;
+    std::sort(blameAnnotations.begin(), blameAnnotations.end(), [](const EditorBlameAnnotation &left, const EditorBlameAnnotation &right) {
+        return left.lineNumber < right.lineNumber;
+    });
+    updateLineNumberAreaWidth(blockCount());
+    if (lineNumberArea) {
+        lineNumberArea->updateGeometry();
+        lineNumberArea->update();
+    }
+}
+
+void EditorSurface::clearBlameAnnotations()
+{
+    if (blameAnnotations.isEmpty()) {
+        return;
+    }
+    blameAnnotations.clear();
+    updateLineNumberAreaWidth(blockCount());
+    if (lineNumberArea) {
+        lineNumberArea->updateGeometry();
+        lineNumberArea->update();
+    }
+}
+
+QString EditorSurface::blameTextForLineForTest(int lineNumber) const
+{
+    for (const EditorBlameAnnotation &annotation : blameAnnotations) {
+        if (annotation.lineNumber != lineNumber) {
+            continue;
+        }
+        return QStringLiteral("%1 %2").arg(annotation.shortId, annotation.summary).trimmed();
+    }
+    return QString();
+}
+
 bool EditorSurface::isCompletionPopupVisibleForTest() const
 {
     return completionPopup && completionPopup->isVisible();
@@ -1035,6 +1081,7 @@ void EditorSurface::lineNumberAreaPaintEvent(QPaintEvent *event)
     while (block.isValid() && top <= event->rect().bottom()) {
         if (block.isVisible() && bottom >= event->rect().top()) {
             const QString number = QString::number(blockNumber + 1);
+            const QString blameText = blameTextForLineForTest(blockNumber + 1);
             if (breakpointLines.contains(blockNumber + 1)) {
                 const int diameter = qMin(10, qMax(6, fontMetrics().height() - 4));
                 const QRect markerRect(4, top + (fontMetrics().height() - diameter) / 2, diameter, diameter);
@@ -1042,6 +1089,18 @@ void EditorSurface::lineNumberAreaPaintEvent(QPaintEvent *event)
                 painter.setBrush(QColor(QStringLiteral("#D84F4F")));
                 painter.drawEllipse(markerRect);
                 painter.setBrush(Qt::NoBrush);
+                painter.setPen(QColor(173, 181, 189));
+            }
+            if (!blameText.isEmpty()) {
+                const int numberWidth = 8 + fontMetrics().horizontalAdvance(number);
+                painter.setPen(QColor(122, 132, 143));
+                painter.drawText(
+                    14,
+                    top,
+                    qMax(0, lineNumberArea->width() - numberWidth - 20),
+                    fontMetrics().height(),
+                    Qt::AlignLeft | Qt::AlignVCenter,
+                    blameText);
                 painter.setPen(QColor(173, 181, 189));
             }
             painter.drawText(

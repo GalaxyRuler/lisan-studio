@@ -7,6 +7,7 @@
 #include "DapClient.h"
 #include "EditorTabsController.h"
 #include "EditorSurface.h"
+#include "GitRepository.h"
 #include "LspClient.h"
 #include "OutputTranscript.h"
 #include "ProjectModel.h"
@@ -109,11 +110,27 @@ private slots:
     void addCursorAtNextMatchAction();
     void selectAllCursorMatchesAction();
     void collapseToSingleCursorAction();
+    void stageSelectedGitFile();
+    void unstageSelectedGitFile();
+    void commitStagedGitChanges();
+    void fetchGitRemote();
+    void pullGitRemote();
+    void pushGitRemote();
+    void switchSelectedGitBranch();
+    void createGitBranch();
+    void mergeSelectedGitBranch();
+    void deleteSelectedGitBranch();
+    void addWorkspaceRoot();
+    void removeSelectedWorkspaceRoot();
+    void switchSelectedWorkspaceRoot();
 
 private:
     EditorSurface *editor = nullptr;
     QTabWidget *editorTabs = nullptr;
     QTreeView *projectTree = nullptr;
+    QListWidget *workspaceRootsPanel = nullptr;
+    QPushButton *workspaceAddRootButton = nullptr;
+    QPushButton *workspaceRemoveRootButton = nullptr;
     QFileSystemModel *fileSystemModel = nullptr;
     QWidget *inFileFindPanel = nullptr;
     QLineEdit *inFileFindInput = nullptr;
@@ -136,6 +153,23 @@ private:
     QListWidget *searchResultsPanel = nullptr;
     QListWidget *referencesPanel = nullptr;
     QListWidget *outlinePanel = nullptr;
+    QWidget *gitContainerPanel = nullptr;
+    QListWidget *gitStatusPanel = nullptr;
+    QListWidget *gitHistoryPanel = nullptr;
+    QPlainTextEdit *gitDiffPanel = nullptr;
+    QPushButton *gitStageButton = nullptr;
+    QPushButton *gitUnstageButton = nullptr;
+    QLineEdit *gitCommitMessageInput = nullptr;
+    QPushButton *gitCommitButton = nullptr;
+    QPushButton *gitFetchButton = nullptr;
+    QPushButton *gitPullButton = nullptr;
+    QPushButton *gitPushButton = nullptr;
+    QComboBox *gitBranchPicker = nullptr;
+    QLineEdit *gitBranchNameInput = nullptr;
+    QPushButton *gitSwitchBranchButton = nullptr;
+    QPushButton *gitCreateBranchButton = nullptr;
+    QPushButton *gitMergeBranchButton = nullptr;
+    QPushButton *gitDeleteBranchButton = nullptr;
     QPlainTextEdit *debugPanel = nullptr;
     QWidget *debugContainerPanel = nullptr;
     QListWidget *debugVariablesPanel = nullptr;
@@ -175,6 +209,7 @@ private:
     WorkspaceSettings workspaceSettings;
     OutputTranscript outputTranscript;
     OutputTranscriptFilter outputFilter;
+    GitRepository gitRepository;
     QVector<TerminalProfile> terminalProfiles;
     QString lspDocumentUri;
     int lspDocumentVersion = 0;
@@ -188,12 +223,17 @@ private:
     std::unique_ptr<ProjectTreeController> projectTreeController;
     std::unique_ptr<BottomPanelController> bottomPanels;
     QString projectRoot;
+    QStringList workspaceRoots;
+    QString activeWorkspaceTreeRoot;
 
     void buildUi();
     void registerWorkbenchCommands();
     void setStatus(const QString &text);
     bool loadProject(const QString &path);
     bool openEditorFile(const QString &path);
+    bool addWorkspaceRootPath(const QString &path);
+    bool switchWorkspaceRootPath(const QString &path);
+    bool removeWorkspaceRootPath(const QString &path);
     bool requestCloseEditorTab(int index);
     void clearEditorsForDeletedPath(const QString &path);
     void applyThemePreference();
@@ -243,6 +283,14 @@ private:
     void renderReferencesForTest(const QVector<LspLocation> &locations) { renderReferences(locations); }
     void renderOutline(const QVector<LspSymbol> &symbols);
     void renderOutlineForTest(const QVector<LspSymbol> &symbols) { renderOutline(symbols); }
+    void renderGitStatusPanel();
+    void renderGitDiffForPath(const QString &relativePath);
+    void renderGitHistoryPanel();
+    void renderGitDiffForCommit(const QString &commitId);
+    void updateCurrentEditorBlame();
+    QString selectedGitRelativePath() const;
+    void refreshGitBranches();
+    void renderWorkspaceRootsPanel();
     void openWorkspaceSymbolPicker(const QVector<LspSymbol> &symbols);
     void openWorkspaceSymbolPickerForTest(const QVector<LspSymbol> &symbols) { openWorkspaceSymbolPicker(symbols); }
     void renderRenamePreview(const LspWorkspaceEdit &edit);

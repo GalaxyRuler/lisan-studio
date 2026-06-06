@@ -8,10 +8,11 @@ BottomPanelController::BottomPanelController(
     QWidget *outputPanel,
     QWidget *terminalPanel,
     QWidget *problemsPanel,
-    QWidget *searchResultsPanel,
-    QWidget *referencesPanel,
-    QWidget *outlinePanel,
-    QWidget *debugPanel)
+        QWidget *searchResultsPanel,
+        QWidget *referencesPanel,
+        QWidget *outlinePanel,
+        QWidget *gitPanel,
+        QWidget *debugPanel)
     : tabs(tabs),
       output(outputPanel),
       terminal(terminalPanel),
@@ -19,6 +20,7 @@ BottomPanelController::BottomPanelController(
       search(searchResultsPanel),
       references(referencesPanel),
       outline(outlinePanel),
+      git(gitPanel),
       debug(debugPanel)
 {
 }
@@ -70,6 +72,9 @@ QString BottomPanelController::panelId(QWidget *panel) const
     if (panel == outline) {
         return QStringLiteral("outline");
     }
+    if (panel == git) {
+        return QStringLiteral("git");
+    }
     if (panel == debug) {
         return QStringLiteral("debug");
     }
@@ -92,6 +97,9 @@ QWidget *BottomPanelController::panelForId(const QString &id) const
     }
     if (id == QStringLiteral("outline")) {
         return outline;
+    }
+    if (id == QStringLiteral("git")) {
+        return git;
     }
     if (id == QStringLiteral("debug")) {
         return debug;

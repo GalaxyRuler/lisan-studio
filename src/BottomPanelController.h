@@ -16,6 +16,7 @@ public:
         QWidget *searchResultsPanel,
         QWidget *referencesPanel,
         QWidget *outlinePanel,
+        QWidget *gitPanel,
         QWidget *debugPanel);
 
     void showOutputPanel();
@@ -36,6 +37,7 @@ private:
     QWidget *search = nullptr;
     QWidget *references = nullptr;
     QWidget *outline = nullptr;
+    QWidget *git = nullptr;
     QWidget *debug = nullptr;
 
     void setCurrent(QWidget *panel);
