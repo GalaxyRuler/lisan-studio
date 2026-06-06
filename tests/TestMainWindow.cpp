@@ -45,6 +45,7 @@ private slots:
     void init();
     void opensProjectAndFileFromPath();
     void restoresSavedWorkbenchSession();
+    void restoresSavedMultiRootWorkspace();
     void restoresUntitledDraftsFromWorkbenchSession();
     void savesWorkbenchSessionOnClose();
     void savesUntitledDraftsOnEditorChange();
@@ -57,11 +58,17 @@ private slots:
     void usesSingleRtlTopCommandBarWithMenuButtons();
     void exposesLisanLogoAssetInShell();
     void exposesPremiumFutureBottomPanelTabs();
+    void gitStatusPanelListsDirtyFilesAndShowsDiff();
+    void gitCommitWorkflowStagesAndCommitsSelectedFile();
+    void gitRemoteControlsAreAvailableInGitPanel();
+    void gitBranchControlsListAndSwitchBranches();
+    void gitHistoryPanelShowsCommitsAndHistoricalDiffs();
     void debugInspectorPanelsExistInsideDebugTab();
     void debugInspectorRendersVariablesWatchAndCallStack();
     void enforcesRtlDirectionAcrossShellContainers();
     void workbenchDeclaresKeyboardFocusOrder();
     void statusBarExposesEditorRuntimeAndGitIndicators();
+    void statusBarShowsGitBranchAndDirtyCount();
     void breadcrumbBarTracksActiveEditorPathWithSymbolPlaceholder();
     void exposesCommandPaletteAction();
     void commandPaletteExposesRegisteredWorkbenchCommands();
@@ -92,6 +99,7 @@ private slots:
     void projectTreeOpenActionOpensSelectedFile();
     void mainWindowOpensFileFromTreeAfterRefactor();
     void projectTreeCopyPathActionCopiesSelectedPath();
+    void workspaceRootsPanelAddsSwitchesAndRemovesSecondaryRoot();
     void outputPanelActionsCopyAndClearTranscript();
     void outputPanelActionSavesTranscriptToUtf8File();
     void outputPanelLinkAtCursorOpensEditorLocation();
@@ -155,6 +163,33 @@ static QString writeFile(const QDir &root, const QString &relative, const QStrin
     }
     file.write(text.toUtf8());
     return info.absoluteFilePath();
+}
+
+static void runGit(const QDir &root, const QStringList &arguments)
+{
+    QProcess git;
+    git.setWorkingDirectory(root.absolutePath());
+    git.start(QStringLiteral("git"), arguments);
+    if (!git.waitForFinished(10000)) {
+        qFatal("git command timed out");
+    }
+    if (git.exitCode() != 0) {
+        qFatal("git command failed");
+    }
+}
+
+static QString runGitOutput(const QDir &root, const QStringList &arguments)
+{
+    QProcess git;
+    git.setWorkingDirectory(root.absolutePath());
+    git.start(QStringLiteral("git"), arguments);
+    if (!git.waitForFinished(10000)) {
+        qFatal("git command timed out");
+    }
+    if (git.exitCode() != 0) {
+        qFatal("git command failed");
+    }
+    return QString::fromUtf8(git.readAllStandardOutput()).trimmed();
 }
 
 static QString trustAuditPath(const QString &projectRoot)
@@ -305,6 +340,30 @@ void TestMainWindow::restoresSavedWorkbenchSession()
     QVERIFY(bottomTabs != nullptr);
     QVERIFY(problems != nullptr);
     QCOMPARE(bottomTabs->currentWidget(), problems);
+}
+
+void TestMainWindow::restoresSavedMultiRootWorkspace()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    QDir primary(temp.filePath(QStringLiteral("primary")));
+    QDir secondary(temp.filePath(QStringLiteral("secondary")));
+    QVERIFY(QDir().mkpath(primary.absolutePath()));
+    QVERIFY(QDir().mkpath(secondary.absolutePath()));
+    const QString settingsPath = temp.filePath(QStringLiteral("settings.ini"));
+
+    SettingsStore store(settingsPath);
+    SavedWorkbenchSession session;
+    session.projectRoot = primary.absolutePath();
+    session.projectRoots = {primary.absolutePath(), secondary.absolutePath()};
+    store.saveWorkbenchSession(session);
+
+    MainWindow window(nullptr, settingsPath);
+
+    auto *rootsPanel = window.findChild<QListWidget *>(QStringLiteral("workspaceRootsPanel"));
+    QVERIFY(rootsPanel != nullptr);
+    QCOMPARE(rootsPanel->count(), 2);
+    QCOMPARE(QDir::toNativeSeparators(rootsPanel->item(1)->data(Qt::UserRole).toString()), QDir::toNativeSeparators(secondary.absolutePath()));
 }
 
 void TestMainWindow::restoresUntitledDraftsFromWorkbenchSession()
@@ -710,14 +769,156 @@ void TestMainWindow::exposesPremiumFutureBottomPanelTabs()
     auto *tabs = window.findChild<QTabWidget *>(QStringLiteral("bottomPanelTabs"));
     QVERIFY(tabs != nullptr);
     QCOMPARE(tabs->layoutDirection(), Qt::RightToLeft);
-    QCOMPARE(tabs->count(), 7);
+    QCOMPARE(tabs->count(), 8);
     QCOMPARE(tabs->tabText(0), QString::fromUtf8("الطرفية"));
     QCOMPARE(tabs->tabText(1), QString::fromUtf8("الإخراج"));
     QCOMPARE(tabs->tabText(2), QString::fromUtf8("المشاكل"));
     QCOMPARE(tabs->tabText(3), QString::fromUtf8("نتائج البحث"));
     QCOMPARE(tabs->tabText(4), QString::fromUtf8("المراجع"));
     QCOMPARE(tabs->tabText(5), QString::fromUtf8("المخطط"));
-    QCOMPARE(tabs->tabText(6), QString::fromUtf8("التصحيح"));
+    QCOMPARE(tabs->tabText(6), QStringLiteral("Git"));
+    QCOMPARE(tabs->tabText(7), QString::fromUtf8("التصحيح"));
+}
+
+void TestMainWindow::gitStatusPanelListsDirtyFilesAndShowsDiff()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    QDir root(temp.path());
+    runGit(root, {QStringLiteral("init"), QStringLiteral("-b"), QStringLiteral("main")});
+    runGit(root, {QStringLiteral("config"), QStringLiteral("user.name"), QStringLiteral("Lisan Tester")});
+    runGit(root, {QStringLiteral("config"), QStringLiteral("user.email"), QStringLiteral("tester@example.invalid")});
+    const QString filePath = writeFile(root, QStringLiteral("src/برنامج.apy"), QString::fromUtf8("اطبع(\"أول\")\n"));
+    runGit(root, {QStringLiteral("add"), QStringLiteral(".")});
+    runGit(root, {QStringLiteral("commit"), QStringLiteral("-m"), QStringLiteral("initial")});
+    writeFile(root, QStringLiteral("src/برنامج.apy"), QString::fromUtf8("اطبع(\"تعديل\")\n"));
+
+    MainWindow window;
+    QVERIFY(window.openPath(root.absolutePath()));
+
+    auto *statusPanel = window.findChild<QListWidget *>(QStringLiteral("gitStatusPanel"));
+    auto *diffPanel = window.findChild<QPlainTextEdit *>(QStringLiteral("gitDiffPanel"));
+    QVERIFY(statusPanel != nullptr);
+    QVERIFY(diffPanel != nullptr);
+    QCOMPARE(statusPanel->count(), 1);
+    QVERIFY(statusPanel->item(0)->text().contains(QString::fromUtf8("src/برنامج.apy")));
+    QCOMPARE(statusPanel->item(0)->data(Qt::UserRole).toString(), QString::fromUtf8("src/برنامج.apy"));
+    QVERIFY(diffPanel->toPlainText().contains(QString::fromUtf8("+اطبع(\"تعديل\")")));
+
+    QVERIFY(window.openPath(filePath));
+    QVERIFY(diffPanel->toPlainText().contains(QString::fromUtf8("-اطبع(\"أول\")")));
+}
+
+void TestMainWindow::gitCommitWorkflowStagesAndCommitsSelectedFile()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    QDir root(temp.path());
+    runGit(root, {QStringLiteral("init"), QStringLiteral("-b"), QStringLiteral("main")});
+    runGit(root, {QStringLiteral("config"), QStringLiteral("user.name"), QStringLiteral("Lisan Tester")});
+    runGit(root, {QStringLiteral("config"), QStringLiteral("user.email"), QStringLiteral("tester@example.invalid")});
+    writeFile(root, QStringLiteral("src/برنامج.apy"), QString::fromUtf8("اطبع(\"أول\")\n"));
+    runGit(root, {QStringLiteral("add"), QStringLiteral(".")});
+    runGit(root, {QStringLiteral("commit"), QStringLiteral("-m"), QStringLiteral("initial")});
+    writeFile(root, QStringLiteral("src/برنامج.apy"), QString::fromUtf8("اطبع(\"تعديل\")\n"));
+
+    MainWindow window;
+    QVERIFY(window.openPath(root.absolutePath()));
+
+    auto *statusPanel = window.findChild<QListWidget *>(QStringLiteral("gitStatusPanel"));
+    auto *stageButton = window.findChild<QPushButton *>(QStringLiteral("gitStageButton"));
+    auto *messageInput = window.findChild<QLineEdit *>(QStringLiteral("gitCommitMessageInput"));
+    auto *commitButton = window.findChild<QPushButton *>(QStringLiteral("gitCommitButton"));
+    auto *git = window.findChild<QLabel *>(QStringLiteral("statusGitLabel"));
+    QVERIFY(statusPanel != nullptr);
+    QVERIFY(stageButton != nullptr);
+    QVERIFY(messageInput != nullptr);
+    QVERIFY(commitButton != nullptr);
+    QVERIFY(git != nullptr);
+    QCOMPARE(statusPanel->count(), 1);
+
+    statusPanel->setCurrentRow(0);
+    stageButton->click();
+    QCOMPARE(statusPanel->count(), 1);
+    QVERIFY(statusPanel->item(0)->text().startsWith(QStringLiteral("+M")));
+
+    messageInput->setText(QString::fromUtf8("تعديل من الواجهة"));
+    commitButton->click();
+
+    QCOMPARE(statusPanel->count(), 0);
+    QCOMPARE(git->text(), QStringLiteral("Git: main"));
+    QCOMPARE(runGitOutput(root, {QStringLiteral("log"), QStringLiteral("-1"), QStringLiteral("--format=%s")}), QString::fromUtf8("تعديل من الواجهة"));
+}
+
+void TestMainWindow::gitRemoteControlsAreAvailableInGitPanel()
+{
+    MainWindow window;
+
+    QVERIFY(window.findChild<QPushButton *>(QStringLiteral("gitFetchButton")) != nullptr);
+    QVERIFY(window.findChild<QPushButton *>(QStringLiteral("gitPullButton")) != nullptr);
+    QVERIFY(window.findChild<QPushButton *>(QStringLiteral("gitPushButton")) != nullptr);
+}
+
+void TestMainWindow::gitBranchControlsListAndSwitchBranches()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    QDir root(temp.path());
+    runGit(root, {QStringLiteral("init"), QStringLiteral("-b"), QStringLiteral("main")});
+    runGit(root, {QStringLiteral("config"), QStringLiteral("user.name"), QStringLiteral("Lisan Tester")});
+    runGit(root, {QStringLiteral("config"), QStringLiteral("user.email"), QStringLiteral("tester@example.invalid")});
+    writeFile(root, QStringLiteral("src/برنامج.apy"), QString::fromUtf8("اطبع(\"أول\")\n"));
+    runGit(root, {QStringLiteral("add"), QStringLiteral(".")});
+    runGit(root, {QStringLiteral("commit"), QStringLiteral("-m"), QStringLiteral("initial")});
+    runGit(root, {QStringLiteral("branch"), QStringLiteral("feature/git-ui")});
+
+    MainWindow window;
+    QVERIFY(window.openPath(root.absolutePath()));
+
+    auto *branchPicker = window.findChild<QComboBox *>(QStringLiteral("gitBranchPicker"));
+    auto *switchButton = window.findChild<QPushButton *>(QStringLiteral("gitSwitchBranchButton"));
+    auto *git = window.findChild<QLabel *>(QStringLiteral("statusGitLabel"));
+    QVERIFY(branchPicker != nullptr);
+    QVERIFY(switchButton != nullptr);
+    QVERIFY(git != nullptr);
+    QVERIFY(branchPicker->findText(QStringLiteral("main")) >= 0);
+    QVERIFY(branchPicker->findText(QStringLiteral("feature/git-ui")) >= 0);
+
+    branchPicker->setCurrentText(QStringLiteral("feature/git-ui"));
+    switchButton->click();
+
+    QCOMPARE(git->text(), QStringLiteral("Git: feature/git-ui"));
+}
+
+void TestMainWindow::gitHistoryPanelShowsCommitsAndHistoricalDiffs()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    QDir root(temp.path());
+    runGit(root, {QStringLiteral("init"), QStringLiteral("-b"), QStringLiteral("main")});
+    runGit(root, {QStringLiteral("config"), QStringLiteral("user.name"), QStringLiteral("Lisan Tester")});
+    runGit(root, {QStringLiteral("config"), QStringLiteral("user.email"), QStringLiteral("tester@example.invalid")});
+    writeFile(root, QStringLiteral("src/برنامج.apy"), QString::fromUtf8("اطبع(\"أول\")\n"));
+    runGit(root, {QStringLiteral("add"), QStringLiteral(".")});
+    runGit(root, {QStringLiteral("commit"), QStringLiteral("-m"), QStringLiteral("initial")});
+    writeFile(root, QStringLiteral("src/برنامج.apy"), QString::fromUtf8("اطبع(\"ثان\")\n"));
+    runGit(root, {QStringLiteral("add"), QStringLiteral(".")});
+    runGit(root, {QStringLiteral("commit"), QStringLiteral("-m"), QStringLiteral("second")});
+
+    MainWindow window;
+    QVERIFY(window.openPath(root.absolutePath()));
+
+    auto *historyPanel = window.findChild<QListWidget *>(QStringLiteral("gitHistoryPanel"));
+    auto *diffPanel = window.findChild<QPlainTextEdit *>(QStringLiteral("gitDiffPanel"));
+    QVERIFY(historyPanel != nullptr);
+    QVERIFY(diffPanel != nullptr);
+    QVERIFY(historyPanel->count() >= 2);
+    QVERIFY(historyPanel->item(0)->text().contains(QStringLiteral("second")));
+
+    historyPanel->setCurrentRow(0);
+
+    QVERIFY2(diffPanel->toPlainText().contains(QString::fromUtf8("+اطبع(\"ثان\")")),
+        qPrintable(diffPanel->toPlainText()));
 }
 
 void TestMainWindow::debugInspectorPanelsExistInsideDebugTab()
@@ -874,6 +1075,31 @@ void TestMainWindow::statusBarExposesEditorRuntimeAndGitIndicators()
     QCOMPARE(language->text(), QStringLiteral(".apy"));
     QCOMPARE(runtime->text(), QString::fromUtf8("التشغيل: جاهز"));
     QCOMPARE(git->text(), QStringLiteral("Git: --"));
+}
+
+void TestMainWindow::statusBarShowsGitBranchAndDirtyCount()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    QDir root(temp.path());
+    runGit(root, {QStringLiteral("init"), QStringLiteral("-b"), QStringLiteral("main")});
+    runGit(root, {QStringLiteral("config"), QStringLiteral("user.name"), QStringLiteral("Lisan Tester")});
+    runGit(root, {QStringLiteral("config"), QStringLiteral("user.email"), QStringLiteral("tester@example.invalid")});
+    const QString filePath = writeFile(root, QStringLiteral("src/برنامج.apy"), QString::fromUtf8("اطبع(\"أهلا\")\n"));
+    runGit(root, {QStringLiteral("add"), QStringLiteral(".")});
+    runGit(root, {QStringLiteral("commit"), QStringLiteral("-m"), QStringLiteral("initial")});
+
+    MainWindow window;
+    QVERIFY(window.openPath(root.absolutePath()));
+
+    auto *git = window.findChild<QLabel *>(QStringLiteral("statusGitLabel"));
+    QVERIFY(git != nullptr);
+    QCOMPARE(git->text(), QStringLiteral("Git: main"));
+
+    writeFile(root, QStringLiteral("src/برنامج.apy"), QString::fromUtf8("اطبع(\"تعديل\")\n"));
+    QVERIFY(window.openPath(filePath));
+
+    QCOMPARE(git->text(), QStringLiteral("Git: main (1)"));
 }
 
 void TestMainWindow::breadcrumbBarTracksActiveEditorPathWithSymbolPlaceholder()
@@ -2225,6 +2451,39 @@ void TestMainWindow::projectTreeCopyPathActionCopiesSelectedPath()
     copyPath->trigger();
 
     QCOMPARE(QApplication::clipboard()->text(), QDir::toNativeSeparators(filePath));
+}
+
+void TestMainWindow::workspaceRootsPanelAddsSwitchesAndRemovesSecondaryRoot()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    QDir primary(temp.filePath(QStringLiteral("primary")));
+    QDir secondary(temp.filePath(QStringLiteral("secondary")));
+    QVERIFY(QDir().mkpath(primary.absolutePath()));
+    QVERIFY(QDir().mkpath(secondary.absolutePath()));
+    writeFile(primary, QStringLiteral("main.apy"), QString::fromUtf8("اطبع(\"أول\")\n"));
+    writeFile(secondary, QStringLiteral("module.apy"), QString::fromUtf8("اطبع(\"ثان\")\n"));
+
+    MainWindow window;
+    QVERIFY(window.openPath(primary.absolutePath()));
+    QVERIFY(window.addWorkspaceRootPath(secondary.absolutePath()));
+
+    auto *rootsPanel = window.findChild<QListWidget *>(QStringLiteral("workspaceRootsPanel"));
+    auto *tree = window.findChild<QTreeView *>(QStringLiteral("projectTree"));
+    auto *model = qobject_cast<QFileSystemModel *>(tree ? tree->model() : nullptr);
+    QVERIFY(rootsPanel != nullptr);
+    QVERIFY(model != nullptr);
+    QCOMPARE(rootsPanel->count(), 2);
+    QCOMPARE(QDir::toNativeSeparators(model->rootPath()), QDir::toNativeSeparators(secondary.absolutePath()));
+
+    rootsPanel->setCurrentRow(0);
+    QCOMPARE(QDir::toNativeSeparators(model->rootPath()), QDir::toNativeSeparators(primary.absolutePath()));
+
+    rootsPanel->setCurrentRow(1);
+    QVERIFY(window.removeWorkspaceRootPath(secondary.absolutePath()));
+    QCOMPARE(rootsPanel->count(), 1);
+    QCOMPARE(QDir::toNativeSeparators(model->rootPath()), QDir::toNativeSeparators(primary.absolutePath()));
+    QCOMPARE(window.currentProjectRoot(), primary.absolutePath());
 }
 
 void TestMainWindow::projectSearchShowsClickableResultRows()

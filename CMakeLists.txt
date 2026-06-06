@@ -15,6 +15,28 @@ set(CMAKE_AUTOUIC ON)
 
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Test Concurrent)
 
+include(FetchContent)
+
+set(BUILD_TESTS OFF CACHE BOOL "Do not build libgit2 tests" FORCE)
+set(BUILD_CLI OFF CACHE BOOL "Do not build libgit2 CLI" FORCE)
+set(BUILD_EXAMPLES OFF CACHE BOOL "Do not build libgit2 examples" FORCE)
+set(BUILD_SHARED_LIBS OFF CACHE BOOL "Build libgit2 statically" FORCE)
+FetchContent_Declare(
+    libgit2
+    GIT_REPOSITORY https://github.com/libgit2/libgit2.git
+    GIT_TAG v1.9.3
+)
+set(_acs_cmake_automoc ${CMAKE_AUTOMOC})
+set(_acs_cmake_autouic ${CMAKE_AUTOUIC})
+set(_acs_cmake_autorcc ${CMAKE_AUTORCC})
+set(CMAKE_AUTOMOC OFF)
+set(CMAKE_AUTOUIC OFF)
+set(CMAKE_AUTORCC OFF)
+FetchContent_MakeAvailable(libgit2)
+set(CMAKE_AUTOMOC ${_acs_cmake_automoc})
+set(CMAKE_AUTOUIC ${_acs_cmake_autouic})
+set(CMAKE_AUTORCC ${_acs_cmake_autorcc})
+
 qt_standard_project_setup()
 
 set(LSP_BUILD_EXAMPLES OFF CACHE BOOL "Build lsp-framework examples" FORCE)
@@ -94,10 +116,12 @@ add_library(acs_core
     src/SettingsStore.cpp
     src/WorkspaceSettingsStore.h
     src/WorkspaceSettingsStore.cpp
+    src/GitRepository.h
+    src/GitRepository.cpp
 )
 
-target_include_directories(acs_core PUBLIC src)
-target_link_libraries(acs_core PUBLIC Qt6::Core Qt6::Gui Qt6::Widgets)
+target_include_directories(acs_core PUBLIC src PRIVATE ${libgit2_SOURCE_DIR}/include)
+target_link_libraries(acs_core PUBLIC Qt6::Core Qt6::Gui Qt6::Widgets libgit2package)
 
 qt_add_executable(LisanStudio WIN32
     src/main.cpp
@@ -201,6 +225,12 @@ qt_add_executable(acs_terminal_backend_tests
 
 target_link_libraries(acs_terminal_backend_tests PRIVATE acs_core Qt6::Test)
 
+qt_add_executable(acs_git_repository_tests
+    tests/TestGitRepository.cpp
+)
+
+target_link_libraries(acs_git_repository_tests PRIVATE acs_core Qt6::Test)
+
 add_test(NAME acs_editor_tests COMMAND acs_editor_tests)
 add_test(NAME acs_editor_tabs_controller_tests COMMAND acs_editor_tabs_controller_tests)
 add_test(NAME acs_project_tree_controller_tests COMMAND acs_project_tree_controller_tests)
@@ -214,3 +244,4 @@ add_test(NAME acs_untitled_draft_recovery_tests COMMAND acs_untitled_draft_recov
 add_test(NAME acs_lsp_client_tests COMMAND acs_lsp_client_tests)
 add_test(NAME acs_dap_client_tests COMMAND acs_dap_client_tests)
 add_test(NAME acs_terminal_backend_tests COMMAND acs_terminal_backend_tests)
+add_test(NAME acs_git_repository_tests COMMAND acs_git_repository_tests)

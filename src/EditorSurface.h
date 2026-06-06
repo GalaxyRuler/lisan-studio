@@ -39,6 +39,13 @@ struct EditorSemanticToken
     QString tokenType;
 };
 
+struct EditorBlameAnnotation
+{
+    int lineNumber = 0;
+    QString shortId;
+    QString summary;
+};
+
 class EditorSurface final : public QPlainTextEdit
 {
     Q_OBJECT
@@ -93,6 +100,9 @@ public:
     void showCompletionItems(const QVector<EditorCompletionItem> &items);
     void showHoverMarkdown(const QString &markdown, const QPoint &viewportPosition);
     void setSemanticTokens(const QVector<EditorSemanticToken> &tokens);
+    void setBlameAnnotations(const QVector<EditorBlameAnnotation> &annotations);
+    void clearBlameAnnotations();
+    QString blameTextForLineForTest(int lineNumber) const;
     bool isCompletionPopupVisibleForTest() const;
     QStringList completionLabelsForTest() const;
     QString visibleHoverTextForTest() const;
@@ -128,6 +138,7 @@ private:
     QTimer hoverRequestTimer;
     QVector<QTextCursor> secondaryCursors;
     QVector<EditorSemanticToken> semanticTokens;
+    QVector<EditorBlameAnnotation> blameAnnotations;
     QSet<int> breakpointLines;
     QTextCursor altColumnDragAnchor;
     QPoint pendingHoverViewportPosition;

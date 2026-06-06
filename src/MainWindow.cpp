@@ -835,7 +835,31 @@ void MainWindow::buildUi()
     fileSystemModel->setNameFilters({QStringLiteral("*.apy"), QStringLiteral("*.py"), QStringLiteral("*.md"), QStringLiteral("*.txt")});
     fileSystemModel->setNameFilterDisables(false);
 
-    projectTree = new QTreeView(splitter);
+    auto *projectSidebar = new QWidget(splitter);
+    projectSidebar->setObjectName(QStringLiteral("projectSidebar"));
+    projectSidebar->setLayoutDirection(Qt::RightToLeft);
+    auto *projectSidebarLayout = new QVBoxLayout(projectSidebar);
+    projectSidebarLayout->setContentsMargins(0, 0, 0, 0);
+    projectSidebarLayout->setSpacing(6);
+
+    auto *workspaceRootToolbar = new QWidget(projectSidebar);
+    workspaceRootToolbar->setObjectName(QStringLiteral("workspaceRootToolbar"));
+    auto *workspaceRootToolbarLayout = new QHBoxLayout(workspaceRootToolbar);
+    workspaceRootToolbarLayout->setContentsMargins(0, 0, 0, 0);
+    workspaceRootToolbarLayout->setSpacing(6);
+    workspaceAddRootButton = new QPushButton(QString::fromUtf8("إضافة جذر"), workspaceRootToolbar);
+    workspaceAddRootButton->setObjectName(QStringLiteral("workspaceAddRootButton"));
+    workspaceRemoveRootButton = new QPushButton(QString::fromUtf8("إزالة"), workspaceRootToolbar);
+    workspaceRemoveRootButton->setObjectName(QStringLiteral("workspaceRemoveRootButton"));
+    workspaceRootToolbarLayout->addWidget(workspaceAddRootButton, 1);
+    workspaceRootToolbarLayout->addWidget(workspaceRemoveRootButton);
+    workspaceRootsPanel = new QListWidget(projectSidebar);
+    workspaceRootsPanel->setObjectName(QStringLiteral("workspaceRootsPanel"));
+    workspaceRootsPanel->setLayoutDirection(Qt::RightToLeft);
+    workspaceRootsPanel->setMaximumHeight(96);
+    workspaceRootsPanel->setToolTip(QString::fromUtf8("جذور مساحة العمل. اختر جذرا لتصفحه في شجرة المشروع."));
+
+    projectTree = new QTreeView(projectSidebar);
     projectTree->setObjectName(QStringLiteral("projectTree"));
     projectTreeController = std::make_unique<ProjectTreeController>(projectTree, fileSystemModel, this);
     projectTreeController->setDeleteConfirmationCallback([this](const QString &path, bool isDirectory) {
@@ -879,6 +903,22 @@ void MainWindow::buildUi()
     connect(projectTreeController.get(), &ProjectTreeController::errorMessage, this, [this](const QString &title, const QString &body) {
         QMessageBox::warning(this, title, body);
     });
+    connect(workspaceAddRootButton, &QPushButton::clicked, this, &MainWindow::addWorkspaceRoot);
+    connect(workspaceRemoveRootButton, &QPushButton::clicked, this, &MainWindow::removeSelectedWorkspaceRoot);
+    connect(workspaceRootsPanel, &QListWidget::currentItemChanged, this, [this](QListWidgetItem *current) {
+        if (current) {
+            switchWorkspaceRootPath(current->data(Qt::UserRole).toString());
+        }
+    });
+    connect(workspaceRootsPanel, &QListWidget::itemActivated, this, [this](QListWidgetItem *item) {
+        if (item) {
+            switchWorkspaceRootPath(item->data(Qt::UserRole).toString());
+        }
+    });
+
+    projectSidebarLayout->addWidget(workspaceRootToolbar);
+    projectSidebarLayout->addWidget(workspaceRootsPanel);
+    projectSidebarLayout->addWidget(projectTree, 1);
 
     auto *editorColumn = new QWidget(splitter);
     editorColumn->setObjectName(QStringLiteral("editorColumn"));
@@ -1025,7 +1065,7 @@ void MainWindow::buildUi()
     editorTabsController->createUntitled(QString::fromUtf8("ملف جديد"));
     editorColumnLayout->addWidget(editorTabs, 1);
 
-    splitter->addWidget(projectTree);
+    splitter->addWidget(projectSidebar);
     splitter->addWidget(editorColumn);
     splitter->setStretchFactor(0, 0);
     splitter->setStretchFactor(1, 1);
@@ -1140,6 +1180,120 @@ void MainWindow::buildUi()
     connect(outlinePanel, &QListWidget::itemActivated, this, &MainWindow::openOutlineResult);
     connect(outlinePanel, &QListWidget::itemDoubleClicked, this, &MainWindow::openOutlineResult);
 
+    gitContainerPanel = new QWidget(bottomPanelTabs);
+    gitContainerPanel->setObjectName(QStringLiteral("gitContainerPanel"));
+    gitContainerPanel->setLayoutDirection(Qt::RightToLeft);
+    auto *gitLayout = new QVBoxLayout(gitContainerPanel);
+    gitLayout->setContentsMargins(6, 6, 6, 6);
+    gitLayout->setSpacing(6);
+    auto *gitToolbar = new QWidget(gitContainerPanel);
+    gitToolbar->setObjectName(QStringLiteral("gitToolbar"));
+    auto *gitToolbarLayout = new QHBoxLayout(gitToolbar);
+    gitToolbarLayout->setContentsMargins(0, 0, 0, 0);
+    gitToolbarLayout->setSpacing(6);
+    gitStageButton = new QPushButton(QString::fromUtf8("تجهيز"), gitToolbar);
+    gitStageButton->setObjectName(QStringLiteral("gitStageButton"));
+    gitUnstageButton = new QPushButton(QString::fromUtf8("إلغاء التجهيز"), gitToolbar);
+    gitUnstageButton->setObjectName(QStringLiteral("gitUnstageButton"));
+    gitCommitMessageInput = new QLineEdit(gitToolbar);
+    gitCommitMessageInput->setObjectName(QStringLiteral("gitCommitMessageInput"));
+    gitCommitMessageInput->setPlaceholderText(QString::fromUtf8("رسالة الالتزام"));
+    gitCommitMessageInput->setLayoutDirection(Qt::RightToLeft);
+    gitCommitButton = new QPushButton(QString::fromUtf8("التزام"), gitToolbar);
+    gitCommitButton->setObjectName(QStringLiteral("gitCommitButton"));
+    gitFetchButton = new QPushButton(QStringLiteral("Fetch"), gitToolbar);
+    gitFetchButton->setObjectName(QStringLiteral("gitFetchButton"));
+    gitPullButton = new QPushButton(QStringLiteral("Pull"), gitToolbar);
+    gitPullButton->setObjectName(QStringLiteral("gitPullButton"));
+    gitPushButton = new QPushButton(QStringLiteral("Push"), gitToolbar);
+    gitPushButton->setObjectName(QStringLiteral("gitPushButton"));
+    gitToolbarLayout->addWidget(gitStageButton);
+    gitToolbarLayout->addWidget(gitUnstageButton);
+    gitToolbarLayout->addWidget(gitCommitMessageInput, 1);
+    gitToolbarLayout->addWidget(gitCommitButton);
+    gitToolbarLayout->addWidget(gitFetchButton);
+    gitToolbarLayout->addWidget(gitPullButton);
+    gitToolbarLayout->addWidget(gitPushButton);
+    auto *gitBranchToolbar = new QWidget(gitContainerPanel);
+    gitBranchToolbar->setObjectName(QStringLiteral("gitBranchToolbar"));
+    auto *gitBranchToolbarLayout = new QHBoxLayout(gitBranchToolbar);
+    gitBranchToolbarLayout->setContentsMargins(0, 0, 0, 0);
+    gitBranchToolbarLayout->setSpacing(6);
+    gitBranchPicker = new QComboBox(gitBranchToolbar);
+    gitBranchPicker->setObjectName(QStringLiteral("gitBranchPicker"));
+    gitBranchPicker->setMinimumWidth(160);
+    gitSwitchBranchButton = new QPushButton(QString::fromUtf8("تبديل"), gitBranchToolbar);
+    gitSwitchBranchButton->setObjectName(QStringLiteral("gitSwitchBranchButton"));
+    gitBranchNameInput = new QLineEdit(gitBranchToolbar);
+    gitBranchNameInput->setObjectName(QStringLiteral("gitBranchNameInput"));
+    gitBranchNameInput->setPlaceholderText(QString::fromUtf8("فرع جديد"));
+    gitCreateBranchButton = new QPushButton(QString::fromUtf8("إنشاء"), gitBranchToolbar);
+    gitCreateBranchButton->setObjectName(QStringLiteral("gitCreateBranchButton"));
+    gitMergeBranchButton = new QPushButton(QString::fromUtf8("دمج سريع"), gitBranchToolbar);
+    gitMergeBranchButton->setObjectName(QStringLiteral("gitMergeBranchButton"));
+    gitDeleteBranchButton = new QPushButton(QString::fromUtf8("حذف"), gitBranchToolbar);
+    gitDeleteBranchButton->setObjectName(QStringLiteral("gitDeleteBranchButton"));
+    gitBranchToolbarLayout->addWidget(gitBranchPicker);
+    gitBranchToolbarLayout->addWidget(gitSwitchBranchButton);
+    gitBranchToolbarLayout->addWidget(gitBranchNameInput, 1);
+    gitBranchToolbarLayout->addWidget(gitCreateBranchButton);
+    gitBranchToolbarLayout->addWidget(gitMergeBranchButton);
+    gitBranchToolbarLayout->addWidget(gitDeleteBranchButton);
+    gitStatusPanel = new QListWidget(gitContainerPanel);
+    gitStatusPanel->setObjectName(QStringLiteral("gitStatusPanel"));
+    gitStatusPanel->setLayoutDirection(Qt::RightToLeft);
+    gitStatusPanel->setWordWrap(true);
+    gitStatusPanel->setMaximumHeight(120);
+    gitStatusPanel->setToolTip(QString::fromUtf8("ملفات Git المتغيرة. اختر ملفا لعرض الفرق."));
+    gitHistoryPanel = new QListWidget(gitContainerPanel);
+    gitHistoryPanel->setObjectName(QStringLiteral("gitHistoryPanel"));
+    gitHistoryPanel->setLayoutDirection(Qt::RightToLeft);
+    gitHistoryPanel->setWordWrap(true);
+    gitHistoryPanel->setMaximumHeight(120);
+    gitHistoryPanel->setToolTip(QString::fromUtf8("سجل Git. اختر التزاما لعرض فرقه التاريخي."));
+    gitDiffPanel = new QPlainTextEdit(gitContainerPanel);
+    gitDiffPanel->setObjectName(QStringLiteral("gitDiffPanel"));
+    gitDiffPanel->setReadOnly(true);
+    gitDiffPanel->setLayoutDirection(Qt::LeftToRight);
+    gitDiffPanel->setToolTip(QString::fromUtf8("فرق Git الموحد للملف المحدد."));
+    gitLayout->addWidget(gitToolbar);
+    gitLayout->addWidget(gitBranchToolbar);
+    gitLayout->addWidget(gitStatusPanel);
+    gitLayout->addWidget(gitHistoryPanel);
+    gitLayout->addWidget(gitDiffPanel, 1);
+    connect(gitStageButton, &QPushButton::clicked, this, &MainWindow::stageSelectedGitFile);
+    connect(gitUnstageButton, &QPushButton::clicked, this, &MainWindow::unstageSelectedGitFile);
+    connect(gitCommitButton, &QPushButton::clicked, this, &MainWindow::commitStagedGitChanges);
+    connect(gitCommitMessageInput, &QLineEdit::returnPressed, this, &MainWindow::commitStagedGitChanges);
+    connect(gitFetchButton, &QPushButton::clicked, this, &MainWindow::fetchGitRemote);
+    connect(gitPullButton, &QPushButton::clicked, this, &MainWindow::pullGitRemote);
+    connect(gitPushButton, &QPushButton::clicked, this, &MainWindow::pushGitRemote);
+    connect(gitSwitchBranchButton, &QPushButton::clicked, this, &MainWindow::switchSelectedGitBranch);
+    connect(gitCreateBranchButton, &QPushButton::clicked, this, &MainWindow::createGitBranch);
+    connect(gitMergeBranchButton, &QPushButton::clicked, this, &MainWindow::mergeSelectedGitBranch);
+    connect(gitDeleteBranchButton, &QPushButton::clicked, this, &MainWindow::deleteSelectedGitBranch);
+    connect(gitBranchNameInput, &QLineEdit::returnPressed, this, &MainWindow::createGitBranch);
+    connect(gitStatusPanel, &QListWidget::itemClicked, this, [this](QListWidgetItem *item) {
+        if (item) {
+            renderGitDiffForPath(item->data(Qt::UserRole).toString());
+        }
+    });
+    connect(gitStatusPanel, &QListWidget::itemActivated, this, [this](QListWidgetItem *item) {
+        if (item) {
+            renderGitDiffForPath(item->data(Qt::UserRole).toString());
+        }
+    });
+    connect(gitHistoryPanel, &QListWidget::currentItemChanged, this, [this](QListWidgetItem *current) {
+        if (current) {
+            renderGitDiffForCommit(current->data(Qt::UserRole).toString());
+        }
+    });
+    connect(gitHistoryPanel, &QListWidget::itemActivated, this, [this](QListWidgetItem *item) {
+        if (item) {
+            renderGitDiffForCommit(item->data(Qt::UserRole).toString());
+        }
+    });
+
     debugContainerPanel = new QWidget(bottomPanelTabs);
     debugContainerPanel->setObjectName(QStringLiteral("debugContainerPanel"));
     debugContainerPanel->setLayoutDirection(Qt::RightToLeft);
@@ -1215,6 +1369,7 @@ void MainWindow::buildUi()
     bottomPanelTabs->addTab(searchResultsPanel, QString::fromUtf8("نتائج البحث"));
     bottomPanelTabs->addTab(referencesPanel, QString::fromUtf8("المراجع"));
     bottomPanelTabs->addTab(outlinePanel, QString::fromUtf8("المخطط"));
+    bottomPanelTabs->addTab(gitContainerPanel, QStringLiteral("Git"));
     bottomPanelTabs->addTab(debugContainerPanel, QString::fromUtf8("التصحيح"));
     bottomPanels = std::make_unique<BottomPanelController>(
         bottomPanelTabs,
@@ -1224,6 +1379,7 @@ void MainWindow::buildUi()
         searchResultsPanel,
         referencesPanel,
         outlinePanel,
+        gitContainerPanel,
         debugContainerPanel);
 
     outputDock = new QDockWidget(QString::fromUtf8("اللوحة السفلية"), this);
@@ -1358,6 +1514,34 @@ void MainWindow::openFolder()
     if (!path.isEmpty()) {
         loadProject(path);
     }
+}
+
+void MainWindow::addWorkspaceRoot()
+{
+    const QString path = QFileDialog::getExistingDirectory(
+        this,
+        QString::fromUtf8("إضافة جذر لمساحة العمل"),
+        projectRoot.isEmpty() ? QDir::homePath() : projectRoot);
+    if (!path.isEmpty()) {
+        addWorkspaceRootPath(path);
+    }
+}
+
+void MainWindow::removeSelectedWorkspaceRoot()
+{
+    if (!workspaceRootsPanel || !workspaceRootsPanel->currentItem()) {
+        setStatus(QString::fromUtf8("لا يوجد جذر محدد"));
+        return;
+    }
+    removeWorkspaceRootPath(workspaceRootsPanel->currentItem()->data(Qt::UserRole).toString());
+}
+
+void MainWindow::switchSelectedWorkspaceRoot()
+{
+    if (!workspaceRootsPanel || !workspaceRootsPanel->currentItem()) {
+        return;
+    }
+    switchWorkspaceRootPath(workspaceRootsPanel->currentItem()->data(Qt::UserRole).toString());
 }
 
 void MainWindow::runCurrentFile()
@@ -3532,18 +3716,115 @@ bool MainWindow::loadProject(const QString &path)
     }
 
     projectRoot = requestedRoot;
+    workspaceRoots = {projectRoot};
+    activeWorkspaceTreeRoot = projectRoot;
+    workbenchState.setProjectRoot(projectRoot);
+    workbenchState.setProjectRoots(workspaceRoots);
     workspaceSettings = WorkspaceSettingsStore(projectRoot).load();
     if (projectTreeController) {
-        projectTreeController->setProjectRoot(projectRoot);
+        projectTreeController->setProjectRoot(activeWorkspaceTreeRoot);
     }
+    renderWorkspaceRootsPanel();
     if (editorTabsController) {
         editorTabsController->applyWorkspaceSettings(workspaceSettings);
     }
     refreshTerminalProfiles();
     updateTerminalControls();
     settings.addRecentProject(projectRoot);
+    QString gitError;
+    if (!gitRepository.open(projectRoot, &gitError)) {
+        gitRepository.close();
+    }
+    updateStatusIndicators();
     setStatus(QString::fromUtf8("المشروع: %1").arg(projectRoot));
     return true;
+}
+
+bool MainWindow::addWorkspaceRootPath(const QString &path)
+{
+    const QFileInfo info(path);
+    if (!info.exists() || !info.isDir()) {
+        setStatus(QString::fromUtf8("جذر مساحة العمل غير صالح"));
+        return false;
+    }
+
+    const QString rootPath = info.absoluteFilePath();
+    if (projectRoot.isEmpty()) {
+        return loadProject(rootPath);
+    }
+
+    for (const QString &existing : workspaceRoots) {
+        if (QDir::cleanPath(existing).compare(QDir::cleanPath(rootPath), Qt::CaseInsensitive) == 0) {
+            switchWorkspaceRootPath(existing);
+            return false;
+        }
+    }
+
+    workspaceRoots.append(rootPath);
+    workbenchState.addProjectRoot(rootPath);
+    renderWorkspaceRootsPanel();
+    switchWorkspaceRootPath(rootPath);
+    saveWorkbenchSession();
+    setStatus(QString::fromUtf8("أضيف جذر مساحة العمل: %1").arg(rootPath));
+    return true;
+}
+
+bool MainWindow::switchWorkspaceRootPath(const QString &path)
+{
+    const QString requestedRoot = QFileInfo(path).absoluteFilePath();
+    const bool known = std::any_of(workspaceRoots.cbegin(), workspaceRoots.cend(), [&requestedRoot](const QString &root) {
+        return QDir::cleanPath(root).compare(QDir::cleanPath(requestedRoot), Qt::CaseInsensitive) == 0;
+    });
+    if (!known || !QFileInfo(requestedRoot).isDir()) {
+        return false;
+    }
+
+    activeWorkspaceTreeRoot = requestedRoot;
+    if (projectTreeController) {
+        projectTreeController->setProjectRoot(activeWorkspaceTreeRoot);
+    }
+
+    QString gitError;
+    if (!gitRepository.open(activeWorkspaceTreeRoot, &gitError)) {
+        gitRepository.close();
+    }
+    renderWorkspaceRootsPanel();
+    updateStatusIndicators();
+    setStatus(QString::fromUtf8("الجذر النشط: %1").arg(activeWorkspaceTreeRoot));
+    return true;
+}
+
+bool MainWindow::removeWorkspaceRootPath(const QString &path)
+{
+    const QString requestedRoot = QFileInfo(path).absoluteFilePath();
+    if (projectRoot.isEmpty() || QDir::cleanPath(requestedRoot).compare(QDir::cleanPath(projectRoot), Qt::CaseInsensitive) == 0) {
+        setStatus(QString::fromUtf8("لا يمكن إزالة الجذر الأساسي"));
+        return false;
+    }
+
+    for (int i = 0; i < workspaceRoots.size(); ++i) {
+        if (QDir::cleanPath(workspaceRoots.at(i)).compare(QDir::cleanPath(requestedRoot), Qt::CaseInsensitive) != 0) {
+            continue;
+        }
+        workspaceRoots.removeAt(i);
+        workbenchState.removeProjectRoot(requestedRoot);
+        if (QDir::cleanPath(activeWorkspaceTreeRoot).compare(QDir::cleanPath(requestedRoot), Qt::CaseInsensitive) == 0) {
+            activeWorkspaceTreeRoot = projectRoot;
+            if (projectTreeController) {
+                projectTreeController->setProjectRoot(activeWorkspaceTreeRoot);
+            }
+            QString gitError;
+            if (!gitRepository.open(activeWorkspaceTreeRoot, &gitError)) {
+                gitRepository.close();
+            }
+        }
+        renderWorkspaceRootsPanel();
+        updateStatusIndicators();
+        saveWorkbenchSession();
+        setStatus(QString::fromUtf8("أزيل جذر مساحة العمل"));
+        return true;
+    }
+    return false;
 }
 
 bool MainWindow::openEditorFile(const QString &path)
@@ -4373,7 +4654,406 @@ void MainWindow::updateStatusIndicators()
     statusIndentationLabel->setText(QString::fromUtf8("مسافات: 4"));
     statusLanguageModeLabel->setText(languageModeStatusText(path));
     statusRuntimeLabel->setText(QString::fromUtf8("التشغيل: جاهز"));
-    statusGitLabel->setText(QStringLiteral("Git: --"));
+
+    QString gitStatusText = QStringLiteral("Git: --");
+    if (gitRepository.isOpen()) {
+        QString gitError;
+        const QString branch = gitRepository.currentBranch(&gitError);
+        const QVector<GitStatusEntry> entries = gitError.isEmpty()
+            ? gitRepository.statusEntries(&gitError)
+            : QVector<GitStatusEntry>{};
+        if (gitError.isEmpty() && !branch.isEmpty()) {
+            gitStatusText = entries.isEmpty()
+                ? QStringLiteral("Git: %1").arg(branch)
+                : QStringLiteral("Git: %1 (%2)").arg(branch).arg(entries.size());
+        }
+    }
+    statusGitLabel->setText(gitStatusText);
+    refreshGitBranches();
+    renderGitStatusPanel();
+    renderGitHistoryPanel();
+    updateCurrentEditorBlame();
+}
+
+void MainWindow::renderGitStatusPanel()
+{
+    if (!gitStatusPanel || !gitDiffPanel) {
+        return;
+    }
+    gitStatusPanel->clear();
+    gitDiffPanel->clear();
+    if (!gitRepository.isOpen()) {
+        gitDiffPanel->setPlainText(QStringLiteral("Git: --"));
+        return;
+    }
+
+    QString error;
+    const QVector<GitStatusEntry> entries = gitRepository.statusEntries(&error);
+    if (!error.isEmpty()) {
+        gitDiffPanel->setPlainText(error);
+        return;
+    }
+    if (entries.isEmpty()) {
+        gitDiffPanel->setPlainText(QString::fromUtf8("لا توجد تغييرات Git."));
+        return;
+    }
+
+    for (const GitStatusEntry &entry : entries) {
+        QString marker = QStringLiteral("M");
+        switch (entry.state) {
+        case GitFileState::Added:
+            marker = QStringLiteral("A");
+            break;
+        case GitFileState::Deleted:
+            marker = QStringLiteral("D");
+            break;
+        case GitFileState::Renamed:
+            marker = QStringLiteral("R");
+            break;
+        case GitFileState::TypeChanged:
+            marker = QStringLiteral("T");
+            break;
+        case GitFileState::Untracked:
+            marker = QStringLiteral("?");
+            break;
+        case GitFileState::Conflicted:
+            marker = QStringLiteral("!");
+            break;
+        case GitFileState::Modified:
+            marker = QStringLiteral("M");
+            break;
+        }
+        if (entry.staged) {
+            marker.prepend(QStringLiteral("+"));
+        }
+        auto *item = new QListWidgetItem(QStringLiteral("%1  %2").arg(marker, entry.relativePath), gitStatusPanel);
+        item->setData(Qt::UserRole, entry.relativePath);
+        item->setData(Qt::UserRole + 1, entry.staged);
+    }
+
+    gitStatusPanel->setCurrentRow(0);
+    renderGitDiffForPath(gitStatusPanel->item(0)->data(Qt::UserRole).toString());
+}
+
+void MainWindow::renderGitDiffForPath(const QString &relativePath)
+{
+    if (!gitDiffPanel) {
+        return;
+    }
+    if (!gitRepository.isOpen() || relativePath.isEmpty()) {
+        gitDiffPanel->clear();
+        return;
+    }
+
+    QString error;
+    const QString diff = gitRepository.diffForFile(relativePath, &error);
+    gitDiffPanel->setPlainText(error.isEmpty() ? diff : error);
+}
+
+void MainWindow::renderGitHistoryPanel()
+{
+    if (!gitHistoryPanel) {
+        return;
+    }
+
+    QSignalBlocker blocker(gitHistoryPanel);
+    gitHistoryPanel->clear();
+    if (!gitRepository.isOpen()) {
+        return;
+    }
+
+    QString error;
+    const QVector<GitCommitSummary> history = gitRepository.commitHistory(30, &error);
+    if (!error.isEmpty()) {
+        return;
+    }
+    for (const GitCommitSummary &commit : history) {
+        const QString author = commit.authorName.isEmpty()
+            ? QString()
+            : QStringLiteral("  %1").arg(commit.authorName);
+        auto *item = new QListWidgetItem(QStringLiteral("%1  %2%3").arg(commit.shortId, commit.summary, author), gitHistoryPanel);
+        item->setData(Qt::UserRole, commit.id);
+        item->setToolTip(commit.id);
+    }
+    gitHistoryPanel->setCurrentRow(-1);
+}
+
+void MainWindow::renderGitDiffForCommit(const QString &commitId)
+{
+    if (!gitDiffPanel) {
+        return;
+    }
+    if (!gitRepository.isOpen() || commitId.isEmpty()) {
+        gitDiffPanel->clear();
+        return;
+    }
+
+    QString error;
+    const QString diff = gitRepository.diffForCommit(commitId, &error);
+    gitDiffPanel->setPlainText(error.isEmpty() ? diff : error);
+}
+
+void MainWindow::updateCurrentEditorBlame()
+{
+    if (!editor) {
+        return;
+    }
+    if (!gitRepository.isOpen() || gitRepository.rootPath().isEmpty() || editor->currentFilePath().isEmpty()) {
+        editor->clearBlameAnnotations();
+        return;
+    }
+
+    const QString editorPath = QDir::cleanPath(QDir::fromNativeSeparators(QFileInfo(editor->currentFilePath()).absoluteFilePath()));
+    const QString rootPath = QDir::cleanPath(QDir::fromNativeSeparators(QFileInfo(gitRepository.rootPath()).absoluteFilePath()));
+    if (editorPath != rootPath && !editorPath.startsWith(rootPath + QLatin1Char('/'), Qt::CaseInsensitive)) {
+        editor->clearBlameAnnotations();
+        return;
+    }
+
+    QString error;
+    const QString relativePath = QDir(rootPath).relativeFilePath(editorPath);
+    const QVector<GitBlameLine> blameLines = gitRepository.blameFile(relativePath, &error);
+    if (!error.isEmpty()) {
+        editor->clearBlameAnnotations();
+        return;
+    }
+
+    QVector<EditorBlameAnnotation> annotations;
+    annotations.reserve(blameLines.size());
+    for (const GitBlameLine &line : blameLines) {
+        annotations.push_back({line.lineNumber, line.shortId, line.summary});
+    }
+    editor->setBlameAnnotations(annotations);
+}
+
+QString MainWindow::selectedGitRelativePath() const
+{
+    if (!gitStatusPanel) {
+        return QString();
+    }
+    QListWidgetItem *item = gitStatusPanel->currentItem();
+    if (!item && gitStatusPanel->count() > 0) {
+        item = gitStatusPanel->item(0);
+    }
+    return item ? item->data(Qt::UserRole).toString() : QString();
+}
+
+void MainWindow::refreshGitBranches()
+{
+    if (!gitBranchPicker) {
+        return;
+    }
+    QSignalBlocker blocker(gitBranchPicker);
+    const QString selected = gitBranchPicker->currentText();
+    gitBranchPicker->clear();
+    if (!gitRepository.isOpen()) {
+        return;
+    }
+
+    QString error;
+    const QStringList branches = gitRepository.localBranches(&error);
+    if (!error.isEmpty()) {
+        return;
+    }
+    gitBranchPicker->addItems(branches);
+    const QString branch = gitRepository.currentBranch();
+    const int branchIndex = gitBranchPicker->findText(branch);
+    if (branchIndex >= 0) {
+        gitBranchPicker->setCurrentIndex(branchIndex);
+    } else if (!selected.isEmpty()) {
+        const int selectedIndex = gitBranchPicker->findText(selected);
+        if (selectedIndex >= 0) {
+            gitBranchPicker->setCurrentIndex(selectedIndex);
+        }
+    }
+}
+
+void MainWindow::renderWorkspaceRootsPanel()
+{
+    if (!workspaceRootsPanel) {
+        return;
+    }
+
+    QSignalBlocker blocker(workspaceRootsPanel);
+    workspaceRootsPanel->clear();
+    for (const QString &root : workspaceRoots) {
+        const QFileInfo info(root);
+        const QString label = root == projectRoot
+            ? QString::fromUtf8("%1  أساسي").arg(info.fileName().isEmpty() ? root : info.fileName())
+            : (info.fileName().isEmpty() ? root : info.fileName());
+        auto *item = new QListWidgetItem(label, workspaceRootsPanel);
+        item->setData(Qt::UserRole, root);
+        item->setToolTip(QDir::toNativeSeparators(root));
+    }
+
+    const QString selected = activeWorkspaceTreeRoot.isEmpty() ? projectRoot : activeWorkspaceTreeRoot;
+    for (int row = 0; row < workspaceRootsPanel->count(); ++row) {
+        if (QDir::cleanPath(workspaceRootsPanel->item(row)->data(Qt::UserRole).toString())
+                .compare(QDir::cleanPath(selected), Qt::CaseInsensitive) == 0) {
+            workspaceRootsPanel->setCurrentRow(row);
+            break;
+        }
+    }
+}
+
+void MainWindow::stageSelectedGitFile()
+{
+    const QString relativePath = selectedGitRelativePath();
+    if (!gitRepository.isOpen() || relativePath.isEmpty()) {
+        setStatus(QString::fromUtf8("لا يوجد ملف Git محدد"));
+        return;
+    }
+
+    QString error;
+    if (!gitRepository.stageFile(relativePath, &error)) {
+        setStatus(error);
+        return;
+    }
+    updateStatusIndicators();
+    setStatus(QString::fromUtf8("تم تجهيز: %1").arg(relativePath));
+}
+
+void MainWindow::unstageSelectedGitFile()
+{
+    const QString relativePath = selectedGitRelativePath();
+    if (!gitRepository.isOpen() || relativePath.isEmpty()) {
+        setStatus(QString::fromUtf8("لا يوجد ملف Git محدد"));
+        return;
+    }
+
+    QString error;
+    if (!gitRepository.unstageFile(relativePath, &error)) {
+        setStatus(error);
+        return;
+    }
+    updateStatusIndicators();
+    setStatus(QString::fromUtf8("ألغي تجهيز: %1").arg(relativePath));
+}
+
+void MainWindow::commitStagedGitChanges()
+{
+    if (!gitRepository.isOpen() || !gitCommitMessageInput) {
+        setStatus(QString::fromUtf8("لا يوجد مستودع Git مفتوح"));
+        return;
+    }
+
+    QString error;
+    if (!gitRepository.commitStaged(gitCommitMessageInput->text(), &error)) {
+        setStatus(error);
+        return;
+    }
+    gitCommitMessageInput->clear();
+    updateStatusIndicators();
+    setStatus(QString::fromUtf8("تم إنشاء الالتزام"));
+}
+
+void MainWindow::fetchGitRemote()
+{
+    if (!gitRepository.isOpen()) {
+        setStatus(QString::fromUtf8("لا يوجد مستودع Git مفتوح"));
+        return;
+    }
+
+    QString error;
+    if (!gitRepository.fetchRemote(QStringLiteral("origin"), &error)) {
+        setStatus(error);
+        return;
+    }
+    updateStatusIndicators();
+    setStatus(QString::fromUtf8("تم جلب تحديثات Git"));
+}
+
+void MainWindow::pullGitRemote()
+{
+    if (!gitRepository.isOpen()) {
+        setStatus(QString::fromUtf8("لا يوجد مستودع Git مفتوح"));
+        return;
+    }
+
+    QString error;
+    if (!gitRepository.pullFastForward(QStringLiteral("origin"), &error)) {
+        setStatus(error);
+        return;
+    }
+    updateStatusIndicators();
+    setStatus(QString::fromUtf8("تم سحب تحديثات Git"));
+}
+
+void MainWindow::pushGitRemote()
+{
+    if (!gitRepository.isOpen()) {
+        setStatus(QString::fromUtf8("لا يوجد مستودع Git مفتوح"));
+        return;
+    }
+
+    QString error;
+    if (!gitRepository.pushCurrentBranch(QStringLiteral("origin"), &error)) {
+        setStatus(error);
+        return;
+    }
+    updateStatusIndicators();
+    setStatus(QString::fromUtf8("تم دفع تغييرات Git"));
+}
+
+void MainWindow::switchSelectedGitBranch()
+{
+    if (!gitRepository.isOpen() || !gitBranchPicker) {
+        setStatus(QString::fromUtf8("لا يوجد مستودع Git مفتوح"));
+        return;
+    }
+    QString error;
+    if (!gitRepository.checkoutBranch(gitBranchPicker->currentText(), &error)) {
+        setStatus(error);
+        return;
+    }
+    updateStatusIndicators();
+    setStatus(QString::fromUtf8("تم تبديل الفرع"));
+}
+
+void MainWindow::createGitBranch()
+{
+    if (!gitRepository.isOpen() || !gitBranchNameInput) {
+        setStatus(QString::fromUtf8("لا يوجد مستودع Git مفتوح"));
+        return;
+    }
+    QString error;
+    if (!gitRepository.createBranch(gitBranchNameInput->text(), &error)) {
+        setStatus(error);
+        return;
+    }
+    gitBranchNameInput->clear();
+    updateStatusIndicators();
+    setStatus(QString::fromUtf8("تم إنشاء الفرع"));
+}
+
+void MainWindow::mergeSelectedGitBranch()
+{
+    if (!gitRepository.isOpen() || !gitBranchPicker) {
+        setStatus(QString::fromUtf8("لا يوجد مستودع Git مفتوح"));
+        return;
+    }
+    QString error;
+    if (!gitRepository.mergeFastForward(gitBranchPicker->currentText(), &error)) {
+        setStatus(error);
+        return;
+    }
+    updateStatusIndicators();
+    setStatus(QString::fromUtf8("تم الدمج السريع"));
+}
+
+void MainWindow::deleteSelectedGitBranch()
+{
+    if (!gitRepository.isOpen() || !gitBranchPicker) {
+        setStatus(QString::fromUtf8("لا يوجد مستودع Git مفتوح"));
+        return;
+    }
+    QString error;
+    if (!gitRepository.deleteBranch(gitBranchPicker->currentText(), &error)) {
+        setStatus(error);
+        return;
+    }
+    updateStatusIndicators();
+    setStatus(QString::fromUtf8("تم حذف الفرع"));
 }
 
 void MainWindow::writeOutput(const QString &title, const QString &text)
@@ -4801,6 +5481,17 @@ void MainWindow::restoreWorkbenchSession(bool promptForDraftRecovery)
 
     if (!session.projectRoot.isEmpty() && QFileInfo(session.projectRoot).isDir()) {
         loadProject(session.projectRoot);
+        for (const QString &root : session.projectRoots) {
+            const QString absoluteRoot = QFileInfo(root).absoluteFilePath();
+            if (!QFileInfo(absoluteRoot).isDir()
+                || QDir::cleanPath(absoluteRoot).compare(QDir::cleanPath(projectRoot), Qt::CaseInsensitive) == 0
+                || workspaceRoots.contains(absoluteRoot, Qt::CaseInsensitive)) {
+                continue;
+            }
+            workspaceRoots.append(absoluteRoot);
+            workbenchState.addProjectRoot(absoluteRoot);
+        }
+        renderWorkspaceRootsPanel();
     }
 
     bool openedAnyFile = false;
@@ -4857,6 +5548,7 @@ void MainWindow::saveWorkbenchSession()
 
     SavedWorkbenchSession session;
     session.projectRoot = projectRoot;
+    session.projectRoots = workspaceRoots;
     if (editorTabsController) {
         session.openFiles = editorTabsController->openFilePaths();
         session.untitledDrafts = editorTabsController->untitledDrafts();
