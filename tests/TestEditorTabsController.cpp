@@ -20,6 +20,7 @@ private slots:
     void editorTabsControllerOpenFileCreatesTabAndRegistersDocument();
     void editorTabsControllerOpenSamePathTwiceFocusesExistingTab();
     void editorTabsControllerCloseTabClosesRegistryRecord();
+    void editorTabsControllerDirtyMarkerUpdatesAndClearsOnSave();
     void editorTabsControllerApplyFontReachesAllOpenSurfaces();
 };
 
@@ -107,6 +108,36 @@ void TestEditorTabsController::editorTabsControllerCloseTabClosesRegistryRecord(
     controller.closeTab(0);
 
     QCOMPARE(registry.findByPath(filePath), DocumentId());
+}
+
+void TestEditorTabsController::editorTabsControllerDirtyMarkerUpdatesAndClearsOnSave()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    QDir root(temp.path());
+    const QString filePath = writeFile(root, QStringLiteral("main.apy"), QString::fromUtf8("عدد = 1\n"));
+
+    QTabWidget tabs;
+    DocumentRegistry registry;
+    WorkbenchState state;
+    EditorTabsController controller(&tabs, registry, state);
+
+    QString error;
+    QVERIFY2(controller.openFile(filePath, &error), qPrintable(error));
+    QCOMPARE(tabs.tabText(0), QStringLiteral("main.apy"));
+
+    EditorSurface *surface = controller.currentSurface();
+    QVERIFY(surface != nullptr);
+    surface->moveCursor(QTextCursor::End);
+    surface->insertPlainText(QString::fromUtf8("اطبع(عدد)\n"));
+
+    QTRY_COMPARE(tabs.tabText(0), QStringLiteral("*main.apy"));
+    QVERIFY(registry.document(controller.documentIdForSurface(surface)).dirty);
+
+    QVERIFY2(controller.saveCurrent(&error), qPrintable(error));
+
+    QTRY_COMPARE(tabs.tabText(0), QStringLiteral("main.apy"));
+    QVERIFY(!registry.document(controller.documentIdForSurface(surface)).dirty);
 }
 
 void TestEditorTabsController::editorTabsControllerApplyFontReachesAllOpenSurfaces()

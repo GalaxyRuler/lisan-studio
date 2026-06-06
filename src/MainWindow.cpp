@@ -3478,6 +3478,14 @@ void MainWindow::openSettings()
     fontSizeInput->setObjectName(QStringLiteral("editorFontSizeInput"));
     fontSizeInput->setRange(8, 28);
     fontSizeInput->setValue(settingsState.editorFontSize);
+    auto *fontPreview = new QLabel(QString::fromUtf8("اللغة العربية في محرر لسان\nاطبع(\"مرحبا\")"), editorPage);
+    fontPreview->setObjectName(QStringLiteral("editorFontPreviewLabel"));
+    fontPreview->setLayoutDirection(Qt::RightToLeft);
+    fontPreview->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    fontPreview->setWordWrap(true);
+    fontPreview->setMinimumHeight(72);
+    fontPreview->setStyleSheet(QStringLiteral(
+        "QLabel { border: 1px solid #3A4658; border-radius: 6px; padding: 10px; background: #111827; color: #E8ECF2; }"));
     auto *themePreferenceCombo = new QComboBox(editorPage);
     themePreferenceCombo->setObjectName(QStringLiteral("themePreferenceCombo"));
     themePreferenceCombo->setLayoutDirection(Qt::RightToLeft);
@@ -3485,9 +3493,43 @@ void MainWindow::openSettings()
     themePreferenceCombo->addItem(QString::fromUtf8("فاتح"), QStringLiteral("light"));
     const int configuredThemeIndex = themePreferenceCombo->findData(settings.themePreference());
     themePreferenceCombo->setCurrentIndex(configuredThemeIndex >= 0 ? configuredThemeIndex : 0);
+    auto *settingsResetDefaultsButton = new QPushButton(QString::fromUtf8("استعادة الإعدادات الافتراضية"), editorPage);
+    settingsResetDefaultsButton->setObjectName(QStringLiteral("settingsResetDefaultsButton"));
     editorForm->addRow(QString::fromUtf8("خط المحرر"), fontFamilyCombo);
     editorForm->addRow(QString::fromUtf8("حجم الخط"), fontSizeInput);
+    editorForm->addRow(QString::fromUtf8("معاينة"), fontPreview);
     editorForm->addRow(QString::fromUtf8("السمة"), themePreferenceCombo);
+    editorForm->addRow(QString(), settingsResetDefaultsButton);
+
+    auto updateFontPreview = [fontFamilyCombo, fontSizeInput, fontPreview]() {
+        QString stylesheetFamily = fontFamilyCombo->currentText();
+        stylesheetFamily.replace(QLatin1Char('\\'), QStringLiteral("\\\\"));
+        stylesheetFamily.replace(QLatin1Char('"'), QStringLiteral("\\\""));
+        QFont previewFont(fontFamilyCombo->currentText(), fontSizeInput->value());
+        previewFont.setStyleHint(QFont::Monospace);
+        fontPreview->setFont(previewFont);
+        fontPreview->setStyleSheet(QStringLiteral(
+            "QLabel { border: 1px solid #3A4658; border-radius: 6px; padding: 10px; background: #111827; color: #E8ECF2; font-family: \"%1\"; font-size: %2pt; }")
+            .arg(stylesheetFamily)
+            .arg(fontSizeInput->value()));
+    };
+    connect(fontFamilyCombo, &QComboBox::currentTextChanged, editorPage, [updateFontPreview]() {
+        updateFontPreview();
+    });
+    connect(fontSizeInput, qOverload<int>(&QSpinBox::valueChanged), editorPage, [updateFontPreview](int) {
+        updateFontPreview();
+    });
+    connect(settingsResetDefaultsButton, &QPushButton::clicked, editorPage, [fontFamilyCombo, fontSizeInput, themePreferenceCombo, updateFontPreview]() {
+        const int defaultFontIndex = fontFamilyCombo->findText(QStringLiteral("Segoe UI"));
+        if (defaultFontIndex >= 0) {
+            fontFamilyCombo->setCurrentIndex(defaultFontIndex);
+        }
+        fontSizeInput->setValue(12);
+        const int defaultThemeIndex = themePreferenceCombo->findData(QStringLiteral("dark"));
+        themePreferenceCombo->setCurrentIndex(defaultThemeIndex >= 0 ? defaultThemeIndex : 0);
+        updateFontPreview();
+    });
+    updateFontPreview();
 
     auto *runtimePage = new QWidget(pages);
     runtimePage->setObjectName(QStringLiteral("runtimeDiagnosticsPage"));
@@ -3506,11 +3548,34 @@ void MainWindow::openSettings()
     runtimeLintStatus->setObjectName(QStringLiteral("runtimeLintStatusValue"));
     auto *runtimeFormatStatus = new QLabel(settingsState.runtimeFormatStatus, runtimePage);
     runtimeFormatStatus->setObjectName(QStringLiteral("runtimeFormatStatusValue"));
+    auto *runtimeDiagnosticsCopyButton = new QPushButton(QString::fromUtf8("نسخ التشخيصات"), runtimePage);
+    runtimeDiagnosticsCopyButton->setObjectName(QStringLiteral("runtimeDiagnosticsCopyButton"));
     runtimeForm->addRow(QString::fromUtf8("مسار Python"), runtimePythonPath);
     runtimeForm->addRow(QString::fromUtf8("حزمة لغة الثعبان"), runtimePackageStatus);
     runtimeForm->addRow(QString::fromUtf8("تشغيل .apy"), runtimeRunStatus);
     runtimeForm->addRow(QString::fromUtf8("الفحص"), runtimeLintStatus);
     runtimeForm->addRow(QString::fromUtf8("التنسيق"), runtimeFormatStatus);
+    runtimeForm->addRow(QString(), runtimeDiagnosticsCopyButton);
+
+    auto runtimeDiagnosticsText = [runtimePythonPath,
+                                   runtimePackageStatus,
+                                   runtimeRunStatus,
+                                   runtimeLintStatus,
+                                   runtimeFormatStatus]() {
+        return QStringList {
+            QString::fromUtf8("مسار Python المضمن: %1").arg(runtimePythonPath->text()),
+            QString::fromUtf8("جاهزية lughat-althuban: %1").arg(runtimePackageStatus->text()),
+            QString::fromUtf8("تشغيل .apy: %1").arg(runtimeRunStatus->text()),
+            QString::fromUtf8("الفحص: %1").arg(runtimeLintStatus->text()),
+            QString::fromUtf8("التنسيق: %1").arg(runtimeFormatStatus->text()),
+        }.join(QLatin1Char('\n'));
+    };
+    connect(runtimeDiagnosticsCopyButton, &QPushButton::clicked, this, [this, runtimeDiagnosticsText]() {
+        if (QApplication::clipboard()) {
+            QApplication::clipboard()->setText(runtimeDiagnosticsText());
+            setStatus(QString::fromUtf8("تم نسخ تشخيصات التشغيل"));
+        }
+    });
 
     auto applyRuntimeDiagnostics = [this,
                                     orderedFamilies,
@@ -5295,11 +5360,18 @@ bool MainWindow::confirmUnsavedDocuments(UnsavedChangesOperation operation)
         return true;
     }
 
-    const auto answer = QMessageBox::question(
-        this,
-        request.title,
-        request.message,
-        QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel);
+    QMessageBox box(this);
+    box.setLayoutDirection(Qt::RightToLeft);
+    box.setIcon(QMessageBox::Warning);
+    box.setWindowTitle(request.title);
+    box.setText(request.message);
+    box.setStandardButtons(QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel);
+    box.setDefaultButton(QMessageBox::Cancel);
+    box.button(QMessageBox::Save)->setText(QString::fromUtf8("حفظ"));
+    box.button(QMessageBox::Discard)->setText(QString::fromUtf8("تجاهل"));
+    box.button(QMessageBox::Cancel)->setText(QString::fromUtf8("إلغاء"));
+    box.exec();
+    const auto answer = box.standardButton(box.clickedButton());
 
     if (answer == QMessageBox::Cancel) {
         return false;

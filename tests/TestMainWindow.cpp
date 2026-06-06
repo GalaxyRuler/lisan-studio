@@ -92,6 +92,7 @@ private slots:
     void mainWindowOpenFileRegistersDocument();
     void mainWindowSaveMarksRegistryClean();
     void mainWindowConfirmUnsavedConsultsRegistry();
+    void closingDirtyTabCancelKeepsTabOpenAndShowsArabicChoices();
     void documentChangePromptReloadsExternallyModifiedOpenFile();
     void documentChangePromptKeepsCurrentBufferDirty();
     void projectTreeShowsOnlyFileNames();
@@ -141,6 +142,9 @@ private slots:
     void rerunLastRuntimeActionReusesLastLaunchPlan();
     void settingsDialogExposesCategoriesAndRuntimeDiagnostics();
     void settingsDialogOpensBeforeRuntimeDiagnosticsCompletes();
+    void settingsDialogShowsArabicFontPreview();
+    void settingsDialogCopiesRuntimeDiagnosticsToClipboard();
+    void settingsDialogResetDefaultsRestoresEditorFontSizeAndTheme();
     void settingsDialogAppliesEditorFontVisibly();
     void settingsDialogPersistsThemePreference();
     void settingsDialogEditsSelectedShortcutBinding();
@@ -2198,6 +2202,65 @@ void TestMainWindow::mainWindowConfirmUnsavedConsultsRegistry()
     QVERIFY(!allowed);
 }
 
+void TestMainWindow::closingDirtyTabCancelKeepsTabOpenAndShowsArabicChoices()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    QDir root(temp.path());
+    const QString filePath = writeFile(root, QStringLiteral("dirty-close.apy"), QString::fromUtf8("عدد = 1\n"));
+
+    MainWindow window;
+    QVERIFY(window.openPath(filePath));
+
+    auto *tabs = window.findChild<QTabWidget *>(QStringLiteral("editorTabs"));
+    auto *editor = window.findChild<EditorSurface *>(QStringLiteral("editorSurface"));
+    QVERIFY(tabs != nullptr);
+    QVERIFY(editor != nullptr);
+
+    editor->moveCursor(QTextCursor::End);
+    editor->insertPlainText(QString::fromUtf8("اطبع(عدد)\n"));
+    QTRY_COMPARE(tabs->tabText(0), QStringLiteral("*dirty-close.apy"));
+
+    bool closeFinished = false;
+    bool closeAllowed = true;
+    QString failure;
+    QTimer::singleShot(0, &window, [&window, &closeFinished, &closeAllowed]() {
+        closeAllowed = window.requestCloseEditorTab(0);
+        closeFinished = true;
+    });
+    QTimer::singleShot(150, &window, [&failure]() {
+        auto *box = qobject_cast<QMessageBox *>(QApplication::activeModalWidget());
+        if (!box) {
+            failure = QStringLiteral("dirty tab close prompt did not open");
+            return;
+        }
+
+        QPushButton *cancelButton = nullptr;
+        bool sawSave = false;
+        bool sawDiscard = false;
+        for (auto *button : box->findChildren<QPushButton *>()) {
+            sawSave = sawSave || button->text() == QString::fromUtf8("حفظ");
+            sawDiscard = sawDiscard || button->text() == QString::fromUtf8("تجاهل");
+            if (button->text() == QString::fromUtf8("إلغاء")) {
+                cancelButton = button;
+            }
+        }
+        if (!sawSave || !sawDiscard || !cancelButton) {
+            failure = QStringLiteral("dirty tab prompt choices were not Arabic");
+            box->reject();
+            return;
+        }
+        cancelButton->click();
+    });
+
+    QTRY_VERIFY2(closeFinished, qPrintable(failure));
+    QVERIFY2(failure.isEmpty(), qPrintable(failure));
+    QVERIFY(!closeAllowed);
+    QCOMPARE(tabs->count(), 1);
+    QCOMPARE(tabs->tabText(0), QStringLiteral("*dirty-close.apy"));
+    QVERIFY(editor->isDirty());
+}
+
 void TestMainWindow::documentChangePromptReloadsExternallyModifiedOpenFile()
 {
     QTemporaryDir temp;
@@ -3787,6 +3850,152 @@ void TestMainWindow::settingsDialogOpensBeforeRuntimeDiagnosticsCompletes()
 
     QTRY_VERIFY2(openedBeforeDiagnostics, qPrintable(failure));
     QTRY_VERIFY2(observedFinishedDiagnostics, qPrintable(failure));
+}
+
+void TestMainWindow::settingsDialogShowsArabicFontPreview()
+{
+    MainWindow window;
+    bool inspected = false;
+    QString failure;
+
+    QTimer::singleShot(0, &window, [&window]() {
+        QMetaObject::invokeMethod(&window, "openSettings", Qt::DirectConnection);
+    });
+    QTimer::singleShot(150, &window, [&inspected, &failure]() {
+        auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+        if (!dialog) {
+            failure = QStringLiteral("settings dialog did not open");
+            return;
+        }
+
+        auto *fontFamily = dialog->findChild<QComboBox *>(QStringLiteral("editorFontFamilyCombo"));
+        auto *fontSize = dialog->findChild<QSpinBox *>(QStringLiteral("editorFontSizeInput"));
+        auto *preview = dialog->findChild<QLabel *>(QStringLiteral("editorFontPreviewLabel"));
+        inspected = true;
+        if (!fontFamily || !fontSize || !preview) {
+            failure = QStringLiteral("font preview controls missing");
+            dialog->reject();
+            return;
+        }
+
+        const int targetIndex = qMin(1, fontFamily->count() - 1);
+        QVERIFY(targetIndex >= 0);
+        fontFamily->setCurrentIndex(targetIndex);
+        fontSize->setValue(19);
+
+        if (!preview->text().contains(QString::fromUtf8("اللغة العربية"))) {
+            failure = QStringLiteral("font preview does not show an Arabic sample");
+        } else if (!preview->styleSheet().contains(fontFamily->currentText())) {
+            failure = QStringLiteral("font preview did not use selected family");
+        } else if (!preview->styleSheet().contains(QStringLiteral("font-size: 19pt"))) {
+            failure = QStringLiteral("font preview did not use selected size");
+        }
+        dialog->reject();
+    });
+
+    QTRY_VERIFY2(inspected, qPrintable(failure));
+    QVERIFY2(failure.isEmpty(), qPrintable(failure));
+}
+
+void TestMainWindow::settingsDialogCopiesRuntimeDiagnosticsToClipboard()
+{
+    MainWindow window;
+    window.runtimeDiagnosticsProvider = [](int) {
+        RuntimeDiagnostics diagnostics;
+        diagnostics.pythonExecutable = QStringLiteral("C:/Lisan/runtime/python/python.exe");
+        diagnostics.pythonExists = true;
+        diagnostics.packageAvailable = true;
+        diagnostics.packageVersion = QStringLiteral("9.8.7");
+        diagnostics.runModuleAvailable = true;
+        diagnostics.lintModuleAvailable = false;
+        diagnostics.formatModuleAvailable = true;
+        diagnostics.statusText = QString::fromUtf8("جاهز: lughat-althuban 9.8.7");
+        return diagnostics;
+    };
+
+    QVERIFY(QApplication::clipboard() != nullptr);
+    QApplication::clipboard()->clear();
+
+    bool copied = false;
+    QString failure;
+    QTimer::singleShot(0, &window, [&window]() {
+        QMetaObject::invokeMethod(&window, "openSettings", Qt::DirectConnection);
+    });
+    QTimer::singleShot(300, &window, [&copied, &failure]() {
+        auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+        if (!dialog) {
+            failure = QStringLiteral("settings dialog did not open");
+            return;
+        }
+
+        auto *copyButton = dialog->findChild<QPushButton *>(QStringLiteral("runtimeDiagnosticsCopyButton"));
+        if (!copyButton) {
+            failure = QStringLiteral("runtime diagnostics copy button missing");
+            dialog->reject();
+            return;
+        }
+        copyButton->click();
+
+        const QString clipboardText = QApplication::clipboard()->text();
+        if (!clipboardText.contains(QStringLiteral("C:/Lisan/runtime/python/python.exe"))
+            && !clipboardText.contains(QStringLiteral("C:\\Lisan\\runtime\\python\\python.exe"))) {
+            failure = QStringLiteral("copied diagnostics omitted bundled Python path");
+        } else if (!clipboardText.contains(QStringLiteral("lughat-althuban 9.8.7"))) {
+            failure = QStringLiteral("copied diagnostics omitted lughat-althuban readiness");
+        } else if (!clipboardText.contains(QString::fromUtf8("تشغيل .apy: جاهز"))) {
+            failure = QStringLiteral("copied diagnostics omitted run readiness");
+        } else {
+            copied = true;
+        }
+        dialog->reject();
+    });
+
+    QTRY_VERIFY2(copied, qPrintable(failure));
+    QVERIFY2(failure.isEmpty(), qPrintable(failure));
+}
+
+void TestMainWindow::settingsDialogResetDefaultsRestoresEditorFontSizeAndTheme()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    const QString settingsPath = temp.filePath(QStringLiteral("settings.ini"));
+    SettingsStore store(settingsPath);
+    store.setEditorFontFamily(QStringLiteral("Arial"));
+    store.setEditorFontSize(22);
+    store.setThemePreference(QStringLiteral("light"));
+
+    MainWindow window(nullptr, settingsPath);
+    bool reset = false;
+    QString failure;
+    QTimer::singleShot(0, &window, [&window]() {
+        QMetaObject::invokeMethod(&window, "openSettings", Qt::DirectConnection);
+    });
+    QTimer::singleShot(150, &window, [&reset, &failure]() {
+        auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+        if (!dialog) {
+            failure = QStringLiteral("settings dialog did not open");
+            return;
+        }
+
+        auto *resetButton = dialog->findChild<QPushButton *>(QStringLiteral("settingsResetDefaultsButton"));
+        auto *buttons = dialog->findChild<QDialogButtonBox *>();
+        if (!resetButton || !buttons) {
+            failure = QStringLiteral("settings reset defaults controls missing");
+            dialog->reject();
+            return;
+        }
+
+        resetButton->click();
+        buttons->button(QDialogButtonBox::Ok)->click();
+        reset = true;
+    });
+
+    QTRY_VERIFY2(reset, qPrintable(failure));
+    QVERIFY2(failure.isEmpty(), qPrintable(failure));
+    QCOMPARE(SettingsStore(settingsPath).editorFontFamily(), QStringLiteral("Segoe UI"));
+    QCOMPARE(SettingsStore(settingsPath).editorFontSize(), 12);
+    QCOMPARE(SettingsStore(settingsPath).themePreference(), QStringLiteral("dark"));
+    QCOMPARE(window.property("themePreference").toString(), QStringLiteral("dark"));
 }
 
 void TestMainWindow::settingsDialogAppliesEditorFontVisibly()

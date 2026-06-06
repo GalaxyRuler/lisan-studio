@@ -22,6 +22,8 @@ private slots:
     void projectTreeControllerEmitsOpenRequestOnDoubleClick();
     void projectTreeControllerRenameEmitsPathRenamedAndUpdatesDisk();
     void projectTreeControllerDeleteEmitsPathDeletedAndRemovesFromDisk();
+    void projectTreeControllerNewFileActionCreatesFileAndRequestsOpen();
+    void projectTreeControllerNewFolderActionCreatesFolderAndRefreshes();
     void projectTreeControllerCurrentSelectionPathReturnsAbsolutePath();
 };
 
@@ -134,6 +136,65 @@ void TestProjectTreeController::projectTreeControllerDeleteEmitsPathDeletedAndRe
     QCOMPARE(deletedSpy.count(), 1);
     QCOMPARE(QDir::toNativeSeparators(deletedSpy.takeFirst().at(0).toString()), QDir::toNativeSeparators(filePath));
     QVERIFY(!QFileInfo::exists(filePath));
+}
+
+void TestProjectTreeController::projectTreeControllerNewFileActionCreatesFileAndRequestsOpen()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    QDir root(temp.path());
+
+    QTreeView tree;
+    QFileSystemModel model;
+    ProjectTreeController controller(&tree, &model);
+    controller.setProjectRoot(root.absolutePath());
+    QSignalSpy openSpy(&controller, &ProjectTreeController::openPathRequested);
+
+    tree.setCurrentIndex(waitForIndex(model, root.absolutePath()));
+    auto *newFileAction = controller.findChild<QAction *>(QStringLiteral("projectTreeNewFileAction"));
+    QVERIFY(newFileAction != nullptr);
+
+    QTimer::singleShot(0, []() {
+        auto *dialog = qobject_cast<QInputDialog *>(QApplication::activeModalWidget());
+        QVERIFY(dialog != nullptr);
+        dialog->setTextValue(QStringLiteral("created.apy"));
+        dialog->accept();
+    });
+    newFileAction->trigger();
+
+    const QString createdPath = root.filePath(QStringLiteral("created.apy"));
+    QVERIFY(QFileInfo::exists(createdPath));
+    QCOMPARE(openSpy.count(), 1);
+    QCOMPARE(QDir::toNativeSeparators(openSpy.takeFirst().at(0).toString()), QDir::toNativeSeparators(createdPath));
+    QVERIFY(waitForIndex(model, createdPath).isValid());
+}
+
+void TestProjectTreeController::projectTreeControllerNewFolderActionCreatesFolderAndRefreshes()
+{
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    QDir root(temp.path());
+
+    QTreeView tree;
+    QFileSystemModel model;
+    ProjectTreeController controller(&tree, &model);
+    controller.setProjectRoot(root.absolutePath());
+
+    tree.setCurrentIndex(waitForIndex(model, root.absolutePath()));
+    auto *newFolderAction = controller.findChild<QAction *>(QStringLiteral("projectTreeNewFolderAction"));
+    QVERIFY(newFolderAction != nullptr);
+
+    QTimer::singleShot(0, []() {
+        auto *dialog = qobject_cast<QInputDialog *>(QApplication::activeModalWidget());
+        QVERIFY(dialog != nullptr);
+        dialog->setTextValue(QString::fromUtf8("مجلد-اختبار"));
+        dialog->accept();
+    });
+    newFolderAction->trigger();
+
+    const QString createdPath = root.filePath(QString::fromUtf8("مجلد-اختبار"));
+    QVERIFY(QFileInfo(createdPath).isDir());
+    QVERIFY(waitForIndex(model, createdPath).isValid());
 }
 
 void TestProjectTreeController::projectTreeControllerCurrentSelectionPathReturnsAbsolutePath()
