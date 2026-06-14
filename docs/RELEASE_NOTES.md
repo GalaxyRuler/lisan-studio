@@ -357,8 +357,8 @@ V1.5 shipped across two cumulative release tracks during May 2026:
 
 - Native Qt 6 desktop shell.
 - Lisan Studio app branding and bundled logo resource.
-- Premium dark visual system based on the accepted Claude design.
-- Custom RTL Claude-design single top shell with integrated menus, primary run action, and unified command/search field.
+- Premium dark visual system.
+- Custom RTL single top shell with integrated menus, primary run action, and unified command/search field.
 - Integrated dropdown menus for file, edit, view, tools, and help.
 - Primary run and command/search are single top-bar entry points to avoid duplicate run/search surfaces.
 - No inherited `QMenuBar` or `QToolBar` shell surface.
@@ -383,7 +383,7 @@ V1.5 shipped across two cumulative release tracks during May 2026:
 
 ## Validation Status
 
-- Automated Homelab MSI/GUI/release evidence lane passed inside `LisanStudio-QA`.
+- Automated MSI/GUI/release evidence lane passed inside an isolated Windows QA environment.
 - Manual installed-app QA is complete.
 - Private beta handoff decision: ready; previously recorded non-blocking polish
   notes are resolved in the current codebase.

@@ -1,8 +1,8 @@
 param(
     [string]$ProductVersion = "0.1.0",
     [string]$ReleaseLabel = "0.1.0-beta",
-    [string]$ApythonRoot = "C:\Users\Admin\apython",
-    [string]$PythonRoot = "C:\Users\Admin\AppData\Local\Programs\Python\Python313",
+    [string]$ApythonRoot = "",
+    [string]$PythonRoot = "",
     [string]$BashPath = "C:\msys64\usr\bin\bash.exe",
     [string]$WindeployQtPath = "C:\msys64\ucrt64\bin\windeployqt6.exe",
     [string]$WixPath = "C:\Program Files\WiX Toolset v7.0\bin\wix.exe",
@@ -17,7 +17,7 @@ $ErrorActionPreference = "Stop"
 
 $repo = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 if (-not $SourceMetadataPath) {
-    $SourceMetadataPath = Join-Path $repo ".codex\source-metadata.json"
+    $SourceMetadataPath = Join-Path $repo "artifacts\source-metadata.json"
 }
 if (-not $WorkspaceRoot) { $WorkspaceRoot = $repo }
 $releaseDir = Join-Path $repo "artifacts\release\$ReleaseLabel"
@@ -241,11 +241,11 @@ $knownIssuesPath = Join-Path $releaseDir "KNOWN_ISSUES.md"
 @"
 # Lisan Studio $ReleaseLabel Known Issues
 
-- Private beta only; no public distribution yet.
-- Deferred features: Git UI, AI panel, auto-update, and plugin system are not included in this beta.
+- Pre-release installer; public availability depends on the matching GitHub Release carrying an MSI asset.
+- Deferred features: 3-way merge, PR review, extensions, auto-update, and plugin marketplace are not included in this release.
 - Manual QA is not complete until the installed-app checklist is recorded.
 - Manual Arabic editor torture validation is still required before tagging.
-- `windeployqt6` may warn that Qt translations and DirectX shader compiler DLLs are unavailable in this local toolchain; these are tracked as non-blocking for the current private beta smoke.
+- `windeployqt6` may warn that Qt translations and DirectX shader compiler DLLs are unavailable in a local toolchain; these are tracked as non-blocking when the installed smoke still passes.
 "@ | Set-Content -LiteralPath $knownIssuesPath -Encoding UTF8
 
 $gitCommit = 'unavailable'
@@ -310,12 +310,12 @@ $validationLines = @(
     "",
     "## Handoff Summary",
     "",
-    "This evidence bundle is the automated private beta handoff record for the Lisan Studio MSI. It proves the package, MSI smoke, installed runtime smoke, checksum, and screenshot flow completed, but it does not claim that human manual QA is complete.",
+    "This evidence bundle is the automated release-candidate record for the Lisan Studio MSI. It proves the package, MSI smoke, installed runtime smoke, checksum, and screenshot flow completed, but it does not claim that human manual QA is complete.",
     "",
     "## Isolation And Runner Boundary",
     "",
-    "- GUI, MSI, installed-app, and release-evidence validation runs through the project's GitHub Actions workflow ``.github/workflows/msi-tests.yml`` against the self-hosted runner registered inside the LisanStudio-QA Hyper-V VM. Homelab provisions the runner and snapshot baselines via ``Install-CodexGhaRunner.ps1`` and ``Reset-CodexVmBaseline.ps1``; orchestration itself lives in this repo.",
-    "- Do not use active WHITEDRAGON for GUI automation, MSI install/uninstall, installed-app validation, registry mutation, or destructive validation.",
+    "- GUI, MSI, installed-app, and release-evidence validation runs through the project's GitHub Actions workflow ``.github/workflows/msi-tests.yml`` against an isolated Windows QA environment.",
+    "- Do not use an active work desktop for GUI automation, MSI install/uninstall, installed-app validation, registry mutation, or destructive validation unless that machine is the intended validation target.",
     "- Destructive operations require a ``workflow_dispatch`` trigger with explicit scenario selection. Per-step logs in the GHA run are the canonical operator evidence; this evidence bundle complements them by capturing the package, MSI smoke, installed runtime smoke, checksums, and screenshot artifacts.",
     "",
     "## Automated Validation Completed",
@@ -347,11 +347,11 @@ $validationLines = @(
     "",
     "## Deferred Features",
     "",
-    "- Git UI",
-    "- AI panel",
-    "- public distribution",
+    "- 3-way merge",
+    "- PR review",
+    "- extensions",
     "- auto-update",
-    "- plugin system",
+    "- plugin marketplace",
     "",
     "## Installed Product State",
     "",

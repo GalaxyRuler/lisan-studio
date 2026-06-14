@@ -79,7 +79,7 @@ to debug session state rather than always hijacking editor shortcuts.
 - Debugger tests should use a mock DAP server for protocol handshake and
   state-machine coverage before any live debugpy smoke.
 - GUI/MSI/installed-app debugger validation remains in the isolated
-  `LisanStudio-QA` Homelab lane, not on active WHITEDRAGON.
+  isolated Windows QA lane, not on an active work desktop.
 
 ## Verification
 

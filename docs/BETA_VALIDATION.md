@@ -1,45 +1,48 @@
-# Lisan Studio Beta Validation
+# Lisan Studio Validation
 
-This file tracks the private beta gate for the installed Windows application.
-Run validation from the installed app, not only from the build tree.
+This file describes the validation gates for installed Windows builds. It is
+packaged into release artifacts so users and reviewers can see what a release is
+expected to prove.
 
-## Current 0.1.0-beta Status
+## Local Source Gate
 
-Status: ready for private beta handoff with previously recorded polish notes
-resolved in the current codebase.
-
-Completed gates:
-
-- Homelab MSI/GUI/release evidence lane passed inside `LisanStudio-QA`.
-- Active `WHITEDRAGON` was not used for GUI/MSI validation.
-- Human installed-app manual QA checklist was completed.
-- Installer reinstall check passed from the VM desktop MSI:
-  `C:\Users\Public\Desktop\LisanStudio-0.1.0-beta.msi`.
-- Latest polish-closure Homelab report:
-  `C:\Users\Admin\Documents\Codex\Homelab\codex-isolated-test-runners\tools\codex-runner\artifacts\homelab-runtime-lane-20260516T015105\homelab-runtime-lane-report.json`.
-
-Resolved reviewer notes:
-
-- Launch: normal app launch is configured as a Windows GUI executable so it
-  does not open a command window.
-- Editing: right-click Undo/Redo menu actions are Lisan-owned actions and
-  trigger the same editor commands as keyboard shortcuts.
-- Search: result file text and line metadata are kept in a guarded RTL metadata
-  cluster.
-- Problems panel: diagnostic subtext is right-anchored under the metadata row.
-
-These fixes must still be preserved by the local Qt tests and the Homelab
-`LisanStudio-QA` MSI/GUI/release-evidence lane before a refreshed handoff build
-is treated as final.
-
-## Automated Gate
+Run from the repository root:
 
 ```powershell
 .\scripts\validate.ps1
-.\scripts\package.ps1
+```
+
+This configures the Release build, builds the app and tests, and runs CTest with
+Qt in offscreen mode.
+
+## Package Gate
+
+Build a release candidate MSI:
+
+```powershell
+.\scripts\package.ps1 `
+  -ProductVersion 1.0.0 `
+  -ApythonRoot "<path-to-lughat-althuban>" `
+  -PythonRoot "<path-to-python-3.13-runtime>"
+```
+
+The packaging gate verifies:
+
+- `LisanStudio.exe` is staged.
+- Qt runtime files are deployed.
+- Python runtime is bundled under `runtime\python`.
+- `lughat-althuban` and `debugpy` are copied into the staged runtime.
+- Editable/local runtime markers are absent.
+- License payloads are present.
+- The MSI and signing-status evidence are written under `artifacts\`.
+
+## Installed-App Gate
+
+Run only in an isolated Windows QA environment or on a machine where installing
+and uninstalling Lisan Studio is intended:
+
+```powershell
 .\scripts\installed-smoke.ps1
-.\scripts\msi-smoke.ps1
-.\scripts\release-evidence.ps1
 ```
 
 The installed smoke script verifies:
@@ -51,91 +54,77 @@ The installed smoke script verifies:
 - Arabic output is decoded as UTF-8
 - the app can launch with a project path
 - the app can launch with a file path
-- the bundled runtime has no editable local `apython` markers
+- the bundled runtime has no editable local source markers
+
+## MSI Gate
+
+Run only in an isolated Windows QA environment or on a machine where MSI
+mutation is intended:
+
+```powershell
+.\scripts\msi-smoke.ps1
+```
 
 The MSI smoke script verifies:
 
-- silent MSI install from `artifacts\LisanStudio-0.1.0-beta.msi`
-- pre-clean of older local Lisan Studio MSI products
+- silent MSI install
 - installed payload under `%LOCALAPPDATA%\LisanStudio`
 - Start Menu and Desktop shortcuts
 - packaged README, release notes, validation notes, and license files
 - Qt, Python, and `lughat-althuban` license payloads
 - installed runtime smoke through `scripts\installed-smoke.ps1`
 - silent MSI uninstall removes the app executable and shortcuts
-- same-version beta MSI rebuilds can replace older local beta installs
 
-The release evidence script produces:
-
-- `artifacts\release\0.1.0-beta\VALIDATION_LOG.md`
-- `artifacts\release\0.1.0-beta\CHECKSUMS-SHA256.txt`
-- `artifacts\release\0.1.0-beta\KNOWN_ISSUES.md`
-- `artifacts\release\0.1.0-beta\screenshots\main-window.png`
-
-To generate a human manual QA checklist from an existing release evidence
-bundle without launching the app or installing the MSI, run:
+Upgrade validation:
 
 ```powershell
-.\scripts\beta-manual-check.ps1
+.\scripts\msi-upgrade-smoke.ps1 `
+  -EarlierMsiPath "<old-msi>" `
+  -ReplacementMsiPath "<new-msi>" `
+  -ExpectedEarlierVersion "<old-version>" `
+  -ExpectedReplacementVersion "<new-version>" `
+  -AllowMutation `
+  -IUnderstandThisRunsMsiUpgrade
 ```
 
-The checklist is written under `artifacts\beta-manual-check\` and starts with
-`ManualQaStatus` set to `NotStarted`. Human reviewers should use the generated
-professionally formatted `manual-beta-qa.docx` review packet first; the Markdown
-and JSON files are kept for diffable traceability. Automated evidence does not
-mean the manual installed-app pass is complete.
+## GitHub Actions Gate
 
-The automated Qt editor torture tests verify:
+Maintainers can run the full MSI gate through a self-hosted Windows runner:
 
-- Lisan Studio branding and bundled logo resource
-- single custom RTL Claude-design top command bar with integrated menu dropdowns
-- no inherited `QMenuBar` or `QToolBar` shell surface
-- top shell follows the accepted Claude design: one integrated menu/run/command row
-- brand row includes the logo and `Lisan Studio` text as one product block
-- primary run is the only visible top-row action; stop, save, search, command palette, settings, lint, and format remain available through menus/shortcuts
-- RTL editor tabs, project sidebar, bottom panel tabs, output panel, Problems panel, search results panel, and status bar
-- bottom panel tab order: terminal, output, problems, search results, debug
-- mixed Arabic/English text preservation
-- UTF-8 save and reopen behavior
-- hidden BiDi control detection
-- syntax spans for Arabic keywords, strings, comments, and numbers
-- selection, copy, paste, undo, redo, backspace, and delete around mixed text
-- logical cursor traversal across a long mixed-direction line
-- line-number gutter visibility and width scaling
-- editor tab creation, tab switching, and current-document path tracking
-- clickable project search rows open the matching file at the result line
-- Problems panel lists hidden BiDi controls with file and line data
-- run-tool feedback with command title, file path, working directory, exit code, and cancel action
-- Settings opens as a real RTL dialog with editor, runtime, and recent-project categories
-- runtime diagnostics report bundled Python path and `lughat-althuban` readiness
-- output feedback selects the output tab even though the bottom panel defaults to terminal
-
-## Manual Gate
-
-Use the installed app for these checks. The sample project is:
-
-```text
-samples\torture-project
+```powershell
+gh workflow run msi-tests.yml -f scenario=full
 ```
+
+The workflow lives at `.github\workflows\msi-tests.yml` and uploads MSI,
+install, and upgrade evidence artifacts.
+
+## Manual QA Gate
+
+Use the installed app for these checks:
 
 - launch from the Start Menu
-- open a real `.apy` folder
-- verify the shell title and single top command bar match the Claude design direction, with no extra native menu row
-- verify Start Menu/Desktop shortcuts launch Lisan Studio, not an old ArabicCodeStudioQt install
-- verify the project sidebar, editor tabs, and bottom panel are RTL
+- launch from the Desktop shortcut
+- open `samples\torture-project`
+- verify the shell, project sidebar, editor tabs, bottom panel, and status bar are RTL
 - open, edit, save, close, and reopen a mixed Arabic/English file
-- open two files and verify each stays available in its own editor tab
-- verify cursor movement across Arabic identifiers, English names, numbers, operators, and Windows paths
+- verify cursor movement across Arabic identifiers, English names, numbers,
+  operators, and Windows paths
 - verify selection, copy, paste, undo, redo, backspace, and delete near Arabic text
 - search the project and open a result from the search-results tab
 - insert a hidden BiDi control into a scratch file and confirm the Problems panel reports it
-- run the current `.apy` file and confirm stdout/stderr, exit code, elapsed time, and cancel behavior are readable
+- run the current `.apy` file and confirm stdout/stderr, exit code, elapsed time,
+  and cancel behavior are readable
 - open Settings, verify runtime diagnostics, change the editor font setting, and reopen the app
 - uninstall and confirm app payload files and shortcuts are removed
-- reinstall from the same beta MSI without manual PATH or Python setup
-- confirm user settings under the Qt app config location are not treated as MSI payload
+- reinstall without manual PATH or Python setup
 
-## Blockers
+Generate a manual QA packet from existing evidence:
+
+```powershell
+.\scripts\beta-manual-check.ps1 -ReleaseLabel "1.0.0-beta"
+```
+
+## Release Blockers
 
 - cursor or selection corruption
 - Arabic output mojibake
@@ -145,6 +134,6 @@ samples\torture-project
 - missing Qt, Python, or `lughat-althuban` license payloads
 - hidden BiDi controls inserted by the editor
 - visible placeholder UI
-- any return of a native `QMenuBar` or `QToolBar` shell surface
-- left-to-right shell regression in top command bar menus, project/sidebar, tabs, status bar, or bottom panel
+- left-to-right shell regression in the top command bar, project/sidebar, tabs,
+  status bar, or bottom panel
 - crash on open, save, run, launch, or close

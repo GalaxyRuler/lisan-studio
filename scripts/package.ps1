@@ -1,8 +1,8 @@
 param(
     [Parameter()]
-    [string]$ApythonRoot = "C:\Users\Admin\apython",
+    [string]$ApythonRoot = "",
     [Parameter()]
-    [string]$PythonRoot = "C:\Users\Admin\AppData\Local\Programs\Python\Python313",
+    [string]$PythonRoot = "",
     [string]$DebugpySourceSitePackages = "",
     [string]$Configuration = "Release",
     [string]$ProductVersion = "0.1.0",
@@ -26,6 +26,28 @@ function Convert-ToMsysPath {
     $drive = $resolved.Substring(0, 1).ToLowerInvariant()
     $rest = $resolved.Substring(2).Replace('\', '/')
     return "/$drive$rest"
+}
+
+function Resolve-PackagingInputPath {
+    param(
+        [Parameter(Mandatory = $true)][string]$Name,
+        [string]$ExplicitPath,
+        [string]$EnvironmentVariableName,
+        [string]$FallbackPath
+    )
+
+    $candidate = $ExplicitPath
+    if ([string]::IsNullOrWhiteSpace($candidate) -and -not [string]::IsNullOrWhiteSpace($EnvironmentVariableName)) {
+        $candidate = [Environment]::GetEnvironmentVariable($EnvironmentVariableName)
+    }
+    if ([string]::IsNullOrWhiteSpace($candidate)) {
+        $candidate = $FallbackPath
+    }
+    if ([string]::IsNullOrWhiteSpace($candidate) -or -not (Test-Path -LiteralPath $candidate)) {
+        throw "$Name not found. Pass -$Name or set $EnvironmentVariableName."
+    }
+
+    return (Resolve-Path -LiteralPath $candidate).Path
 }
 
 function Invoke-NativeToolAllowingStderr {
@@ -337,6 +359,7 @@ function Invoke-MsiAuthenticodeSigning {
 }
 
 $repo = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+$repoParent = Split-Path -Parent $repo
 $stage = Join-Path $repo "stage"
 $artifacts = Join-Path $repo "artifacts"
 $build = Join-Path $repo "build"
@@ -359,6 +382,17 @@ if (-not [string]::IsNullOrWhiteSpace($env:LISAN_TIMESTAMP_URL)) {
     $TimestampServer = $env:LISAN_TIMESTAMP_URL
 }
 
+$ApythonRoot = Resolve-PackagingInputPath `
+    -Name "ApythonRoot" `
+    -ExplicitPath $ApythonRoot `
+    -EnvironmentVariableName "LISAN_APYTHON_ROOT" `
+    -FallbackPath (Join-Path $repoParent "lughat-althuban")
+$PythonRoot = Resolve-PackagingInputPath `
+    -Name "PythonRoot" `
+    -ExplicitPath $PythonRoot `
+    -EnvironmentVariableName "LISAN_PYTHON_ROOT" `
+    -FallbackPath (Join-Path $env:LOCALAPPDATA "Programs\Python\Python313")
+
 if ([string]::IsNullOrWhiteSpace($BuildId)) {
     $gitBuildId = ""
     try {
@@ -379,8 +413,6 @@ if ([string]::IsNullOrWhiteSpace($BuildId)) {
 
 if (-not (Test-Path $bash)) { throw "MSYS2 bash not found: $bash" }
 if (-not (Test-Path $windeployqt)) { throw "windeployqt6 not found: $windeployqt" }
-if (-not (Test-Path $ApythonRoot)) { throw "ApythonRoot not found: $ApythonRoot" }
-if (-not (Test-Path $PythonRoot)) { throw "PythonRoot not found: $PythonRoot" }
 if (-not (Test-Path $qtLicenseRoot)) { throw "Qt license folder not found: $qtLicenseRoot" }
 
 & (Join-Path $PSScriptRoot "validate.ps1") -BashPath $bash

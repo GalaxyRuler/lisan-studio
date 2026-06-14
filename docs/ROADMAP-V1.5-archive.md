@@ -100,4 +100,4 @@ Column / box selection deferred to slice 10. IME multi-cursor deferred to V2.
 - **Updating this doc:** when a slice lands, mark it done with the tag (or "merged via PUSH" for non-release slices) and the SHA. When V1.5 closes, retitle to `docs/ROADMAP-V1.5-archive.md` and create the V2 roadmap.
 - **Auditing against current state:** cross-reference slice goals against the V1.1-beta KNOWN_ISSUES.md, the v0.1.1-beta release page, and the current `MainWindow.cpp` line count.
 ---
-*Composed 2026-05-23 by Claude (strategy/audit) after a grill pass on the first draft. Slice prompts will be drafted per-slice when work begins.*
+*Composed 2026-05-23 after a review pass on the first draft.*

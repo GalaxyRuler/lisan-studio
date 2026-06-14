@@ -1,74 +1,72 @@
 # Public Release Readiness
 
-Status date: 2026-06-05
+Status date: 2026-06-14
 
-This file tracks the remaining gates between the in-repo V2 public-use
-candidate and a public release. The canonical slice tracker remains
-`docs/V2-EXECUTION-PLAN.md`.
+This checklist tracks the gap between a source-ready repository and a public
+installer release.
 
 ## Current Candidate
 
-- Branch: `codex/v2-public-use`
-- Draft PR: <https://github.com/GalaxyRuler/lisan-studio/pull/9>
-- Release candidate: `v0.5.0-beta`
-- Local MSI: `artifacts/LisanStudio-0.5.0-beta.msi`
-- MSI size: 69,198,344 bytes
-- MSI SHA256: `982F6A12D8BACC24402163BC177A0FD6CEA0737740ACBF83ACFA22EC2E9AB298`
-- Signing status: `AuthenticodeStatus: NotSigned`, signer `None`
+- Repository: `GalaxyRuler/lisan-studio`
+- Default branch: `main`
+- Current source release: `v1.0.0-rc1`
+- Release page: <https://github.com/GalaxyRuler/lisan-studio/releases/tag/v1.0.0-rc1>
+- GitHub visibility at last check: private
+- `v1.0.0-rc1` release assets at last check: none
+- Self-hosted MSI runner at last check: offline
 
-## Gate Status
+## Source-Public Gate
+
+These gates must pass before switching repository visibility to public:
 
 | Gate | Status | Evidence / Next action |
 |---|---|---|
-| Source branch published | Done | `codex/v2-public-use` pushed to `origin` |
-| Draft PR opened | Done | PR #9: <https://github.com/GalaxyRuler/lisan-studio/pull/9> |
-| Local validation | Done | `./scripts/validate.ps1` passed 13/13 |
-| Local package validation | Done | `./scripts/package.ps1 -ProductVersion 0.5.0 ...` passed package-time validation 13/13 from commit `b206fe2` |
-| GitHub Actions MSI evidence | Pending | Replacement run <https://github.com/GalaxyRuler/lisan-studio/actions/runs/27009103229> is queued at head `4c608f8`; `lisanstudio-qa` self-hosted runner is currently offline |
-| Installed-app QA | Pending | Must run inside `LisanStudio-QA`; do not run GUI/MSI install or uninstall on active WHITEDRAGON |
-| Authenticode signing | Repo hook ready / external key pending | `scripts/package.ps1` supports optional thumbprint-based `signtool.exe` signing via `-SigningCertificateThumbprint` or `LISAN_SIGNING_CERT_THUMBPRINT`. A real OV/EV certificate, key storage, and CI secret/variable configuration remain external release gates |
-| Tag and GitHub release | Pending | Wait for PR review/merge, MSI evidence, signing decision, and operator release approval |
+| README explains product, install, build, use, validation, and security | Done | README updated for public readers |
+| Install docs do not rely on private beta packets | Done | `docs/INSTALLATION.md` rewritten for public setup |
+| Internal agent planning files removed from public tree | Done | Removed private workflow notes and local runner metadata from current tree |
+| Current-tree secret and private-marker scan | Done | High-confidence secret regexes: 0 hits; private-marker scan: 0 hits |
+| Git history high-confidence secret scan | Done | Private key, GitHub token, OpenAI key, AWS key, Google API key, Slack token patterns: 0 hits |
+| Git history private-marker scan | Blocked for direct public visibility | Old commits still contain private paths, machine names, and internal planning terms; use history rewrite or a fresh public mirror before changing visibility |
+| Build/test gate | Done | `.\scripts\validate.ps1` passed 14/14 CTest tests |
+| PowerShell QA gate | Done | 18/18 `qa/tests/*.ps1` scripts passed |
+| GitHub repo state verified | Done | Repo is private; `v1.0.0-rc1` release exists with no MSI assets; self-hosted MSI runner is offline |
 
-## Runner Evidence
+## Installer-Public Gate
 
-`gh api repos/GalaxyRuler/lisan-studio/actions/runners` reported the
-`lisanstudio-qa` runner as:
+These gates must pass before claiming that public users can install a release
+MSI directly from GitHub:
 
-```json
-{
-  "name": "lisanstudio-qa",
-  "status": "offline",
-  "busy": false,
-  "labels": ["self-hosted", "Windows", "X64", "lisanstudio-qa"]
-}
-```
+| Gate | Status | Evidence / Next action |
+|---|---|---|
+| MSI artifact exists for the release | Blocked | `v1.0.0-rc1` currently has no release assets |
+| MSI install smoke passed | Blocked | Requires online self-hosted Windows runner or approved isolated QA machine |
+| MSI upgrade smoke passed | Blocked | Requires online self-hosted Windows runner or approved isolated QA machine |
+| Signing decision is explicit | Open | Current ADR allows unsigned beta/RC builds; public GA should revisit signing |
+| Release notes name installer limitations | Open | Update when an MSI asset is attached |
 
-The full MSI workflow was dispatched with:
+## Public Security Checks
+
+Run these checks before making the repository public or attaching installer
+assets:
 
 ```powershell
-gh workflow run msi-tests.yml --repo GalaxyRuler/lisan-studio --ref codex/v2-public-use --field scenario=full
+git status -sb
+git ls-files | rg -n '(^|/)\.env|id_rsa|\.pem$|\.pfx$|\.key$|secret|token|credential|private'
+rg -n '<private-machine-name>|<absolute-private-path>|<private-runner-name>|<agent-planning-folder>' .
+.\scripts\validate.ps1
 ```
 
-Run URL: <https://github.com/GalaxyRuler/lisan-studio/actions/runs/27009103229>
+If available locally, also run a dedicated secret scanner such as Gitleaks or
+TruffleHog against both the working tree and Git history.
 
-## Operating Boundary
+## Visibility Change
 
-Homelab runner instructions require explicit operator approval before VM
-creation, VM start/stop, checkpointing, Hyper-V mutation, MSI install/uninstall,
-or GUI automation. Because the self-hosted runner is offline, the queued GitHub
-Actions run is the correct non-desktop handoff point until the operator brings
-`LisanStudio-QA` online or approves runner lifecycle work.
+Changing repository visibility is an owner action. Do not switch the repository
+to public until:
 
-## Signing Inputs
-
-The package script signs only when a certificate thumbprint is supplied. It
-does not accept, print, or commit private-key material.
-
-Expected release-run inputs:
-
-- `LISAN_SIGNING_CERT_THUMBPRINT`: secret containing the installed certificate
-  thumbprint.
-- `LISAN_SIGNTOOL_PATH`: optional repository/environment variable for a
-  non-default `signtool.exe` path.
-- `LISAN_TIMESTAMP_URL`: optional repository/environment variable, defaulting
-  locally to `http://timestamp.digicert.com`.
+1. source-public gates are complete,
+2. current-tree scans are clean or documented,
+3. Git history private-marker residue is removed, or a fresh public mirror is
+   created from the cleaned current tree, and
+4. the maintainer accepts any remaining unsigned-installer or missing-asset
+   limitations.

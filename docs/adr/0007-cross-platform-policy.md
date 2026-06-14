@@ -26,4 +26,4 @@ unless the file is explicitly packaging or Windows QA code.
 ## Verification
 
 Core tests should use Qt path/process APIs and temporary directories. Packaging
-and installed-app claims continue to require the Windows Homelab lane.
+and installed-app claims continue to require an isolated Windows QA lane.

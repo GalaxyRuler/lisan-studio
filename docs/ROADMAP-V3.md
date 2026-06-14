@@ -1,7 +1,7 @@
 # Lisan Studio V3 Roadmap
 
 > Status: planning, composed 2026-06-05 against HEAD `7185cd1` (v0.5.0-beta, V2 milestone closed).
-> V2 archived at [docs/ROADMAP-V2.md](ROADMAP-V2.md). Execution plan (when created): `docs/V3-EXECUTION-PLAN.md`.
+> V2 archived at [docs/ROADMAP-V2.md](ROADMAP-V2.md).
 > Vault implementation plan: `plans/lisan-studio/v3/00-lisan-studio-V3-MOC.md`.
 > Release cadence: per-phase. Each phase's final slice cuts a new release. V3 closes at `v1.0.0-rc1`.
 

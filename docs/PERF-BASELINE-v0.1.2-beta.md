@@ -2,7 +2,7 @@
 
 Captured: 2026-05-24T19:51:15.4159244+03:00
 HEAD SHA: 8cfa01e05d5d1d13d747ce9d4dc5b441e1b61552
-Reference environment: local dev WHITEDRAGON
+Reference environment: local Windows development machine
 
 ## Methodology
 

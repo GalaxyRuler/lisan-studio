@@ -1,7 +1,7 @@
 # Lisan Studio V2 Roadmap
 
 > Status: planning, composed 2026-05-27 against HEAD `fc8787a` (v0.2.0-beta, V1.5 milestone closed).
-> V1.5 archived at [docs/ROADMAP-V1.5-archive.md](ROADMAP-V1.5-archive.md). Execution protocol at [docs/V2-EXECUTION-PLAN.md](V2-EXECUTION-PLAN.md).
+> V1.5 archived at [docs/ROADMAP-V1.5-archive.md](ROADMAP-V1.5-archive.md).
 > Release cadence: themes A and B per-slice; themes C, D, E, F per-theme cut. Each theme's final slice cuts a new `v0.x.0-beta` release.
 
 ## Mission
@@ -439,7 +439,9 @@ Highest architectural risk. Pushed last unless reprioritized.
 V2 closes when phases A-F are done OR explicitly deferred. The milestone close cuts `v1.0.0-rc1` if all phases ship; otherwise the last `v0.x.0-beta` is the milestone-close release and the deferred phases carry to V3.
 
 ### Tracking convention
-All slice status tracking lives in [docs/V2-EXECUTION-PLAN.md](V2-EXECUTION-PLAN.md). Each slice has states: `planned` → `prompt-drafted` → `dispatched` → `landed` → `released`. Update the tracking table when state changes. Do not bake commit SHAs into ROADMAP-V2.md slice rows — that convention had chicken-and-egg problems in V1.5 (see V2-EXECUTION-PLAN.md "Anti-patterns" section).
+V2 is historical. Use the release notes and Git history for landed/released
+state; keep this roadmap focused on product scope rather than live execution
+status.
 
 ## Risk register
 
@@ -469,10 +471,10 @@ All slice status tracking lives in [docs/V2-EXECUTION-PLAN.md](V2-EXECUTION-PLAN
 
 - **Picking work:** Start with Phase A (smallest surface, finishes V1.5 multi-cursor) OR Phase C ADR (largest upside; gates LSP work). Phases A/B/C ADR can run in parallel across sessions.
 - **Sequencing within a phase:** Slices are numbered with their dependency order. Don't dispatch V2-A2 before V2-A1 lands; don't dispatch V2-E1 before V2-E0 + V2-C2 land.
-- **Status tracking:** [docs/V2-EXECUTION-PLAN.md](V2-EXECUTION-PLAN.md) holds the live state table. ROADMAP-V2.md is the spec; V2-EXECUTION-PLAN.md is the status.
-- **Updating this roadmap:** Slice changes (scope refinement, deferral, addition) edit this file. Slice-status changes (landed, released) edit V2-EXECUTION-PLAN.md's table.
+- **Status tracking:** V2 status is now historical. Use release notes and Git history for landed/released state.
+- **Updating this roadmap:** Scope refinements, deferrals, or additions can edit this file.
 - **At V2 close:** retitle this file to `docs/ROADMAP-V2-archive.md` and create `docs/ROADMAP-V3.md`.
 
 ---
 
-*Composed 2026-05-27 by Claude (strategy/audit) after grilled research pass on Qt 6 LSP libraries, debugpy, ConPTY widgets, and Kate multi-cursor reference implementations during V1.5 close. Slice prompts will be drafted per-slice when work begins.*
+*Composed 2026-05-27 after a research pass on Qt 6 LSP libraries, debugpy, ConPTY widgets, and Kate multi-cursor reference implementations during V1.5 close.*

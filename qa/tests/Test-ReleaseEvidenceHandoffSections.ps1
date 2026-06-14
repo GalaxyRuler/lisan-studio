@@ -28,14 +28,15 @@ foreach ($requiredToken in @(
         '## Deferred Features',
         'SourceMetadataPath',
         'source-metadata.json',
-        'LisanStudio-QA',
-        'active WHITEDRAGON',
+        'isolated Windows QA environment',
+        'active work desktop',
         'scripts\beta-manual-check.ps1',
         'Manual QA is not complete until the installed-app checklist is recorded.',
-        'Git UI',
-        'AI panel',
+        '3-way merge',
+        'PR review',
+        'extensions',
         'auto-update',
-        'plugin system'
+        'plugin marketplace'
     )) {
     if ($source -notmatch [regex]::Escape($requiredToken)) {
         throw "release-evidence.ps1 should include beta handoff token: $requiredToken"

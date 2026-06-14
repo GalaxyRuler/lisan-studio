@@ -70,14 +70,14 @@ try {
             '## 5. Final Review Decision',
             '| # | Area | Test | Expected Result | Result | Reviewer Notes | Evidence / Screenshot |',
             '| --- | --- | --- | --- | --- | --- | --- |',
-            ('- [present] MSI: `{0}` - Private beta installer package' -f $msiPath),
+            ('- [present] MSI: `{0}` - Installer package' -f $msiPath),
             '| 1 | Launch | Start Menu launch opens Lisan Studio | App opens without crash and shows Lisan Studio branding | Not Recorded |  |  |',
             '| 2 | Launch | Desktop shortcut launch opens Lisan Studio | Shortcut targets the installed LisanStudio.exe, not any legacy app | Not Recorded |  |  |',
             '| 5 | Editing | Arabic mixed-direction edit, save, close, and reopen preserves text | Arabic, English, numbers, paths, and punctuation survive save/reopen without corruption | Not Recorded |  |  |',
             '| 9 | Runtime | Run current `.apy` shows readable UTF-8 Arabic output | Output panel shows Arabic text without mojibake | Not Recorded |  |  |',
             '| 12 | Installer | Uninstall removes app payload and shortcuts | Installed payload and shortcuts are removed; user settings are not treated as MSI payload | Not Recorded |  |  |',
             '| Arabic output mojibake | Arabic text appears as garbled characters in the output panel. |',
-            '| Ready for private beta handoff | No blocking manual QA failures found |  |',
+            '| Ready for release handoff | No blocking manual QA failures found |  |',
             '| Blocked | One or more beta blockers must be fixed before handoff |  |'
         )) {
         if ($markdown -notmatch [regex]::Escape($requiredText)) {
@@ -113,9 +113,9 @@ try {
             'Lisan Studio 0.1.0-beta',
             'Manual QA Review Packet',
             'Product',
-            'Private Beta - Manual Installed-App QA',
+            'Manual Installed-App QA',
             'Target Environment',
-            'LisanStudio-QA (isolated VM)',
+            'Isolated Windows QA machine',
             'Validation Boundary',
             'Manual QA Status',
             'Reviewer',
@@ -135,7 +135,7 @@ try {
             '4. Beta Blocker Watchlist',
             'Arabic output mojibake',
             '5. Final Review Decision',
-            'Ready for private beta handoff',
+            'Ready for release handoff',
             'Follow-up Issue Links or File Paths'
         )) {
         if ($documentXml -notmatch [regex]::Escape($requiredDocxText)) {

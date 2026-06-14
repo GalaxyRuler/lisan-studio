@@ -1,38 +1,18 @@
 # Lisan Studio Installation and Setup
 
-This page covers installing the private beta, setting up a local development
-environment, and running the project-owned packaging and validation workflows.
+This page covers public installation, local development setup, source builds,
+packaging, validation, and troubleshooting.
 
-## Private Beta Install
+## Install From A GitHub Release
 
-Use the MSI from the private beta handoff package:
+1. Open <https://github.com/GalaxyRuler/lisan-studio/releases>.
+2. Select the release you want to install.
+3. Download the MSI asset, for example `LisanStudio-1.0.0-beta.msi`.
+4. Run the MSI and follow the Windows Installer prompts.
+5. Launch **Lisan Studio** from the Start Menu or desktop shortcut.
 
-```text
-LisanStudio-0.1.0-beta.msi
-```
-
-For the completed 0.1.0-beta handoff, the reviewer package was assembled as:
-
-```text
-LisanStudio-0.1.0-beta-handoff-20260515T184105.zip
-```
-
-Inside that package, start with:
-
-```text
-README.txt
-manual-qa\manual-beta-qa.docx
-00-INSTALLER-CLICK-HERE\LisanStudio-0.1.0-beta.msi
-```
-
-Install steps for a beta reviewer:
-
-1. Extract the handoff zip to a local folder.
-2. Open `manual-qa\manual-beta-qa.docx` and read the current decision/status.
-3. Double-click `00-INSTALLER-CLICK-HERE\LisanStudio-0.1.0-beta.msi`.
-4. Follow the Windows Installer prompts.
-5. Launch Lisan Studio from the Start Menu or Desktop shortcut.
-6. Use the manual QA checklist if this is a validation pass.
+If the release has no MSI asset, that release is source-only. Build from source
+or wait for the maintainer to attach a validated installer artifact.
 
 The MSI installs per user under:
 
@@ -48,40 +28,18 @@ The expected installed executable is:
 
 ## First-Launch SmartScreen Warning
 
-Lisan Studio betas are unsigned — see
-[ADR-0010](adr/0010-msi-code-signing.md) for the decision to defer code
-signing through the V1.5 milestone. On first launch of the installed
-application, Windows may display a SmartScreen dialog with the heading
-"Windows protected your PC" and the message "Microsoft Defender
-SmartScreen prevented an unrecognized app from starting."
+Lisan Studio installers are unsigned unless a release explicitly says
+otherwise. On first launch, Windows may show a SmartScreen dialog saying that
+Microsoft Defender SmartScreen prevented an unrecognized app from starting.
 
-To proceed:
+To proceed with an unsigned build:
 
 1. Click **More info**.
 2. Click **Run anyway**.
 
-This dialog appears once per fresh install on consumer Windows machines.
-Subsequent launches of the same install do not show the warning.
-
-If you are testing on a managed Windows machine where SmartScreen is
-configured to **Block** (typical of enterprise-managed devices with
-Defender SmartScreen Block enforcement, AppLocker, or Windows Defender
-Application Control), this dialog may be suppressed and the app blocked
-outright. In that case, please file a beta-tester report — this is one
-of the revisit triggers documented in ADR-0010.
-
-## Upgrading from pre-rename ArabicCodeStudioQt installations
-
-If you installed an early private-beta build that was labeled `ArabicCodeStudioQt` (May 2026 or earlier, before the product rename to Lisan Studio), that installation will NOT be removed automatically when you install Lisan Studio v0.1.1-beta or later. The two products use different Windows Installer UpgradeCodes, so MajorUpgrade does not apply across the rename.
-
-To clean up:
-
-1. Open **Settings → Apps → Installed apps** (or **Control Panel → Programs and Features**).
-2. Locate `ArabicCodeStudioQt` (DisplayName may also appear as `Arabic Code Studio Qt`).
-3. Click **Uninstall**.
-4. Then install `LisanStudio-0.1.1-beta.msi` normally.
-
-Leaving the legacy installation in place is harmless beyond cluttering Programs and Features — the two products use separate `%LOCALAPPDATA%` directories and registry keys so they coexist cleanly. But the legacy install is no longer maintained and will not receive any updates.
+Managed Windows machines may block unsigned apps entirely. See
+[ADR-0010](adr/0010-msi-code-signing.md) for the current code-signing decision
+and revisit triggers.
 
 ## Uninstall
 
@@ -92,71 +50,30 @@ Use Windows Settings:
 3. Find **Lisan Studio**.
 4. Choose **Uninstall**.
 
-The MSI is expected to remove the installed application payload and shortcuts.
-User-level Qt settings are not treated as MSI payload.
+The MSI should remove the installed application payload and shortcuts. User
+settings are not treated as MSI payload.
 
-## Reinstall or Upgrade the Same Beta
+## Upgrade From Early ArabicCodeStudioQt Builds
 
-The 0.1.0-beta MSI supports same-version beta reinstall/replace during private
-QA. If a previous beta install exists, uninstall it first when doing manual QA,
-then reinstall from the handoff MSI.
-
-For automated MSI validation, use the project-owned smoke script in an isolated
-runner or approved VM, not on the active desktop:
-
-```powershell
-.\scripts\msi-smoke.ps1
-```
-
-## Runtime Included in the MSI
-
-The private beta MSI is designed to include the runtime pieces needed to run
-Arabic `.apy` files without asking the reviewer to configure Python manually:
-
-- `LisanStudio.exe`
-- Qt runtime files from `windeployqt6`
-- bundled Python runtime under `runtime\python`
-- `lughat-althuban` package files
-- license payloads for Qt, Python, and `lughat-althuban`
-- release notes and validation notes
-
-If the installed app requires a system Python install, manual `PATH` edits, or a
-local editable `apython` checkout, treat that as a beta blocker.
+If you installed an early build labeled `ArabicCodeStudioQt` or
+`Arabic Code Studio Qt`, uninstall it manually before installing Lisan Studio.
+Those early packages used a different product identity, so Windows Installer
+does not treat them as the same app.
 
 ## Development Prerequisites
 
-The default local build expects a Windows machine with MSYS2 UCRT64 tooling:
+The default local build expects a Windows machine with:
 
-```text
-C:\msys64\usr\bin\bash.exe
-C:\msys64\ucrt64\bin
-```
-
-Required development tools:
-
-- Windows 11 or Windows 10
+- Windows 10 or Windows 11
 - PowerShell 5.1 or PowerShell 7
+- Git with submodule support
 - MSYS2 UCRT64
 - CMake 3.24 or newer
 - Ninja
 - GCC from MSYS2 UCRT64
 - Qt 6 Widgets, Gui, Core, Test, and Concurrent
 
-The build script assumes MSYS2 at `C:\msys64`:
-
-```powershell
-.\scripts\build.ps1
-```
-
-If MSYS2 is installed somewhere else, pass the Bash path:
-
-```powershell
-.\scripts\build.ps1 -BashPath "D:\msys64\usr\bin\bash.exe"
-```
-
-## Suggested MSYS2 Package Setup
-
-Open an MSYS2 UCRT64 shell and install the expected toolchain packages:
+Install the common MSYS2 packages from an MSYS2 UCRT64 shell:
 
 ```bash
 pacman -Syu
@@ -167,8 +84,21 @@ pacman -S --needed \
   mingw-w64-ucrt-x86_64-qt6-base
 ```
 
-If `pacman -Syu` asks you to close and reopen the shell, do that first, then run
-the package install command again.
+If `pacman -Syu` asks you to close and reopen the shell, do that first, then
+run the package install command again.
+
+The build scripts default to these tool paths:
+
+```text
+C:\msys64\usr\bin\bash.exe
+C:\msys64\ucrt64\bin
+```
+
+If MSYS2 is installed somewhere else, pass the Bash path:
+
+```powershell
+.\scripts\build.ps1 -BashPath "D:\msys64\usr\bin\bash.exe"
+```
 
 ## Build
 
@@ -179,21 +109,10 @@ git submodule update --init --recursive
 .\scripts\build.ps1
 ```
 
-This configures and builds:
+The app binary is:
 
 ```text
 build\LisanStudio.exe
-build\acs_editor_tests.exe
-build\acs_editor_tabs_controller_tests.exe
-build\acs_project_tree_controller_tests.exe
-build\acs_command_registry_tests.exe
-build\acs_workbench_state_tests.exe
-build\acs_project_runtime_tests.exe
-build\acs_runtime_orchestrator_tests.exe
-build\acs_main_window_tests.exe
-build\acs_editor_torture_tests.exe
-build\acs_untitled_draft_recovery_tests.exe
-build\acs_lsp_client_tests.exe
 ```
 
 ## Test
@@ -204,71 +123,38 @@ Run the normal project validation gate:
 .\scripts\validate.ps1
 ```
 
-This builds the app and runs:
-
-- `acs_editor_tests`
-- `acs_editor_tabs_controller_tests`
-- `acs_project_tree_controller_tests`
-- `acs_command_registry_tests`
-- `acs_workbench_state_tests`
-- `acs_project_runtime_tests`
-- `acs_runtime_orchestrator_tests`
-- `acs_main_window_tests`
-- `acs_editor_torture_tests`
-- `acs_untitled_draft_recovery_tests`
-- `acs_lsp_client_tests`
-
-GUI-sensitive validation should run in an interactive desktop session. Do not
-weaken GUI-sensitive tests to make a non-interactive runner pass.
+This builds the app and runs the CTest suite in Qt offscreen mode.
 
 ## Packaging Prerequisites
 
 Packaging adds these requirements beyond the normal build:
 
-- WiX Toolset v7 with `wix.exe` available at:
+- WiX Toolset v7 with `wix.exe`
+- A Python 3.13 runtime directory to bundle
+- A local `lughat-althuban` source checkout with generated package metadata
+- Qt license payloads from the MSYS2 Qt package
 
-  ```text
-  C:\Program Files\WiX Toolset v7.0\bin\wix.exe
-  ```
-
-- Python 3.13 runtime source at:
-
-  ```text
-  C:\Users\Admin\AppData\Local\Programs\Python\Python313
-  ```
-
-- `apython` / `lughat-althuban` source checkout at:
-
-  ```text
-  C:\Users\Admin\apython
-  ```
-
-- Qt license payloads under:
-
-  ```text
-  C:\msys64\ucrt64\share\licenses\qt6-base
-  ```
-
-These paths can be overridden with script parameters when needed.
-
-## Package the MSI
-
-From the repository root:
+The packaging script accepts explicit paths:
 
 ```powershell
-.\scripts\package.ps1
+.\scripts\package.ps1 `
+  -ProductVersion 1.0.0 `
+  -ApythonRoot "<path-to-lughat-althuban>" `
+  -PythonRoot "<path-to-python-3.13-runtime>" `
+  -WixPath "<path-to-wix.exe>"
 ```
 
-Common override:
+Or use environment variables:
 
 ```powershell
-.\scripts\package.ps1 -ApythonRoot "C:\Users\Admin\apython"
+$env:LISAN_APYTHON_ROOT = "<path-to-lughat-althuban>"
+$env:LISAN_PYTHON_ROOT = "<path-to-python-3.13-runtime>"
 ```
 
 Output:
 
 ```text
-artifacts\LisanStudio-0.1.0-beta.msi
+artifacts\LisanStudio-<version>-beta.msi
 stage\LisanStudio
 ```
 
@@ -280,7 +166,8 @@ To stage the application without creating the MSI:
 
 ## Installed Smoke
 
-After installing the MSI, validate the installed application:
+After installing the MSI in an isolated Windows QA environment, validate the
+installed application:
 
 ```powershell
 .\scripts\installed-smoke.ps1
@@ -292,33 +179,29 @@ packaging shape.
 
 ## MSI Smoke
 
-To validate install and uninstall behavior:
+MSI install, uninstall, and upgrade validation mutates the machine. Do not run
+it on an active work desktop unless you explicitly intend to install or remove
+the app there.
+
+Install/uninstall smoke:
 
 ```powershell
 .\scripts\msi-smoke.ps1
 ```
 
-To leave the app installed after the smoke pass:
+Upgrade smoke:
 
 ```powershell
-.\scripts\msi-smoke.ps1 -KeepInstalled
+.\scripts\msi-upgrade-smoke.ps1 `
+  -EarlierMsiPath "<old-msi>" `
+  -ReplacementMsiPath "<new-msi>" `
+  -ExpectedEarlierVersion "<old-version>" `
+  -ExpectedReplacementVersion "<new-version>" `
+  -AllowMutation `
+  -IUnderstandThisRunsMsiUpgrade
 ```
 
-Do not run MSI install/uninstall validation on an active work desktop unless
-that is explicitly approved for the current run.
-
-## MSI Upgrade Smoke
-
-Upgrade validation is also MSI-mutating and belongs in the self-hosted GitHub
-Actions runner inside `LisanStudio-QA`, not on active `WHITEDRAGON`. The
-workflow covers:
-
-- same-version private beta replace leaving exactly one Windows Apps uninstall
-  entry;
-- older-version to replacement-version upgrade;
-- optional downgrade refusal that keeps the replacement install active.
-
-Trigger the MSI workflow manually:
+GitHub Actions workflow:
 
 ```powershell
 gh workflow run msi-tests.yml -f scenario=install
@@ -326,25 +209,28 @@ gh workflow run msi-tests.yml -f scenario=upgrade
 gh workflow run msi-tests.yml -f scenario=full
 ```
 
-The workflow lives at `.github\workflows\msi-tests.yml` and runs
-`scripts\msi-smoke.ps1` and `scripts\msi-upgrade-smoke.ps1` with per-step logs
-and evidence artifacts.
+The workflow lives at `.github\workflows\msi-tests.yml` and expects a
+self-hosted Windows runner with the Qt, WiX, Python, and packaging toolchain.
 
 ## Release Evidence
 
-Generate the private beta evidence bundle:
+Generate a release evidence bundle in an isolated Windows QA environment:
 
 ```powershell
-.\scripts\release-evidence.ps1
+.\scripts\release-evidence.ps1 `
+  -ProductVersion 1.0.0 `
+  -ReleaseLabel "1.0.0-beta" `
+  -ApythonRoot "<path-to-lughat-althuban>" `
+  -PythonRoot "<path-to-python-3.13-runtime>"
 ```
 
 Expected evidence:
 
 ```text
-artifacts\release\0.1.0-beta\VALIDATION_LOG.md
-artifacts\release\0.1.0-beta\CHECKSUMS-SHA256.txt
-artifacts\release\0.1.0-beta\KNOWN_ISSUES.md
-artifacts\release\0.1.0-beta\screenshots\main-window.png
+artifacts\release\<release-label>\VALIDATION_LOG.md
+artifacts\release\<release-label>\CHECKSUMS-SHA256.txt
+artifacts\release\<release-label>\KNOWN_ISSUES.md
+artifacts\release\<release-label>\screenshots\main-window.png
 ```
 
 ## Manual QA Packet
@@ -352,7 +238,7 @@ artifacts\release\0.1.0-beta\screenshots\main-window.png
 Generate a manual QA packet from existing evidence:
 
 ```powershell
-.\scripts\beta-manual-check.ps1
+.\scripts\beta-manual-check.ps1 -ReleaseLabel "1.0.0-beta"
 ```
 
 The script writes:
@@ -363,43 +249,8 @@ artifacts\beta-manual-check\<run-id>\manual-beta-qa.md
 artifacts\beta-manual-check\<run-id>\manual-beta-qa.json
 ```
 
-Use the Word document as the reviewer-facing checklist. The Markdown and JSON
-files are traceability artifacts.
-
-## Homelab and VM Validation
-
-The project is integrated with the central Codex Homelab runner metadata:
-
-```text
-.codex\homelab-runner.json
-qa\homelab\
-```
-
-For MSI install and upgrade validation, use the GitHub Actions workflow on the
-self-hosted runner inside:
-
-```text
-LisanStudio-QA
-```
-
-Homelab remains responsible for runner VM provisioning and reset helpers; this
-repo owns the workflow YAML and MSI smoke scripts. Do not run GUI automation,
-MSI install/uninstall, installed-app validation, or destructive validation on
-active `WHITEDRAGON`.
-
-Safe local work includes:
-
-- reading metadata
-- parsing JSON and PowerShell
-- small project-local QA tests
-- generating docs from already-produced evidence
-
-Unsafe local work without explicit approval includes:
-
-- installing or uninstalling the MSI on active `WHITEDRAGON`
-- running GUI automation on active `WHITEDRAGON`
-- mutating Hyper-V outside the Homelab runner lifecycle helpers
-- deleting VMs or runner artifacts
+The Word document is the reviewer-facing checklist. The Markdown and JSON files
+are traceability artifacts.
 
 ## Troubleshooting
 
@@ -444,10 +295,10 @@ Install WiX Toolset v7 or pass the path:
 
 ### Installed app asks for system Python
 
-Treat this as a packaging failure. The beta MSI should use the bundled runtime
-under `%LOCALAPPDATA%\LisanStudio\runtime\python`.
+Treat this as a packaging failure. The MSI should use the bundled runtime under
+`%LOCALAPPDATA%\LisanStudio\runtime\python`.
 
 ### Arabic output is mojibake
 
-Treat this as a beta blocker. `scripts\installed-smoke.ps1` should capture and
-decode Arabic output as UTF-8.
+Treat this as a release blocker. `scripts\installed-smoke.ps1` should capture
+and decode Arabic output as UTF-8.

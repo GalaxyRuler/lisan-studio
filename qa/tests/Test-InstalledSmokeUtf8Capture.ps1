@@ -39,7 +39,7 @@ foreach ($requiredToken in @(
 $projectLaunchPattern = [regex]::Escape('$projectProcess = Start-Process -FilePath $app') + '(?s).*?' + [regex]::Escape('$fileProcess = Start-Process -FilePath $app')
 $projectLaunchBlock = [regex]::Match($source, $projectLaunchPattern).Value
 if ($projectLaunchBlock -match '-WindowStyle\s+Hidden') {
-    throw 'installed GUI smoke should run the app headed inside LisanStudio-QA, not hidden.'
+    throw 'installed GUI smoke should run the app headed inside an isolated Windows QA environment, not hidden.'
 }
 
 if ($source -match '&\s+\$python\s+-m\s+arabicpython\.cli\s+\$sampleFile\s+2>&1') {

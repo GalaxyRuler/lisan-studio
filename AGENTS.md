@@ -1,16 +1,16 @@
-﻿<!-- BEGIN CODEX HOMELAB RUNNER INTEGRATION -->
-## Homelab Runner Integration
+# Agent Instructions
 
-This project may use the central Homelab runner for isolated, noisy, GUI, installer, VM, container, or long-running validation.
-
-Project runner config:
-- `.codex/homelab-runner.json`
-
-Before running noisy tests, GUI automation, installers, VM jobs, or long-running validation:
-1. Read `.codex/homelab-runner.json`.
-2. Use the configured Homelab runner route.
-3. Prefer containers for CLI, API, unit, integration, and headless checks.
-4. Do not run GUI automation, MSI install/uninstall, or destructive validation on the active WHITEDRAGON desktop unless explicitly approved.
-5. Keep project-specific runner profiles inside this repo, not in Homelab core.
-
-<!-- END CODEX HOMELAB RUNNER INTEGRATION -->
+- Inspect the project before choosing commands or patterns.
+- Prefer existing scripts and conventions.
+- Verify changes with the smallest relevant command first.
+- Run `.\scripts\validate.ps1` before claiming source changes are ready when
+  the change can affect build or behavior.
+- Do not run MSI install, uninstall, upgrade, registry-mutating, or GUI
+  automation checks on an active work desktop unless the user explicitly
+  approves that validation path.
+- Treat `.env*`, private keys, certificates, tokens, signing material, and
+  credentials as off-limits.
+- Do not commit generated outputs from `build/`, `stage/`, `artifacts/`,
+  `out/`, or local scratch directories.
+- Keep public docs free of private machine paths, private planning notes, and
+  unverified release claims.

@@ -19,7 +19,7 @@ if ([string]::IsNullOrWhiteSpace($MsiPath)) {
     $MsiPath = Join-Path $repo "artifacts\LisanStudio-$ReleaseLabel.msi"
 }
 if ([string]::IsNullOrWhiteSpace($GuestMsiPath)) {
-    $GuestMsiPath = "C:\CodexRunner\work\arabic-code-studio-qt\artifacts\LisanStudio-$ReleaseLabel.msi"
+    $GuestMsiPath = Join-Path $repo "artifacts\LisanStudio-$ReleaseLabel.msi"
 }
 if ([string]::IsNullOrWhiteSpace($OutputRoot)) {
     $OutputRoot = Join-Path $repo "artifacts\beta-manual-check"
@@ -28,14 +28,11 @@ if ([string]::IsNullOrWhiteSpace($RunId)) {
     $RunId = Get-Date -Format "yyyyMMddTHHmmss"
 }
 if ([string]::IsNullOrWhiteSpace($TemplatePath)) {
-    $homelabRoot = if ($env:CODEX_HOMELAB_ROOT) {
-        $env:CODEX_HOMELAB_ROOT
-    } else {
-        'C:\Users\Admin\Documents\Codex\Homelab\codex-isolated-test-runners'
-    }
-    $candidateTemplatePath = Join-Path $homelabRoot 'docs\templates\manual-qa-review-packet-template.docx'
-    if (Test-Path -LiteralPath $candidateTemplatePath) {
-        $TemplatePath = $candidateTemplatePath
+    if ($env:LISAN_MANUAL_QA_TEMPLATE) {
+        $candidateTemplatePath = $env:LISAN_MANUAL_QA_TEMPLATE
+        if (Test-Path -LiteralPath $candidateTemplatePath) {
+            $TemplatePath = $candidateTemplatePath
+        }
     }
 }
 
@@ -173,6 +170,7 @@ function New-ManualQaWordDocument {
         [string]$TemplatePath
     )
 
+    Add-Type -AssemblyName System.IO.Compression
     Add-Type -AssemblyName System.IO.Compression.FileSystem
 
     $tempDocxRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("lisan-beta-docx-" + [System.Guid]::NewGuid().ToString('N'))
@@ -259,9 +257,9 @@ $lisanStylesXml
         $summaryRows = @(
             @('Product', 'Lisan Studio'),
             @('Version', $ReleaseLabel),
-            @('Review Type', 'Private Beta - Manual Installed-App QA'),
-            @('Target Environment', 'LisanStudio-QA (isolated VM)'),
-            @('Validation Boundary', 'GUI / MSI / installed-app validation must NOT run on active WHITEDRAGON'),
+            @('Review Type', 'Manual Installed-App QA'),
+            @('Target Environment', 'Isolated Windows QA machine'),
+            @('Validation Boundary', 'GUI / MSI / installed-app validation must not run on an active work desktop'),
             @('Manual QA Status', $ManualQaStatus),
             @('Reviewer', ''),
             @('Review Date', ''),
@@ -272,10 +270,10 @@ $lisanStylesXml
             (New-DocxParagraphXml -Text 'Manual QA Review Packet' -Style Subtitle),
             (New-DocxTableXml -Headers @('Field', 'Value') -Rows $summaryRows -ColumnWidths @(2600, 10600)),
             (New-DocxParagraphXml -Text '1. Automated Evidence Summary' -Style Heading1),
-            (New-DocxParagraphXml -Text 'The automated validation lane has already completed its run through the isolated Homelab lane inside the LisanStudio-QA VM. No manual re-execution of automated checks is required. The table below lists all artifacts produced and confirmed present at their respective paths.'),
+            (New-DocxParagraphXml -Text 'The automated validation lane has already completed in an isolated Windows QA environment. No manual re-execution of automated checks is required. The table below lists all artifacts produced and confirmed present at their respective paths.'),
             (New-DocxTableXml -Headers @('Artifact', 'Status', 'Path / Location', 'Purpose') -Rows $artifactRows -ColumnWidths @(1700, 1100, 7700, 2700)),
             (New-DocxParagraphXml -Text 'Reviewer Instructions' -Style Heading1),
-            (New-DocxParagraphXml -Text 'Perform all testing exclusively inside the LisanStudio-QA isolated VM. Do not install, run, or uninstall the MSI on active WHITEDRAGON.'),
+            (New-DocxParagraphXml -Text 'Perform all testing in an isolated Windows QA environment. Do not install, run, or uninstall the MSI on an active work desktop unless that machine is the intended validation target.'),
             (New-DocxParagraphXml -Text 'Locate the beta MSI at the path listed in Section 1 and install it fresh before beginning the checklist.'),
             (New-DocxParagraphXml -Text 'For each checklist item, record exactly one result: Pass, Fail, Blocked, or Not Applicable. For any Fail or Blocked result, provide a clear note and include the file path or filename of any screenshot or log evidence.' -Style Instruction),
             (New-DocxParagraphXml -Text 'Manual QA is not complete until every checklist row carries a recorded result. Leave no row as Not Recorded at sign-off.'),
@@ -284,7 +282,7 @@ $lisanStylesXml
             (New-DocxParagraphXml -Text "Generated: $GeneratedAt"),
             (New-DocxParagraphXml -Text "Repository: $Repository"),
             (New-DocxParagraphXml -Text "Guest MSI Path: $GuestMsiPath"),
-            (New-DocxParagraphXml -Text "This packet is for the human installed-app beta pass. It does not launch the app, install or uninstall MSI packages, run GUI automation, mutate Hyper-V, or use active WHITEDRAGON for validation."),
+            (New-DocxParagraphXml -Text "This packet is for the human installed-app pass. It does not launch the app, install or uninstall MSI packages, run GUI automation, mutate virtual machines, or modify the active desktop."),
             (New-DocxParagraphXml -Text '3. Manual Installed-App QA Checklist' -Style Heading1),
             (New-DocxParagraphXml -Text 'Complete every row. Record exactly one result per test: Pass, Fail, Blocked, or Not Applicable. For Fail/Blocked, add notes and evidence.' -Style Instruction),
             (New-DocxTableXml -Headers @('#', 'Area', 'Test', 'Expected Result', 'Result', 'Reviewer Notes', 'Evidence / Screenshot') -Rows $checklistRows -ColumnWidths @(500, 1100, 3100, 4100, 1300, 1600, 1500)),
@@ -294,8 +292,8 @@ $lisanStylesXml
             (New-DocxParagraphXml -Text '5. Final Review Decision' -Style Heading1),
             (New-DocxParagraphXml -Text 'Select exactly one decision below. Complete all sign-off fields before submitting this packet.'),
             (New-DocxTableXml -Headers @('Decision', 'Meaning', 'Select One') -Rows @(
-                    @('Ready for private beta handoff', 'No blocking manual QA failures found', ''),
-                    @('Ready with known non-blocking issues', 'Issues are documented and acceptable for private beta', ''),
+                    @('Ready for release handoff', 'No blocking manual QA failures found', ''),
+                    @('Ready with known non-blocking issues', 'Issues are documented and acceptable for this release', ''),
                     @('Blocked', 'One or more beta blockers must be fixed before handoff', '')
                 ) -ColumnWidths @(4700, 6900, 1600)),
             (New-DocxTableXml -Headers @('Field', 'Value') -Rows @(
@@ -309,7 +307,7 @@ $lisanStylesXml
         $documentXml | Set-Content -LiteralPath (Join-Path $wordDir 'document.xml') -Encoding UTF8
 
         $created = (Get-Date).ToUniversalTime().ToString('s') + 'Z'
-        ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?><cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:dcmitype="http://purl.org/dc/dcmitype/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><dc:title>Lisan Studio Manual Beta QA</dc:title><dc:creator>Codex</dc:creator><dcterms:created xsi:type="dcterms:W3CDTF">' + $created + '</dcterms:created></cp:coreProperties>') |
+        ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?><cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:dcmitype="http://purl.org/dc/dcmitype/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><dc:title>Lisan Studio Manual QA</dc:title><dc:creator>Lisan Studio</dc:creator><dcterms:created xsi:type="dcterms:W3CDTF">' + $created + '</dcterms:created></cp:coreProperties>') |
             Set-Content -LiteralPath (Join-Path $docPropsDir 'core.xml') -Encoding UTF8
 
         if (Test-Path -LiteralPath $Path) {
@@ -355,10 +353,10 @@ $lisanStylesXml
 }
 
 $artifactSpecs = @(
-    @{ Name = "MSI"; Path = $MsiPath; Purpose = "Private beta installer package" },
+    @{ Name = "MSI"; Path = $MsiPath; Purpose = "Installer package" },
     @{ Name = "Validation log"; Path = (Join-Path $ReleaseDir "VALIDATION_LOG.md"); Purpose = "Automated validation evidence" },
     @{ Name = "Checksums"; Path = (Join-Path $ReleaseDir "CHECKSUMS-SHA256.txt"); Purpose = "Release artifact hashes" },
-    @{ Name = "Known issues"; Path = (Join-Path $ReleaseDir "KNOWN_ISSUES.md"); Purpose = "Private beta limitations and blockers" },
+    @{ Name = "Known issues"; Path = (Join-Path $ReleaseDir "KNOWN_ISSUES.md"); Purpose = "Release limitations and blockers" },
     @{ Name = "Main window screenshot"; Path = (Join-Path $ReleaseDir "screenshots\main-window.png"); Purpose = "Installed app visual evidence" },
     @{ Name = "Package log"; Path = (Join-Path $ReleaseDir "logs\package.log"); Purpose = "Packaging command log" },
     @{ Name = "MSI smoke log"; Path = (Join-Path $ReleaseDir "logs\msi-smoke-keep-installed.log"); Purpose = "Installed MSI smoke log" }
@@ -402,7 +400,7 @@ $blockerWatchlist = @(
     @{ Status = ''; Category = 'Missing Qt, Python, or lughat-althuban license payloads'; Description = 'All required license files must be present in the installed payload.' },
     @{ Status = ''; Category = 'Hidden BiDi controls inserted by the editor'; Description = 'The editor must not silently insert Unicode BiDi control characters.' },
     @{ Status = ''; Category = 'RTL shell regression'; Description = 'Any panel, sidebar, or status bar rendering in LTR when it should be RTL.' },
-    @{ Status = ''; Category = 'App launching on WHITEDRAGON instead of isolated QA VM'; Description = 'All GUI/MSI testing must remain within LisanStudio-QA.' }
+    @{ Status = ''; Category = 'App launching on an active work desktop instead of an isolated QA machine'; Description = 'GUI/MSI testing should remain in the intended isolated Windows QA environment.' }
 ) | ForEach-Object {
     [PSCustomObject]@{
         status = $_.Status
@@ -438,7 +436,7 @@ $markdownLines = @(
     "Manual QA Status: $manualQaStatus",
     "Guest MSI Path: $GuestMsiPath",
     "",
-    "This report is an installed-app checklist for a human beta pass. It does not launch the app, install or uninstall MSI packages, run GUI automation, mutate Hyper-V, or use active WHITEDRAGON for validation.",
+    "This report is an installed-app checklist for a human pass. It does not launch the app, install or uninstall MSI packages, run GUI automation, mutate virtual machines, or modify the active desktop.",
     "",
     "## 1. Automated Evidence Summary",
     "",
@@ -446,8 +444,8 @@ $markdownLines = @(
     "",
     "## 2. Reviewer Instructions",
     "",
-    "- Perform all testing exclusively inside the LisanStudio-QA isolated VM.",
-    "- Do not install, run, or uninstall the MSI on active WHITEDRAGON.",
+    "- Perform GUI/MSI testing in an isolated Windows QA environment.",
+    "- Do not install, run, or uninstall the MSI on an active work desktop unless that machine is the intended validation target.",
     "- Record exactly one result per checklist item: Pass, Fail, Blocked, or Not Applicable.",
     "- Add notes and evidence paths for every Fail or Blocked item.",
     "",
@@ -463,8 +461,8 @@ $markdownLines = @(
     "",
     "| Decision | Meaning | Select One |",
     "| --- | --- | --- |",
-    "| Ready for private beta handoff | No blocking manual QA failures found |  |",
-    "| Ready with known non-blocking issues | Issues are documented and acceptable for private beta |  |",
+    "| Ready for release handoff | No blocking manual QA failures found |  |",
+    "| Ready with known non-blocking issues | Issues are documented and acceptable for this release |  |",
     "| Blocked | One or more beta blockers must be fixed before handoff |  |",
     "",
     "| Field | Value |",

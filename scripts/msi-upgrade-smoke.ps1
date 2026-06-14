@@ -22,8 +22,12 @@ if (-not $AllowMutation -or -not $IUnderstandThisRunsMsiUpgrade) {
     throw "MSI upgrade smoke installs, replaces, and uninstalls packages. Pass -AllowMutation and -IUnderstandThisRunsMsiUpgrade from an approved VM lane."
 }
 
-if ([string]::Equals([string]$env:COMPUTERNAME, "WHITEDRAGON", [System.StringComparison]::OrdinalIgnoreCase)) {
-    throw "Refusing to run MSI upgrade smoke on active WHITEDRAGON. Use the LisanStudio-QA Homelab route."
+$forbiddenHostNames = @()
+if (-not [string]::IsNullOrWhiteSpace($env:LISAN_FORBIDDEN_MSI_HOSTS)) {
+    $forbiddenHostNames = @($env:LISAN_FORBIDDEN_MSI_HOSTS -split '[,;]' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+}
+if ($forbiddenHostNames -contains [string]$env:COMPUTERNAME) {
+    throw "Refusing to run MSI upgrade smoke on this host because it is listed in LISAN_FORBIDDEN_MSI_HOSTS."
 }
 
 $EarlierMsiPath = (Resolve-Path -LiteralPath $EarlierMsiPath).Path

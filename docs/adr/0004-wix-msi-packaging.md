@@ -37,7 +37,7 @@ one Windows Apps entry for `Lisan Studio` in that hive.
 
 The full evidence and trade-off analysis lives in
 `docs/investigations/wix-dual-uninstall-registration-2026-05-19.md`. The
-decisive install-log evidence is the Homelab smoke run
+decisive install-log evidence is the isolated Windows MSI smoke run
 `prompt14-rerun-smoke-20260519T184438` (`install.log`: `PROPERTY CHANGE:
 Deleting MSIINSTALLPERUSER property`).
 
@@ -48,7 +48,7 @@ Deleting MSIINSTALLPERUSER property`).
 - NSIS/Inno Setup: deferred because WiX is already available locally and MSI is
   easier to validate for the first beta.
 - Requiring HKCU product-code registration from the self-contained MSI: rejected
-  because the Homelab install log showed Windows Installer deleting the authored
+  because the isolated install log showed Windows Installer deleting the authored
   `MSIINSTALLPERUSER` property before registration.
 - Keeping the stable HKCU component and setting `ARPSYSTEMCOMPONENT`: rejected
   for now because it hides Add/Remove Programs metadata but does not prove the
