@@ -1,27 +1,25 @@
-# Contributing to Lisan Studio
+# المساهمة في Lisan Studio
 
-Lisan Studio is a native Qt/C++ Windows IDE for Arabic-first `.apy`
-development. Contributions should preserve the Arabic-first RTL experience,
-Windows installer safety, and data-safety guarantees.
+Lisan Studio هو IDE أصلي على Windows مبني ب Qt و ++C لتطوير ملفات `.apy` العربية أولا. أي مساهمة يجب أن تحافظ على تجربة RTL العربية، وسلامة المثبت على Windows، وضمانات حماية البيانات.
 
-## Before You Start
+## قبل أن تبدأ
 
-1. Fork or branch from `main`.
-2. Initialize submodules:
+1. اعمل fork أو أنشئ فرعا من `main`.
+2. هيئ submodules:
 
    ```powershell
    git submodule update --init --recursive
    ```
 
-3. Read the relevant docs:
+3. اقرأ المستندات المناسبة:
    - [README.md](README.md)
    - [docs/INSTALLATION.md](docs/INSTALLATION.md)
    - [docs/ROADMAP-V3.md](docs/ROADMAP-V3.md)
    - [docs/adr/](docs/adr/)
 
-## Branches
+## الفروع
 
-Use short descriptive branches:
+استخدم أسماء فروع قصيرة وواضحة:
 
 ```text
 codex/<feature-or-fix>
@@ -29,64 +27,54 @@ docs/<topic>
 fix/<bug>
 ```
 
-Keep pull requests focused. Avoid mixing source changes, release artifacts,
-format churn, and unrelated docs edits.
+اجعل كل Pull Request مركزا. لا تخلط تغييرات المصدر، ومخرجات الإصدار، وتغييرات التنسيق، وتعديلات مستندات غير مرتبطة في طلب واحد.
 
-## Development Checks
+## فحوصات التطوير
 
-For normal source changes:
+لتغييرات المصدر المعتادة:
 
 ```powershell
 .\scripts\validate.ps1
 ```
 
-For packaging changes, also run or arrange the appropriate MSI validation in an
-isolated Windows QA environment:
+لتغييرات التغليف، شغل أو رتب فحص MSI المناسب في بيئة Windows QA معزولة:
 
 ```powershell
 .\scripts\package.ps1 -ProductVersion <version> -ApythonRoot "<path>" -PythonRoot "<path>"
 gh workflow run msi-tests.yml -f scenario=full
 ```
 
-Do not run MSI install, uninstall, upgrade, registry-mutating, or GUI automation
-checks on an active work desktop unless that is explicitly intended for the
-current validation pass.
+لا تشغل فحوصات تثبيت MSI أو إلغاء تثبيته أو ترقيته أو أي فحص يغير registry أو يشغل GUI automation على جهاز عمل نشط، إلا إذا كان ذلك مقصودا صراحة في فحصك الحالي.
 
-## Public Repository Hygiene
+## نظافة المستودع العام
 
-Do not commit:
+لا ترفع:
 
-- `.env*`
-- private keys, certificates, signing material, tokens, or credentials
-- local machine paths that are not portable setup examples
-- generated build output under `build/`, `stage/`, `artifacts/`, or `out/`
-- private planning notes, vault exports, or agent scratch files
+- ملفات `.env*`
+- مفاتيح خاصة، شهادات، مواد توقيع، tokens، أو بيانات اعتماد
+- مسارات جهاز محلي ليست أمثلة إعداد قابلة للنقل
+- مخرجات بناء مولدة داخل `build/` أو `stage/` أو `artifacts/` أو `out/`
+- ملاحظات تخطيط خاصة، أو صادرات vault، أو ملفات scratch خاصة بالوكلاء
 
-If a change touches packaging or release automation, check that public docs do
-not claim an installer, signature, release asset, or validation run exists
-unless it has been verified.
+إذا لمس التغيير التغليف أو أتمتة الإصدار، فتأكد أن المستندات العامة لا تدعي وجود مثبت أو توقيع أو أصل إصدار أو فحص تحقق ما لم يتم التحقق منه فعليا.
 
-## Code Style
+## أسلوب الكود
 
-- C++17.
-- Qt 6 APIs and idioms.
-- Keep UI text and layout Arabic-first / RTL-aware.
-- Prefer existing controllers and services before adding new abstractions.
-- Add tests for behavior changes.
-- Keep comments short and useful.
+- ++C17.
+- APIs و idioms الخاصة ب Qt 6.
+- اجعل نصوص الواجهة وتخطيطها عربية أولا وواعية ب RTL.
+- فضل controllers و services الموجودة قبل إضافة abstractions جديدة.
+- أضف اختبارات عند تغيير السلوك.
+- اجعل التعليقات قصيرة ومفيدة.
 
-## ADRs
+## قرارات البنية (ADRs)
 
-Architecture decisions live in `docs/adr/`. Add a new ADR when a change affects
-long-term architecture, release policy, installer behavior, runtime ownership,
-or public security posture.
+قرارات البنية موجودة في `docs/adr/`. أضف ADR جديدا عندما يؤثر التغيير على بنية طويلة المدى، أو سياسة إصدار، أو سلوك المثبت، أو ملكية runtime، أو وضع الأمان العام.
 
-## Pull Request Checklist
+## قائمة فحص Pull Request
 
-- Scope is focused and described.
-- Relevant tests or validation commands were run.
-- Public docs were updated when behavior, installation, packaging, or release
-  expectations changed.
-- No secrets or private environment details are included.
-- MSI and GUI validation, when required, ran in an isolated Windows QA
-  environment.
+- النطاق مركز وموصوف.
+- تم تشغيل الاختبارات أو أوامر التحقق المناسبة.
+- تم تحديث المستندات العامة عند تغيير السلوك أو التثبيت أو التغليف أو توقعات الإصدار.
+- لا توجد أسرار أو تفاصيل بيئة خاصة.
+- فحوصات MSI و GUI، عند الحاجة، عملت في بيئة Windows QA معزولة.

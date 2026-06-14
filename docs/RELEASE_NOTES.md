@@ -1,419 +1,311 @@
-# v0.5.0-beta (2026-06-05)
-
-Phase F V2 close: integrated terminal execution.
-
-## Added
-
-- A trust-gated integrated terminal tab with shell picker, command input,
-  stop control, and LTR transcript rendering for command output.
-- Project-local terminal profile persistence in `.lisan-workspace/settings.json`.
-- Windows terminal profiles for PowerShell and cmd, with WSL Bash shown when
-  `wsl.exe` is available.
-- `TerminalBackend` process execution with stdin writes, merged output reads,
-  and process-exit signals.
-- Terminal backend and MainWindow coverage for cmd spawn/write/read/exit,
-  trust blocking, selected-shell persistence, and command input from the UI.
-
-## Changed
-
-- ADR-0014 now records the validated V2 terminal path: process-backed terminal
-  execution first, with raw ConPTY/QTermWidget deferred until their Windows
-  input and rendering behavior can be proven safely.
-- GitHub MSI workflows now package `LisanStudio-0.5.0-beta.msi`.
-
-## Known v0.5.0-beta limitations
-
-- The terminal surface is intentionally text-backed. Rich ANSI rendering,
-  deeper terminal emulation, and a proven ConPTY/QTermWidget replacement remain
-  future upgrade paths.
-- Manual installed-app QA, GitHub Actions MSI runs, tag creation, release
-  publication, and Authenticode signing remain operator-owned public
-  distribution gates after this in-repo release prep.
-
-# v0.4.1-beta (2026-06-05)
-
-Phase E V2 close: debugger inspection panels for paused programs.
-
-## Added
-
-- Debug inspector tabs inside the Debug bottom panel: log, variables, watch,
-  and call stack.
-- Local variable retrieval through DAP `stackTrace`, `scopes`, and
-  `variables` requests when debugpy stops at a breakpoint.
-- Watch expressions backed by DAP `evaluate` in the active stack frame.
-- Call-stack rendering with frame source path and line metadata; selecting a
-  frame navigates the editor to the matching source location.
-
-## Changed
-
-- The DAP client now parses stack frames, scopes, variables, and evaluate
-  responses in addition to launch and run-control requests.
-- GitHub MSI workflows now package `LisanStudio-0.4.1-beta.msi`.
-
-## Known v0.4.1-beta limitations
-
-- The debugger inspector focuses on the active stopped thread and top frame;
-  richer multi-thread and nested variable expansion can follow in a later
-  debugger polish slice.
-- The integrated terminal is still pending Phase F.
-- Manual installed-app QA, GitHub Actions MSI runs, tag creation, release
-  publication, and Authenticode signing remain operator-owned public
-  distribution gates after this in-repo release prep.
-
-# v0.4.0-beta (2026-06-05)
-
-Phase E V2 release: debugger launch, breakpoints, and run control.
-
-## Added
-
-- Line-number gutter breakpoints for editor buffers, with click-to-toggle
-  behavior and persistent visual markers while the file is open.
-- Debug command bindings: Continue/Start Debugging on F5, Step Over on F10,
-  Step Into on F11, and Step Out on Shift+F11.
-- A live `debugpy.adapter` launch path from the bundled runtime. The debugger
-  launches `arabicpython.cli` as a module, sends current editor breakpoints,
-  completes DAP configuration, and tracks stopped/continued/terminated events
-  in the Debug bottom panel.
-- DAP client support for debugpy's `initialized` event sequence, async launch
-  completion, module launches, breakpoints, configurationDone, continue, next,
-  stepIn, and stepOut.
-- MSI packaging now stages `debugpy 1.8.20` into the bundled Python runtime
-  and import-checks both `debugpy` and `debugpy.adapter`.
-
-## Changed
-
-- Run Current File moved to Ctrl+F5 so F5 can start or continue a debug
-  session. Rerun Last Runtime Action moved to Ctrl+Shift+F5.
-- GitHub MSI workflows now prepare the pinned debugpy dependency before
-  packaging `LisanStudio-0.4.0-beta.msi`.
-- `acs_dap_client_tests` now models debugpy's launch handshake, including the
-  `initialized` event before launch response.
-
-## Known v0.4.0-beta limitations
-
-- Locals, watch expressions, and call-stack frame switching are deferred to
-  V2-E3 / `v0.4.1-beta`.
-- Breakpoints are tracked for the active editor buffer; a richer multi-file
-  DebugController surface is deferred to later debugger polish.
-- Manual installed-app QA, GitHub Actions MSI runs, tag creation, release
-  publication, and Authenticode signing remain operator-owned public
-  distribution gates after this in-repo release prep.
-
-# v0.3.2-beta (2026-06-05)
-
-Phase D V2 release: advanced LSP navigation and refactor surfaces.
-
-## Added
-
-- Go-to-definition via F12 and Ctrl+Click, backed by
-  `textDocument/definition`.
-- Find references via Shift+F12, rendered in the bottom-panel references
-  list with click/Enter navigation.
-- Rename symbol via F2, backed by `textDocument/rename` workspace edits.
-  Multi-file preview, dirty-open-file refusal, invalid-range validation,
-  and rollback-on-write-failure are covered by tests.
-- Semantic token overlay from `textDocument/semanticTokens/full` layered
-  over the existing ApyHighlighter fallback. LSP tokens win where the
-  server provides ranges.
-- Document outline from `textDocument/documentSymbol`, rendered in a new
-  bottom-panel outline tab.
-- Workspace symbol picker via Ctrl+T, backed by `workspace/symbol`.
-
-## Changed
-
-- The bottom-panel controller now includes a stable `outline` panel id for
-  workbench-session restore.
-- `acs_lsp_client_tests`, `acs_editor_tests`,
-  `acs_project_runtime_tests`, and `acs_main_window_tests` cover the new
-  D1-D3 LSP surfaces.
-- MSI workflow product-version and artifact paths now target
-  `LisanStudio-0.3.2-beta.msi`.
-
-## Known v0.3.2-beta limitations
-
-- Advanced LSP features remain dependent on the bundled apython LSP runtime
-  advertising the matching capabilities.
-- Workspace-symbol query uses a modal query + result picker; richer
-  incremental filtering can follow in a later UI polish slice.
-- Manual installed-app QA, GitHub Actions MSI runs, tag creation, release
-  publication, and Authenticode signing remain operator-owned public
-  distribution gates after this in-repo release prep.
-
-# v0.3.0-beta (2026-06-05)
-
-Phase C V2 release: first user-visible LSP foundation for Arabic-first
-editing.
-
-## Added
-
-- Lisan Studio now starts and synchronizes a Qt-side LSP client for `.apy`
-  documents through the bundled `lughat-althuban-lsp` runtime path.
-- The editor can request `textDocument/completion` and show a debounced
-  completion popup. Accepting a completion replaces the current identifier
-  prefix instead of duplicating the typed text.
-- The editor can request `textDocument/hover` on identifier dwell and surface
-  the returned markdown in a tooltip.
-- `acs_lsp_client_tests` covers initialize, document sync, completion parsing,
-  hover parsing, and local round-trip budget checks.
-
-## Changed
-
-- The repository now vendors `lsp-framework` as the first submodule under
-  `third_party/lsp-framework`; fresh checkouts must initialize submodules.
-- GitHub MSI test checkout steps use recursive submodule checkout so the LSP
-  transport is present in CI.
-
-## Known v0.3.0-beta limitations
-
-- Completion and hover depend on the bundled apython LSP runtime being present
-  and initializable. If the runtime is missing, LSP UI features stay silent.
-- Completion insertion uses the current identifier prefix plus `insertText`.
-  LSP `textEdit` replacement ranges are not yet consumed.
-- Manual installed-app QA, GitHub Actions MSI runs, tag creation, and release
-  publication remain operator-owned steps after this in-repo release prep.
-
-# v0.2.2-beta (2026-06-05)
-
-Phase B V2 release: workbench recovery, search truncation visibility,
-and command ID stability.
-
-## Added
-
-- Dirty untitled buffers are autosaved while editing and can be recovered
-  after a non-orderly shutdown. Graceful shutdown clears the recovery
-  sentinel.
-- Project search now reports when a scan hits the configured file cap, so
-  users can tell the difference between complete and truncated results.
-- Command IDs now use dotted camelCase consistently across registered
-  workbench commands, command surfaces, shortcuts, and tests.
-
-## Changed
-
-- Legacy shortcut JSON using V1 hyphenated command IDs is migrated during
-  import, preserving user bindings and exporting canonical IDs afterward.
-- ADR-0015 documents the public command ID convention for future extension,
-  LSP, debugger, terminal, and refactor commands.
-
-## Known v0.2.2-beta limitations
-
-- Draft recovery currently prompts only when the previous session left the
-  workbench sentinel uncleared and saved draft payloads exist.
-- The search truncation cap is surfaced in status text, but there is not yet
-  a full search-index progress UI.
-- Push, CI, tag creation, and release publication remain operator-owned
-  steps after this in-repo release prep.
-
-# v0.2.1-beta (2026-06-05)
-
-Phase A V2 release: multi-cursor editing now covers the deferred
-undo/redo, indentation, and committed IME text paths.
-
-## Added
-
-- Ctrl+Z and Ctrl+Y are pinned by regression tests for multi-cursor
-  edits. A single undo removes text inserted at all cursors, and a
-  single redo restores it.
-- Tab indents every active cursor line by one four-space level.
-  Shift+Tab dedents every active cursor line by one level. Each
-  operation is one undo step.
-- Committed IME text, including Arabic composition commits, inserts at
-  the primary cursor and every secondary cursor in one undoable edit.
-
-## Known v0.2.1-beta limitations
-
-- Live IME preedit text is accepted but is not painted as a separate
-  preview at every secondary caret. The committed text is dispatched to
-  all cursors when the composition is finalized.
-- Alt+drag column selection still has no live preview rectangle during
-  drag and still operates on logical lines rather than soft-wrapped
-  visual rows.
-- Other non-trivial editor commands outside Ctrl+Z, Ctrl+Y, Tab,
-  Shift+Tab, Return, Backspace, Delete, arrow movement, typing, and
-  committed IME text may still apply only to the primary cursor while
-  secondaries are active.
-
-# v0.2.0-beta (2026-05-26)
-
-V1.5 milestone-close release. The V1.5 roadmap is archived at
-`docs/ROADMAP-V1.5-archive.md`; V2 planning continues in
-`docs/ROADMAP-V2.md`.
-
-## Added
-
-- Column / rectangle selection via Alt+drag. Hold Alt and left-drag in
-  the editor to generate one cursor per line in the rectangle, each
-  with a selection (or zero-width cursor when columns coincide)
-  spanning the rectangle's column range. Reuses all of v0.1.3-beta's
-  multi-cursor machinery — atomic edit blocks, soft/hard caps, Esc
-  collapse — so typing, Backspace, Delete, arrow movement, and Return
-  apply across the generated cursors just like Ctrl+Click or Ctrl+D
-  cursors.
-
-## V1.5 milestone summary (informational)
-
-V1.5 shipped across two cumulative release tracks during May 2026:
-
-- **v0.1.2-beta** (2026-05-24): search/replace project-scan cap raised
-  from 500 to 5000 files; release-evidence trust-audit instrumentation;
-  perf baseline established; SmartScreen click-path documented;
-  ADR-0010 defers MSI code signing.
-- **v0.1.3-beta** (2026-05-24): multi-cursor primary+secondary editing
-  keystone (Ctrl+Click, Ctrl+Alt+Up/Down, Ctrl+D, Ctrl+Shift+L, Esc,
-  soft cap 100 / hard cap 1000, single-undo invariant).
-- **v0.2.0-beta** (2026-05-26, this release): Alt+drag column selection
-  closes the V1.5 multi-cursor keystone; milestone closed.
-
-## Known v0.2.0-beta limitations
-
-- Alt+drag column selection has no live preview rectangle during the
-  drag. The generated cursors appear on mouse release. Live preview
-  is deferred to V2.
-- Alt+drag column selection operates on logical lines only. If the
-  editor is showing soft-wrapped lines, the drag rectangle treats
-  each logical line as a single row rather than each wrapped visual
-  row. Soft-wrap-as-visual-row column selection is deferred to V2.
-
-# v0.1.3-beta (2026-05-24)
-
-## Added
-
-- Multi-cursor editing in the editor surface. Hold Ctrl and click to add
-  a cursor at the click position. Ctrl+Alt+Up and Ctrl+Alt+Down add
-  cursors above/below the primary cursor at the same column. Ctrl+D
-  adds a cursor at the next exact match of the current selection.
-  Ctrl+Shift+L converts every find-match in the document into a cursor.
-  Esc collapses to a single cursor. Typing, Backspace, Delete, arrow
-  movement, and Return apply to all cursors atomically with a single
-  undo step.
-- Soft cap notice when 100 simultaneous cursors are active; hard cap at
-  1000 cursors to prevent runaway UI lock-ups from select-all-matches on
-  very large documents.
-- Five new commands in the command palette and Edit menu, all
-  rebindable via the shortcuts JSON: `cursor.addAbove`, `cursor.addBelow`,
-  `cursor.addAtNextMatch`, `cursor.selectAllMatches`,
-  `cursor.collapseToSingle`.
-
-## Known v0.1.3-beta limitations
-
-- IME composition is refused while secondary cursors are active. The
-  editor emits a status-bar notice when this happens. Press Esc to
-  collapse to a single cursor first, then use IME.
-- Column / rectangle selection is not yet supported. Deferred to a
-  future beta.
-- Undo/redo (Ctrl+Z, Ctrl+Y), Tab indent, and other complex editor
-  commands apply only to the primary cursor in this beta. Multi-cursor
-  extensions for these commands are planned.
-
-# v0.1.2-beta (2026-05-24)
-
-- Search/replace project-wide scan cap raised from 500 to 5000 files. The per-file 1 MB ceiling and the per-call result limit are unchanged. Truncation status-bar message now dynamically reports the active cap.
-
-# Lisan Studio 0.1.1 Beta Notes
-
-## Fixed (data-safety regressions in 0.1.0-beta)
-
-- Project-wide replace now preserves leading whitespace and per-file line endings. (was: stripped indentation, mixed CRLF/LF on apply)
-- Editor save preserves the loaded file's line-ending style. (was: silently converted CRLF to LF)
-- MSI install registers as a single entry in HKLM\WOW6432Node\Uninstall instead of a dual HKCU+HKLM registration. (was: two entries per install, polluted Programs and Features)
-- Build identifier (git short SHA or ISO UTC timestamp) is captured at HKCU\Software\LisanStudio\BuildId for support diagnostics.
-
-## Added
-
-- Document model: every open file is tracked by a real DocumentRegistry with version-checked text edits, external file change polling, and a Reload/Keep/Compare prompt when files change externally.
-- Workspace trust: grant + revoke commands with an audit trail at .lisan-workspace/trust-audit.jsonl, surfaced in the diagnostics bundle.
-- Editor torture coverage for V1.5 gate decisions: 100k-line files, undo/redo storms, find/replace storms, IME composition cycles, soft-wrap on mixed RTL/LTR.
-- Search/replace cap notice: "تم اقتطاع نتائج البحث عند 500 ملف" appears in status bar when the 500-file scan cap fires.
-- Command-registry sweep: every visible command is now generatively asserted to have id/label/category/trigger/uniqueness/shortcut/no-BiDi-controls.
-
-## Changed
-
-- MSI test pipeline migrated to GitHub Actions (.github/workflows/msi-tests.yml). Per-step logs replace the prior custom Hyper-V harness's sparse checkpoint files.
-- Editor enforces CRLF on save for new untitled buffers (Windows-default); Mixed-line-ending files are normalized to their dominant style on first save.
-- MainWindow extracted into RuntimeOrchestrator, EditorTabsController, ProjectTreeController, BottomPanelController, CommandPaletteController, WorkbenchTheme. Internal refactor - no user-facing behavior change beyond the per-feature fixes above.
-
-## Removed
-
-- Legacy Hyper-V harness entry points (qa/vm/*, the wrapper test scripts). MSI test orchestration now lives in the GHA workflow exclusively.
-- AllowSameVersionUpgrades on the WiX MajorUpgrade. Each beta now bumps a patch version; same-version replacement is no longer the upgrade cadence.
-
-## Known limitations (deferred to V1.5+ / V2)
-
-- No multi-cursor or column selection. (gated on QPlainTextEdit cost-model evidence)
-- Terminal panel boundary exists but real shell execution is not yet wired. (gated on stronger trust model)
-- No language-server protocol features (completion, diagnostics from unsaved buffers, go-to-definition). (V2 scope)
-- No debugger. (V2 scope)
-- No Git source-control UI. (V3 scope)
-- Search and project-replace scan up to the first 500 files; larger projects truncate with a status-bar notice.
-
-## Upgrade from 0.1.0-beta
-
-- Install LisanStudio-0.1.1-beta.msi normally. Windows Installer's MajorUpgrade removes the prior install and installs the new one in a single transaction.
-- User settings under HKCU\Software\LisanStudio survive the upgrade.
-- The verified upgrade path is the one tested in GHA run 26331615773.
-
-# Lisan Studio 0.1.0 Beta Notes
-
-## Included
-
-- Native Qt 6 desktop shell.
-- Lisan Studio app branding and bundled logo resource.
-- Premium dark visual system.
-- Custom RTL single top shell with integrated menus, primary run action, and unified command/search field.
-- Integrated dropdown menus for file, edit, view, tools, and help.
-- Primary run and command/search are single top-bar entry points to avoid duplicate run/search surfaces.
-- No inherited `QMenuBar` or `QToolBar` shell surface.
-- RTL editor tabs, project sidebar, bottom panel tabs, and status bar.
-- Arabic-first editor surface based on `QPlainTextEdit`.
-- Minimal `.apy` syntax highlighting.
-- Hidden Unicode BiDi control detection.
-- Project folder tree.
-- Editor tabs for multiple open documents.
-- Bottom panel tabs for terminal, output, problems, search results, and debug.
-- Project text search with clickable file/line result rows.
-- Problems panel entries for hidden BiDi controls and runtime failures.
-- Run current `.apy` through bundled runtime with live output, exit code, elapsed time, and cancel action.
-- RTL settings dialog with editor font controls, runtime diagnostics, and recent projects.
-- Runtime diagnostics for bundled Python, `lughat-althuban`, run, lint, and format availability.
-- Lisan Studio application metadata, executable name, install folder, and shortcut targets.
-- Packaged Qt, Python, and `lughat-althuban` license payloads.
-- WiX MSI packaging path for `LisanStudio-0.1.0-beta.msi`.
-- MSI install/uninstall smoke script for private beta validation.
-- Release evidence script for checksums, validation log, known issues, and screenshot capture.
-- Manual beta checklist script for recording the installed-app handoff pass as a professionally formatted Word review packet, with Markdown and JSON traceability files.
-
-## Validation Status
-
-- Automated MSI/GUI/release evidence lane passed inside an isolated Windows QA environment.
-- Manual installed-app QA is complete.
-- Private beta handoff decision: ready; previously recorded non-blocking polish
-  notes are resolved in the current codebase.
-
-Resolved reviewer notes:
-
-- Normal app launch is configured as a Windows GUI executable so it does not
-  open a command window.
-- Right-click Undo/Redo menu actions are Lisan-owned actions and trigger the
-  same editor commands as keyboard shortcuts.
-- Search result file text and line metadata are kept in a guarded RTL metadata
-  cluster.
-- Problems panel diagnostic subtext is right-anchored under the metadata row.
-
-## Deferred
+# ملاحظات الإصدار
+
+## v1.0.0-rc1 (2026-06-06)
+
+إغلاق مرحلة V3: واجهة Git ومساحات العمل متعددة الجذور.
+
+### أضيف
+
+- لوحة Source Control مدمجة لإدارة حالة Git من داخل Lisan Studio.
+- عرض الملفات المعدلة، و stage/unstage، و diff موحد، وتدفق commit.
+- أوامر push و pull و fetch، وإدارة الفروع، وسجل commits، و blame.
+- دعم مساحات العمل متعددة الجذور للمشاريع التي تحتوي أكثر من مجلد أو وحدة.
+
+### تغير
+
+- أصبح Lisan Studio أقرب إلى IDE مكتمل للكتابة العربية أولا، دون اعتماد المستخدم على Git client خارجي في المهام اليومية.
+
+### حدود معروفة في v1.0.0-rc1
+
+- صفحة GitHub Release الحالية لا تحتوي على MSI مرفق بعد.
+- المثبت المحلي غير موقع ما لم يذكر الإصدار عكس ذلك.
+- فحوصات MSI install/upgrade يجب أن تعمل في بيئة Windows QA معزولة قبل إعلان المثبت كأصل إصدار عام.
+
+## v0.5.0-beta (2026-06-05)
+
+إغلاق Phase F من V2: تنفيذ الطرفية المدمجة.
+
+### أضيف
+
+- تبويب طرفية مدمج مع بوابة ثقة، واختيار shell، وإدخال أوامر، وزر إيقاف، وعرض LTR لمخرجات الأوامر.
+- حفظ إعدادات الطرفية داخل `.lisan-workspace/settings.json`.
+- ملفات طرفية على Windows ل PowerShell و cmd، مع إظهار WSL Bash عندما يتوفر `wsl.exe`.
+- تنفيذ أوامر عبر `TerminalBackend` مع stdin، وقراءة مخرجات مدمجة، وإشارات خروج العملية.
+- تغطية اختبارات للثقة، وحفظ shell المختار، وتنفيذ cmd، وإدخال الأوامر من الواجهة.
+
+### تغير
+
+- ADR-0014 يوثق مسار V2 المثبت: طرفية مدعومة بعمليات process أولا، وتأجيل ConPTY/QTermWidget إلى أن يثبت سلوك الإدخال والرسم على Windows.
+- GitHub MSI workflows تبني `LisanStudio-0.5.0-beta.msi`.
+
+### حدود معروفة
+
+- الطرفية الحالية نصية عمدا. دعم ANSI غني، ومحاكاة طرفية أعمق، أو بديل ConPTY/QTermWidget موثوق، كلها مسارات مستقبلية.
+- QA اليدوي للتطبيق المثبت، وتشغيل MSI عبر GitHub Actions، وإنشاء الوسوم، ونشر الإصدارات، وتوقيع Authenticode تبقى بوابات توزيع عامة يملكها المشرف.
+
+## v0.4.1-beta (2026-06-05)
+
+إغلاق Phase E من V2: لوحات فحص المصحح عند توقف البرنامج.
+
+### أضيف
+
+- تبويبات فحص داخل لوحة Debug السفلية: log، و variables، و watch، و call stack.
+- قراءة المتغيرات المحلية عبر طلبات DAP: `stackTrace` و `scopes` و `variables` عند توقف debugpy على breakpoint.
+- Watch expressions عبر DAP `evaluate` في stack frame النشط.
+- عرض call stack مع مسار المصدر ورقم السطر، والتنقل إلى الموضع عند اختيار frame.
+
+### تغير
+
+- أصبح DAP client يحلل stack frames، و scopes، و variables، و evaluate responses إلى جانب launch/run-control.
+- GitHub MSI workflows تبني `LisanStudio-0.4.1-beta.msi`.
+
+### حدود معروفة
+
+- يركز debugger inspector على thread النشط وأعلى frame. توسيع المتغيرات المتداخلة ودعم multi-thread مؤجل.
+- الطرفية المدمجة كانت لا تزال ضمن Phase F.
+- QA اليدوي، وتشغيل MSI عبر GitHub Actions، وإنشاء الوسوم، ونشر الإصدار، والتوقيع بقيت بوابات يملكها المشرف.
+
+## v0.4.0-beta (2026-06-05)
+
+إصدار Phase E من V2: تشغيل المصحح، ونقاط التوقف، والتحكم بالتنفيذ.
+
+### أضيف
+
+- نقاط توقف في gutter أرقام الأسطر مع click-to-toggle وعلامات بصرية أثناء بقاء الملف مفتوحا.
+- أوامر Debug: Continue/Start Debugging على F5، و Step Over على F10، و Step Into على F11، و Step Out على Shift+F11.
+- مسار تشغيل `debugpy.adapter` من runtime المدمج. يشغل المصحح `arabicpython.cli` ك module، ويرسل نقاط توقف المحرر، ويتابع أحداث stopped/continued/terminated.
+- دعم DAP لتهيئة debugpy، والlaunch، و module launches، ونقاط التوقف، و configurationDone، و continue، و next، و stepIn، و stepOut.
+- تغليف MSI يضع `debugpy 1.8.20` داخل Python runtime المدمج ويفحص استيراد `debugpy` و `debugpy.adapter`.
+
+### تغير
+
+- انتقل Run Current File إلى Ctrl+F5 حتى يصبح F5 مخصصا لبدء/متابعة جلسة Debug. وانتقل Rerun Last Runtime Action إلى Ctrl+Shift+F5.
+- GitHub MSI workflows تحضر نسخة debugpy المثبتة قبل تغليف `LisanStudio-0.4.0-beta.msi`.
+- اختبارات `acs_dap_client_tests` تمثل مصافحة launch الخاصة ب debugpy، بما فيها حدث `initialized`.
+
+### حدود معروفة
+
+- المتغيرات المحلية، و watch expressions، والتنقل بين frames كانت مؤجلة إلى `v0.4.1-beta`.
+- نقاط التوقف مرتبطة بملف المحرر النشط؛ سطح DebugController متعدد الملفات مؤجل.
+- QA اليدوي، وتشغيل MSI عبر GitHub Actions، وإنشاء الوسوم، ونشر الإصدار، والتوقيع بقيت خطوات يملكها المشرف.
+
+## v0.3.2-beta (2026-06-05)
+
+إصدار Phase D من V2: تنقل LSP متقدم وواجهات refactor.
+
+### أضيف
+
+- Go to definition عبر F12 و Ctrl+Click، مدعوم ب `textDocument/definition`.
+- Find references عبر Shift+F12، مع عرض النتائج في اللوحة السفلية والتنقل بالنقر أو Enter.
+- Rename symbol عبر F2، مدعوم ب `textDocument/rename` workspace edits، مع preview ورفض الملفات المفتوحة المتسخة والتحقق من النطاق والرجوع عند فشل الكتابة.
+- طبقة semantic tokens فوق ApyHighlighter الحالي.
+- Document outline من `textDocument/documentSymbol`.
+- Workspace symbol picker عبر Ctrl+T، مدعوم ب `workspace/symbol`.
+
+### تغير
+
+- أضيف panel id ثابت باسم `outline` لاستعادة جلسة الواجهة.
+- اختبارات LSP والمحرر والruntime والنافذة الرئيسية تغطي الأسطح الجديدة.
+- MSI workflow أصبح يستهدف `LisanStudio-0.3.2-beta.msi`.
+
+### حدود معروفة
+
+- ميزات LSP المتقدمة تعتمد على runtime المدمج وقدراته المعلنة.
+- Workspace-symbol يستخدم query modal و result picker؛ الفلترة التزايدية مؤجلة.
+- QA اليدوي، وتشغيل MSI عبر GitHub Actions، وإنشاء الوسوم، ونشر الإصدار، والتوقيع بقيت بوابات يملكها المشرف.
+
+## v0.3.0-beta (2026-06-05)
+
+إصدار Phase C من V2: أساس LSP المرئي للمستخدم في التحرير العربي أولا.
+
+### أضيف
+
+- يبدأ Lisan Studio عميل LSP على جانب Qt ويزامن مستندات `.apy` عبر runtime `lughat-althuban-lsp` المدمج.
+- يطلب المحرر `textDocument/completion` ويعرض completion popup مؤجلة زمنيا.
+- قبول الإكمال يستبدل بادئة المعرف الحالية بدلا من تكرار النص المكتوب.
+- يطلب المحرر `textDocument/hover` عند الوقوف فوق المعرف ويعرض markdown في tooltip.
+- اختبارات `acs_lsp_client_tests` تغطي initialize، ومزامنة المستند، وتحليل completion/hover، وميزانية round-trip المحلية.
+
+### تغير
+
+- أصبح المستودع يحتوي `lsp-framework` كأول submodule داخل `third_party/lsp-framework`.
+- خطوات GitHub MSI checkout تستخدم recursive submodule checkout.
+
+### حدود معروفة
+
+- completion و hover يعتمدان على وجود runtime LSP المدمج وقدرته على التهيئة.
+- إدخال completion يستخدم بادئة المعرف الحالية مع `insertText`; نطاقات `textEdit` لم تستهلك بعد.
+- QA اليدوي، وتشغيل MSI عبر GitHub Actions، وإنشاء الوسوم، ونشر الإصدار بقيت خطوات يملكها المشرف.
+
+## v0.2.2-beta (2026-06-05)
+
+إصدار Phase B من V2: استعادة الواجهة، ووضوح اقتطاع البحث، وثبات command IDs.
+
+### أضيف
+
+- تحفظ المسودات غير المسماة المتسخة أثناء التحرير ويمكن استعادتها بعد إغلاق غير منظم.
+- بحث المشروع يبلغ عندما يصل إلى سقف الملفات، حتى يميز المستخدم بين النتائج الكاملة والمقتطعة.
+- command IDs أصبحت dotted camelCase عبر أوامر الواجهة والاختصارات والاختبارات.
+
+### تغير
+
+- ملفات shortcut JSON القديمة ذات command IDs بأسلوب V1 hyphenated تهاجر عند الاستيراد مع الحفاظ على ربط المستخدم.
+- ADR-0015 يوثق اتفاقية command ID العامة للمستقبل.
+
+### حدود معروفة
+
+- استعادة المسودات تظهر فقط عندما تترك الجلسة السابقة sentinel غير ممسوح ومع وجود payloads.
+- رسالة اقتطاع البحث تظهر في شريط الحالة، ولا توجد بعد واجهة تقدم كاملة لفهرسة البحث.
+- push و CI وإنشاء الوسوم ونشر الإصدار بقيت خطوات يملكها المشرف.
+
+## v0.2.1-beta (2026-06-05)
+
+إصدار Phase A من V2: المؤشرات المتعددة تغطي undo/redo، والمسافات البادئة، ونص IME النهائي.
+
+### أضيف
+
+- Ctrl+Z و Ctrl+Y مثبتان باختبارات regression للمؤشرات المتعددة؛ undo واحد يزيل النص من كل المؤشرات و redo واحد يعيده.
+- Tab يضيف مستوى مسافة بادئة من أربع مسافات لكل أسطر المؤشرات النشطة.
+- Shift+Tab يزيل مستوى مسافة بادئة واحدا.
+- نص IME النهائي، بما فيه العربية، يدخل عند المؤشر الأساسي وكل المؤشرات الثانوية في تعديل واحد قابل للتراجع.
+
+### حدود معروفة
+
+- نص preedit الحي مقبول لكنه لا يرسم كمعاينة منفصلة عند كل caret ثانوي.
+- Alt+drag column selection لم يكن يملك معاينة مستطيل حية أثناء السحب وكان يعمل على الأسطر المنطقية فقط.
+- بعض أوامر التحرير المعقدة خارج المجموعة المغطاة قد تعمل فقط على المؤشر الأساسي عند وجود مؤشرات ثانوية.
+
+## v0.2.0-beta (2026-05-26)
+
+إغلاق مرحلة V1.5. خارطة V1.5 محفوظة في `docs/ROADMAP-V1.5-archive.md`، والتخطيط ل V2 في `docs/ROADMAP-V2.md`.
+
+### أضيف
+
+- تحديد عمودي/مستطيل عبر Alt+drag. اضغط Alt واسحب بزر الفأرة الأيسر داخل المحرر لإنشاء مؤشر لكل سطر في المستطيل، مع تحديد أو مؤشر صفري العرض حسب الأعمدة.
+- يستفيد هذا من بنية المؤشرات المتعددة في v0.1.3-beta: كتل تعديل ذرية، soft/hard caps، و Esc للعودة إلى مؤشر واحد.
+
+### ملخص V1.5
+
+- **v0.1.2-beta** (2026-05-24): رفع سقف بحث/استبدال المشروع من 500 إلى 5000 ملف، وتوثيق مسار SmartScreen، وتأجيل توقيع MSI في ADR-0010.
+- **v0.1.3-beta** (2026-05-24): أساس المؤشرات المتعددة عبر Ctrl+Click و Ctrl+Alt+Up/Down و Ctrl+D و Ctrl+Shift+L و Esc.
+- **v0.2.0-beta** (2026-05-26): Alt+drag column selection أغلق حجر أساس المؤشرات المتعددة.
+
+### حدود معروفة
+
+- Alt+drag column selection لا يملك معاينة مستطيل حية أثناء السحب.
+- Alt+drag column selection يعمل على الأسطر المنطقية فقط، وليس صفوف soft-wrap البصرية.
+
+## v0.1.3-beta (2026-05-24)
+
+### أضيف
+
+- تحرير متعدد المؤشرات داخل المحرر. Ctrl+Click يضيف مؤشرا، و Ctrl+Alt+Up/Down يضيف مؤشرات أعلى/أسفل، و Ctrl+D يضيف المؤشر عند المطابقة التالية، و Ctrl+Shift+L يحول كل نتائج البحث إلى مؤشرات، و Esc يعود إلى مؤشر واحد.
+- الكتابة، و Backspace، و Delete، وحركة الأسهم، و Return تعمل على كل المؤشرات ذريا مع undo واحد.
+- تنبيه soft cap عند 100 مؤشر متزامن، و hard cap عند 1000 مؤشر.
+- خمسة أوامر جديدة في command palette وقائمة Edit، كلها قابلة لإعادة الربط عبر shortcuts JSON.
+
+### حدود معروفة
+
+- IME composition كان يرفض عند وجود مؤشرات ثانوية. اضغط Esc للعودة إلى مؤشر واحد ثم استخدم IME.
+- لم يكن تحديد column/rectangle مدعوما بعد.
+- undo/redo و Tab وبعض الأوامر المعقدة كانت تعمل فقط على المؤشر الأساسي.
+
+## v0.1.2-beta (2026-05-24)
+
+- رفع سقف بحث/استبدال المشروع من 500 إلى 5000 ملف. سقف حجم الملف الواحد 1 MB وحد نتائج كل استدعاء لم يتغيرا. رسالة شريط الحالة تعرض السقف الفعلي ديناميكيا.
+
+## Lisan Studio 0.1.1 بيتا (2026-05-24)
+
+### أصلح
+
+- استبدال المشروع يحافظ على المسافات البادئة ونمط نهايات الأسطر لكل ملف.
+- حفظ المحرر يحافظ على نمط نهايات الأسطر للملف المحمل.
+- تثبيت MSI يسجل كتطبيق واحد بدلا من تسجيل مزدوج.
+- BuildId يسجل في `HKCU\Software\LisanStudio\BuildId` للتشخيص.
+
+### أضيف
+
+- DocumentRegistry حقيقي لكل ملف مفتوح مع إصدارات text edits ومراقبة تغييرات خارجية.
+- Workspace trust مع أوامر grant/revoke وسجل audit.
+- تغطية torture للمحرر: ملفات 100k سطر، عواصف undo/redo، عواصف find/replace، دورات IME، و soft-wrap مختلط RTL/LTR.
+- رسالة اقتطاع البحث: "تم اقتطاع نتائج البحث عند 500 ملف".
+- فحص شامل command registry للأوامر المرئية.
+
+### تغير
+
+- انتقلت MSI test pipeline إلى GitHub Actions.
+- المحرر يفرض CRLF للملفات غير المسماة الجديدة على Windows، ويطبع الملفات المختلطة إلى النمط الغالب عند أول حفظ.
+- تم تقسيم MainWindow إلى خدمات/Controllers داخلية دون تغيير سلوك المستخدم.
+
+### أزيل
+
+- نقاط دخول Hyper-V harness القديمة. تنسيق MSI test أصبح في GHA workflow فقط.
+- `AllowSameVersionUpgrades` من WiX MajorUpgrade.
+
+### حدود معروفة
+
+- لا توجد مؤشرات متعددة أو تحديد عمودي في ذلك الإصدار.
+- لوحة الطرفية موجودة كحد، لكن تنفيذ shell لم يكن موصولا.
+- لا توجد ميزات LSP أو debugger أو Git UI.
+- بحث/استبدال المشروع كان يفحص أول 500 ملف فقط.
+
+### الترقية من 0.1.0-beta
+
+- ثبت `LisanStudio-0.1.1-beta.msi` بشكل عادي؛ Windows Installer يزيل الإصدار السابق ويثبت الجديد.
+- إعدادات المستخدم داخل `HKCU\Software\LisanStudio` تبقى بعد الترقية.
+- المسار المتحقق منه كان GHA run `26331615773`.
+
+## Lisan Studio 0.1.0 بيتا
+
+### تضمن
+
+- واجهة سطح مكتب أصلية ب Qt 6.
+- هوية Lisan Studio وشعار مدمج.
+- نظام بصري داكن.
+- shell علوي عربي RTL مع قوائم، وزر تشغيل أساسي، وحقل أوامر/بحث موحد.
+- قوائم file/edit/view/tools/help مدمجة.
+- لا توجد `QMenuBar` أو `QToolBar` أصلية موروثة.
+- تبويبات محرر RTL، وشريط مشروع جانبي، ولوحة سفلية، وشريط حالة.
+- محرر عربي أولا مبني على `QPlainTextEdit`.
+- تلوين `.apy` بسيط، وكشف محارف BiDi المخفية.
+- شجرة مجلد المشروع وتبويبات مستندات متعددة.
+- تبويبات سفلية للطرفية، والمخرجات، والمشكلات، ونتائج البحث، و Debug.
+- بحث نصي في المشروع مع نتائج قابلة للنقر.
+- تشغيل `.apy` الحالي عبر runtime مدمج مع مخرجات حية، ورمز خروج، ووقت، وإلغاء.
+- مربع إعدادات RTL مع خط المحرر وتشخيص runtime والمشاريع الحديثة.
+- معلومات التطبيق، واسم الملف التنفيذي، ومجلد التثبيت، وأهداف الاختصارات.
+- ملفات تراخيص Qt و Python و `lughat-althuban`.
+- مسار تغليف WiX MSI، وفحص install/uninstall، وسكربت أدلة الإصدار، وحزمة QA يدوية.
+
+### حالة التحقق
+
+- مسار MSI/GUI/release evidence الآلي مر داخل بيئة Windows QA معزولة.
+- QA اليدوي للتطبيق المثبت اكتمل.
+- قرار handoff الخاص: جاهز؛ ملاحظات polish غير الحاجزة حلت في الكود الحالي.
+
+ملاحظات المراجع التي حلت:
+
+- تشغيل التطبيق العادي مضبوط كتطبيق Windows GUI حتى لا يفتح نافذة أوامر.
+- عناصر Undo/Redo في قائمة الزر الأيمن مملوكة ل Lisan وتستدعي أوامر المحرر نفسها.
+- نص ملف نتائج البحث وبيانات السطر محمية داخل metadata cluster مناسب ل RTL.
+- النص الفرعي في Problems panel مثبت يمينا تحت صف metadata.
+
+### مؤجل
 
 - Git UI.
 - AI panel.
-- Public distribution.
-- Auto-update.
-- Plugin system.
+- التوزيع العام.
+- auto-update.
+- نظام plugins.
 
-## Release Blockers
+### موانع الإصدار
 
-- Cursor or selection corruption in mixed Arabic/English code.
-- Arabic output mojibake.
-- Save/open data loss.
-- Installer requiring manual PATH or Python setup.
-- MSI install/uninstall smoke failure.
-- Missing Qt, Python, or `lughat-althuban` license payloads.
-- Hidden BiDi controls inserted by the editor.
-- Any return of a native `QMenuBar` or `QToolBar` shell surface.
-- Left-to-right shell regression in top command bar menus, project/sidebar, tabs, status bar, or bottom panel.
+- تلف المؤشر أو التحديد في كود عربي/إنجليزي مختلط.
+- ظهور المخرجات العربية بحروف تالفة.
+- فقدان بيانات عند الحفظ أو الفتح.
+- احتياج المثبت إلى PATH أو Python يدوي.
+- فشل فحص MSI install/uninstall.
+- غياب تراخيص Qt أو Python أو `lughat-althuban`.
+- إدخال المحرر لمحارف BiDi مخفية.
+- عودة `QMenuBar` أو `QToolBar` أصلية.
+- تراجع RTL في شريط الأوامر العلوي أو القوائم أو المشروع/الشريط الجانبي أو التبويبات أو شريط الحالة أو اللوحة السفلية.

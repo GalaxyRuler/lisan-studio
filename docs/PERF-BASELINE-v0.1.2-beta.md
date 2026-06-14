@@ -1,20 +1,20 @@
-# Perf Baseline — v0.1.2-beta
+# خط أساس الأداء - v0.1.2-beta
 
-Captured: 2026-05-24T19:51:15.4159244+03:00
+تاريخ الالتقاط: 2026-05-24T19:51:15.4159244+03:00
 HEAD SHA: 8cfa01e05d5d1d13d747ce9d4dc5b441e1b61552
-Reference environment: local Windows development machine
+بيئة المرجع: جهاز تطوير Windows محلي
 
-## Methodology
+## المنهجية
 
-Each metric is gated by an inline `QVERIFY2(... budget ...)` assertion in `tests/TestEditorTorture.cpp`. The slice that produced this baseline added a parseable `qInfo` emission of the same elapsed value immediately before the budget check. To re-capture:
+كل metric محكوم ب assertion من نوع `QVERIFY2(... budget ...)` داخل `tests/TestEditorTorture.cpp`. الشريحة التي أنتجت هذا الخط الأساسي أضافت إخراج `qInfo` قابل للقراءة لنفس قيمة الزمن مباشرة قبل فحص الميزانية. لإعادة الالتقاط:
 
-1. Run `.\scripts\validate.ps1`.
-2. From the `acs_editor_torture_tests` output, extract lines matching `PERF metric=NAME elapsed=NUM budget=NUM`.
-3. Each elapsed value is the measured wall-clock time for that path.
+1. شغل `.\scripts\validate.ps1`.
+2. من مخرجات `acs_editor_torture_tests` استخرج الأسطر المطابقة ل `PERF metric=NAME elapsed=NUM budget=NUM`.
+3. كل قيمة elapsed هي الزمن الفعلي measured wall-clock لذلك المسار.
 
-Values are hardware-dependent and will vary across runners. The `budget` columns are the upper bounds the test enforces; if a future capture exceeds the budget, the test fails and the slice that caused the regression must address it before merging.
+القيم تعتمد على العتاد وستختلف بين runners. أعمدة `budget` هي الحدود العليا التي يفرضها الاختبار؛ إذا تجاوز التقاط مستقبلي الميزانية يفشل الاختبار، ويجب إصلاح الشريحة التي سببت التراجع قبل الدمج.
 
-On local Windows runs, Qt logging may need stderr forcing for `qInfo` messages to appear in CTest's captured output:
+في تشغيلات Windows المحلية قد يحتاج Qt logging إلى إجبار stderr حتى تظهر رسائل `qInfo` في مخرجات CTest:
 
 ```powershell
 $env:QT_FORCE_STDERR_LOGGING = "1"
@@ -22,7 +22,7 @@ $env:QT_FORCE_STDERR_LOGGING = "1"
 Select-String -Pattern "PERF metric=([^ ]+) elapsed=([0-9]+) budget=([0-9]+)" -Path build\Testing\Temporary\LastTest.log
 ```
 
-## Snapshot
+## اللقطة
 
 | Metric | Elapsed (ms) | Budget (ms) | Headroom |
 |---|---:|---:|---:|
@@ -34,11 +34,11 @@ Select-String -Pattern "PERF metric=([^ ]+) elapsed=([0-9]+) budget=([0-9]+)" -P
 | find_replace_storm_300 | 46 | 1000 | 95% |
 | indent_guide_paint_10k | 31 | 5000 | 99% |
 
-Headroom = (budget - elapsed) / budget, rounded to whole percent.
+Headroom = (budget - elapsed) / budget، مقربة إلى نسبة مئوية كاملة.
 
-## When to re-capture
+## متى يعاد الالتقاط؟
 
-- Before any V2 slice that touches the editor core (multi-cursor, column selection, syntax engine swap, etc.).
-- When upgrading Qt major version.
-- When the reference runner hardware changes.
-- As part of each beta release-evidence packet (future).
+- قبل أي شريحة V2 تمس قلب المحرر: المؤشرات المتعددة، التحديد العمودي، تبديل syntax engine، وغيرها.
+- عند ترقية الإصدار الرئيسي من Qt.
+- عند تغير عتاد runner المرجعي.
+- كجزء من كل حزمة أدلة beta release في المستقبل.

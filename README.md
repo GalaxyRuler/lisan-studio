@@ -1,148 +1,148 @@
 # Lisan Studio
 
-Native Windows IDE for Arabic-first `.apy` / Arabic Python development.
-Built with C++17 and Qt 6. No Electron, browser shell, or JVM.
+بيئة تطوير أصلية على Windows لكتابة وتشغيل مشاريع `.apy` و"بايثون العربي" أولا.
+المشروع مبني ب ++C17 و Qt 6. لا يستخدم Electron ولا غلاف متصفح ولا JVM.
 
-**Current source release:** [v1.0.0-rc1](https://github.com/GalaxyRuler/lisan-studio/releases/tag/v1.0.0-rc1)
+**إصدار المصدر الحالي:** [v1.0.0-rc1](https://github.com/GalaxyRuler/lisan-studio/releases/tag/v1.0.0-rc1)
 
-> Public installer note: use the MSI attached to a GitHub Release when one is present. If a release tag has no MSI asset, build from source or ask the maintainer to publish the installer artifact for that release.
+> ملاحظة عن المثبت العام: استخدم ملف MSI المرفق في صفحة GitHub Releases عندما يكون موجودا. إذا كان الوسم لا يحتوي على ملف MSI، فهذا يعني أن الإصدار متاح من المصدر فقط، أو أن المثبت لم يرفق بعد.
 
-## What Lisan Studio Includes
+## ماذا يقدم Lisan Studio؟
 
-- Arabic-first Qt desktop shell with RTL workbench layout.
-- `.apy`, `.py`, `.md`, and text-file editing with line numbers, tabs, save/reload, and recovery for dirty untitled drafts.
-- `.apy` syntax highlighting, hidden Unicode BiDi control warnings, bracket matching, indentation guides, visible whitespace, and trim-on-save.
-- Multi-cursor editing: `Alt+Click`, `Alt+Drag` column selection, `Ctrl+D`, `Ctrl+Shift+L`, and cursor-above/cursor-below commands.
-- Find/replace with regex, wrap, and all-match highlighting.
-- Project tree, multi-root workspaces, recent projects, and workspace settings.
-- Runtime execution for `.apy` files through a packaged Python / `lughat-althuban` runtime.
-- LSP client support for completions, hover, go-to-definition, references, rename, outline, workspace symbols, and semantic tokens.
-- Debug adapter support through `debugpy`, including breakpoints, run control, variables, watches, and call stack panels.
-- Integrated terminal tab with project trust checks.
-- Git source-control UI: status, stage/unstage, unified diff, commit, push, pull, fetch, branch management, history, blame, and historical diffs.
-- Diagnostics, known-issue, release-evidence, packaging, and MSI smoke scripts for maintainers.
+- واجهة سطح مكتب Qt عربية أولا، مع تخطيط RTL مناسب للعمل اليومي.
+- تحرير ملفات `.apy` و `.py` و `.md` والملفات النصية، مع أرقام أسطر، تبويبات، حفظ/إعادة تحميل، واستعادة المسودات غير المحفوظة.
+- تلوين صياغة لملفات `.apy`، وتحذير من محارف Unicode BiDi المخفية، ومطابقة الأقواس، وأدلة المسافة البادئة، وإظهار المسافات، وحذف الفراغات الزائدة عند الحفظ.
+- تحرير متعدد المؤشرات: `Alt+Click`، وتحديد عمودي عبر `Alt+Drag`، و `Ctrl+D`، و `Ctrl+Shift+L`، وأوامر إضافة مؤشر أعلى/أسفل.
+- بحث واستبدال مع regex، والتفاف البحث، وتظليل جميع النتائج.
+- شجرة مشروع، ومساحات عمل متعددة الجذور، ومشاريع حديثة، وإعدادات مساحة العمل.
+- تشغيل ملفات `.apy` عبر Runtime مدمج يحتوي على Python و `lughat-althuban`.
+- دعم LSP للإكمال، والشرح عند المرور، والانتقال إلى التعريف، والمراجع، وإعادة التسمية، والمخطط، ورموز مساحة العمل، والرموز الدلالية.
+- دعم التصحيح عبر `debugpy`، ويشمل نقاط التوقف، والتحكم بالتشغيل، والمتغيرات، والمراقبات، ولوحة مكدس الاستدعاء.
+- تبويب طرفية مدمج مع فحص ثقة المشروع قبل التنفيذ.
+- واجهة Git مدمجة: الحالة، stage/unstage، diff موحد، commit، push، pull، fetch، إدارة الفروع، التاريخ، blame، والفروقات التاريخية.
+- سكربتات للتشخيص، والمشكلات المعروفة، وأدلة الإصدار، وبناء MSI، وفحوصات المثبت للمشرفين.
 
-## Install
+## التثبيت
 
-### Option 1: Install a Release MSI
+### الخيار 1: تثبيت إصدار MSI جاهز
 
-1. Open [GitHub Releases](https://github.com/GalaxyRuler/lisan-studio/releases).
-2. Download the MSI asset for the release, for example `LisanStudio-1.0.0-beta.msi`.
-3. Run the MSI and follow the Windows Installer prompts.
-4. Launch **Lisan Studio** from the Start Menu or desktop shortcut.
+1. افتح [GitHub Releases](https://github.com/GalaxyRuler/lisan-studio/releases).
+2. حمل ملف MSI الخاص بالإصدار، مثل `LisanStudio-1.0.0-beta.msi`.
+3. شغل ملف MSI واتبع خطوات Windows Installer.
+4. افتح **Lisan Studio** من قائمة Start أو من اختصار سطح المكتب.
 
-The MSI installs per user under:
+يثبت MSI التطبيق لكل مستخدم داخل:
 
 ```text
 %LOCALAPPDATA%\LisanStudio
 ```
 
-The expected executable is:
+الملف التنفيذي المتوقع هو:
 
 ```text
 %LOCALAPPDATA%\LisanStudio\LisanStudio.exe
 ```
 
-Lisan Studio installers are currently unsigned unless the release notes say otherwise. Windows SmartScreen may show a warning on first launch; see [docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md) and [ADR-0010](docs/adr/0010-msi-code-signing.md).
+مثبتات Lisan Studio غير موقعة حاليا إلا إذا ذكرت ملاحظات الإصدار عكس ذلك. قد يعرض Windows SmartScreen تحذيرا عند التشغيل الأول. راجع [docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md) و [ADR-0010](docs/adr/0010-msi-code-signing.md).
 
-### Option 2: Build From Source
+### الخيار 2: البناء من المصدر
 
-Clone with submodules:
+استنسخ المستودع مع submodules:
 
 ```powershell
 git clone --recurse-submodules https://github.com/GalaxyRuler/lisan-studio.git
 cd lisan-studio
 ```
 
-For an existing checkout:
+لنسخة موجودة مسبقا:
 
 ```powershell
 git submodule update --init --recursive
 ```
 
-Install the development prerequisites listed in [docs/INSTALLATION.md](docs/INSTALLATION.md), then build:
+ثبت متطلبات التطوير المذكورة في [docs/INSTALLATION.md](docs/INSTALLATION.md)، ثم ابن المشروع:
 
 ```powershell
 .\scripts\build.ps1
 ```
 
-The built executable is:
+سيكون الملف التنفيذي الناتج في:
 
 ```text
 build\LisanStudio.exe
 ```
 
-## First Use
+## الاستخدام الأول
 
-1. Open Lisan Studio.
-2. Open a folder that contains `.apy` files, or create a new `.apy` file.
-3. Write Arabic Python code in the editor.
-4. Use **Run Current File** to execute the current `.apy` file.
-5. Use the bottom panel for output, problems, search results, terminal, and debug sessions.
-6. Use the Source Control panel for Git status, diffs, staging, commits, branches, blame, and history.
+1. افتح Lisan Studio.
+2. افتح مجلدا يحتوي على ملفات `.apy`، أو أنشئ ملف `.apy` جديدا.
+3. اكتب كود بايثون العربي داخل المحرر.
+4. استخدم **Run Current File** لتشغيل ملف `.apy` الحالي.
+5. استخدم اللوحة السفلية للمخرجات، والمشكلات، ونتائج البحث، والطرفية، وجلسات التصحيح.
+6. استخدم لوحة Source Control لعرض حالة Git، والفروقات، و staging، و commits، والفروع، و blame، والتاريخ.
 
-Sample files live under:
+توجد ملفات عينة داخل:
 
 ```text
 samples\torture-project
 ```
 
-## Development
+## التطوير
 
-Normal validation:
+فحص المشروع المعتاد:
 
 ```powershell
 .\scripts\validate.ps1
 ```
 
-This configures the Release build, builds the app and tests, then runs CTest with Qt in offscreen mode.
+هذا السكربت يهيئ بناء Release، ويبني التطبيق والاختبارات، ثم يشغل CTest مع Qt في وضع offscreen.
 
-Package an MSI for release validation:
+لبناء MSI مخصص للتحقق من الإصدار:
 
 ```powershell
 .\scripts\package.ps1 -ProductVersion 1.0.0 -ApythonRoot "<path-to-lughat-althuban>" -PythonRoot "<path-to-python-3.13-runtime>"
 ```
 
-Maintainers can set these environment variables instead of passing parameters:
+يمكن للمشرفين استخدام متغيرات البيئة بدلا من تمرير المسارات كوسائط:
 
 ```powershell
 $env:LISAN_APYTHON_ROOT = "<path-to-lughat-althuban>"
 $env:LISAN_PYTHON_ROOT = "<path-to-python-3.13-runtime>"
 ```
 
-More setup, packaging, and troubleshooting detail: [docs/INSTALLATION.md](docs/INSTALLATION.md).
+تفاصيل الإعداد والبناء وحل المشكلات موجودة في [docs/INSTALLATION.md](docs/INSTALLATION.md).
 
-## Validation And Public Readiness
+## التحقق وجاهزية النشر العام
 
-Public release checks are tracked in [docs/PUBLIC_RELEASE_READINESS.md](docs/PUBLIC_RELEASE_READINESS.md).
+تتبع فحوصات النشر العام في [docs/PUBLIC_RELEASE_READINESS.md](docs/PUBLIC_RELEASE_READINESS.md).
 
-Local checks used before publishing source changes:
+الفحص المحلي المستخدم قبل نشر تغييرات المصدر:
 
 ```powershell
 .\scripts\validate.ps1
 ```
 
-MSI install, uninstall, upgrade, screenshot, and installed-app validation should run only in an isolated Windows QA environment, not on an active work desktop. The GitHub workflow is:
+فحوصات تثبيت MSI وإلغاء تثبيته وترقيته والتقاط الصور وفحص التطبيق المثبت يجب أن تعمل في بيئة Windows QA معزولة، وليس على جهاز عمل نشط. Workflow الخاص بذلك:
 
 ```powershell
 gh workflow run msi-tests.yml -f scenario=full
 ```
 
-## Roadmap
+## خارطة الطريق
 
-| Milestone | Status | Release |
+| المرحلة | الحالة | الإصدار |
 |---|---|---|
-| V1.5 - Multi-cursor + MSI pipeline | shipped | v0.2.0-beta |
-| V2 - LSP + debugger + terminal | shipped | v0.5.0-beta |
-| V3 - Git UI + multi-root workspaces | shipped | v1.0.0-rc1 |
-| V4 - 3-way merge, PR review, extensions | planned | - |
+| V1.5 - مؤشرات متعددة ومسار MSI | تم الشحن | v0.2.0-beta |
+| V2 - LSP ومصحح وطرفية | تم الشحن | v0.5.0-beta |
+| V3 - واجهة Git ومساحات عمل متعددة الجذور | تم الشحن | v1.0.0-rc1 |
+| V4 - دمج ثلاثي، مراجعة PR، وإضافات | مخطط | - |
 
-Roadmaps: [docs/ROADMAP-V2.md](docs/ROADMAP-V2.md), [docs/ROADMAP-V3.md](docs/ROADMAP-V3.md).
+خارطة V3: [docs/ROADMAP-V3.md](docs/ROADMAP-V3.md). أرشيف V2 التاريخي موجود في [docs/ROADMAP-V2.md](docs/ROADMAP-V2.md).
 
-## Security
+## الأمان
 
-Do not commit `.env*`, private keys, certificates, tokens, signing material, or private runtime credentials. Report vulnerability concerns using [SECURITY.md](SECURITY.md).
+لا ترفع ملفات `.env*`، أو المفاتيح الخاصة، أو الشهادات، أو tokens، أو مواد التوقيع، أو بيانات اعتماد runtime خاصة. أبلغ عن الثغرات عبر [SECURITY.md](SECURITY.md).
 
-## Contributing
+## المساهمة
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, branch guidance, validation expectations, and release rules.
+راجع [CONTRIBUTING.md](CONTRIBUTING.md) لإعداد بيئة التطوير، وقواعد الفروع، وتوقعات التحقق، وقواعد الإصدار.

@@ -1,79 +1,69 @@
-# Lisan Studio Installation and Setup
+# تثبيت وإعداد Lisan Studio
 
-This page covers public installation, local development setup, source builds,
-packaging, validation, and troubleshooting.
+تغطي هذه الصفحة التثبيت العام، وإعداد بيئة التطوير المحلية، والبناء من المصدر، والتغليف، والتحقق، وحل المشكلات.
 
-## Install From A GitHub Release
+## التثبيت من GitHub Release
 
-1. Open <https://github.com/GalaxyRuler/lisan-studio/releases>.
-2. Select the release you want to install.
-3. Download the MSI asset, for example `LisanStudio-1.0.0-beta.msi`.
-4. Run the MSI and follow the Windows Installer prompts.
-5. Launch **Lisan Studio** from the Start Menu or desktop shortcut.
+1. افتح <https://github.com/GalaxyRuler/lisan-studio/releases>.
+2. اختر الإصدار الذي تريد تثبيته.
+3. حمل ملف MSI، مثل `LisanStudio-1.0.0-beta.msi`.
+4. شغل MSI واتبع خطوات Windows Installer.
+5. افتح **Lisan Studio** من قائمة Start أو من اختصار سطح المكتب.
 
-If the release has no MSI asset, that release is source-only. Build from source
-or wait for the maintainer to attach a validated installer artifact.
+إذا لم يكن الإصدار يحتوي على ملف MSI، فهذا الإصدار متاح من المصدر فقط. ابن التطبيق من المصدر أو انتظر حتى يرفق المشرف مثبتا تم التحقق منه.
 
-The MSI installs per user under:
+يثبت MSI التطبيق لكل مستخدم داخل:
 
 ```text
 %LOCALAPPDATA%\LisanStudio
 ```
 
-The expected installed executable is:
+الملف التنفيذي المتوقع بعد التثبيت:
 
 ```text
 %LOCALAPPDATA%\LisanStudio\LisanStudio.exe
 ```
 
-## First-Launch SmartScreen Warning
+## تحذير SmartScreen عند التشغيل الأول
 
-Lisan Studio installers are unsigned unless a release explicitly says
-otherwise. On first launch, Windows may show a SmartScreen dialog saying that
-Microsoft Defender SmartScreen prevented an unrecognized app from starting.
+مثبتات Lisan Studio غير موقعة إلا إذا ذكر الإصدار عكس ذلك صراحة. عند التشغيل الأول، قد يعرض Windows مربع SmartScreen يقول إن Microsoft Defender SmartScreen منع تشغيل تطبيق غير معروف.
 
-To proceed with an unsigned build:
+للمتابعة مع بناء غير موقع:
 
-1. Click **More info**.
-2. Click **Run anyway**.
+1. اضغط **More info**.
+2. اضغط **Run anyway**.
 
-Managed Windows machines may block unsigned apps entirely. See
-[ADR-0010](adr/0010-msi-code-signing.md) for the current code-signing decision
-and revisit triggers.
+قد تمنع أجهزة Windows المدارة مؤسسيا التطبيقات غير الموقعة بالكامل. راجع [ADR-0010](adr/0010-msi-code-signing.md) لقرار توقيع الكود الحالي ومحفزات إعادة مراجعته.
 
-## Uninstall
+## إلغاء التثبيت
 
-Use Windows Settings:
+استخدم إعدادات Windows:
 
-1. Open **Settings**.
-2. Go to **Apps > Installed apps**.
-3. Find **Lisan Studio**.
-4. Choose **Uninstall**.
+1. افتح **Settings**.
+2. اذهب إلى **Apps > Installed apps**.
+3. ابحث عن **Lisan Studio**.
+4. اختر **Uninstall**.
 
-The MSI should remove the installed application payload and shortcuts. User
-settings are not treated as MSI payload.
+يجب أن يزيل MSI ملفات التطبيق والاختصارات. إعدادات المستخدم ليست جزءا من حمولة MSI.
 
-## Upgrade From Early ArabicCodeStudioQt Builds
+## الترقية من إصدارات ArabicCodeStudioQt القديمة
 
-If you installed an early build labeled `ArabicCodeStudioQt` or
-`Arabic Code Studio Qt`, uninstall it manually before installing Lisan Studio.
-Those early packages used a different product identity, so Windows Installer
-does not treat them as the same app.
+إذا ثبت إصدارا مبكرا باسم `ArabicCodeStudioQt` أو `Arabic Code Studio Qt`، فألغ تثبيته يدويا قبل تثبيت Lisan Studio. تلك الحزم استخدمت هوية منتج مختلفة، لذلك لا يتعامل معها Windows Installer كتطبيق واحد.
 
-## Development Prerequisites
+## متطلبات التطوير
 
-The default local build expects a Windows machine with:
+البناء المحلي الافتراضي يتوقع جهاز Windows يحتوي على:
 
-- Windows 10 or Windows 11
-- PowerShell 5.1 or PowerShell 7
-- Git with submodule support
+- Windows 10 أو Windows 11
+- PowerShell 5.1 أو PowerShell 7
+- Git مع دعم submodules
 - MSYS2 UCRT64
-- CMake 3.24 or newer
+- CMake 3.24 أو أحدث
 - Ninja
-- GCC from MSYS2 UCRT64
-- Qt 6 Widgets, Gui, Core, Test, and Concurrent
+- GCC من MSYS2 UCRT64
+- وحدات Qt 6: Widgets و Gui و Core و Test و Concurrent
 
-Install the common MSYS2 packages from an MSYS2 UCRT64 shell:
+ثبت حزم MSYS2 الشائعة من MSYS2 UCRT64 shell:
 
 ```bash
 pacman -Syu
@@ -84,57 +74,56 @@ pacman -S --needed \
   mingw-w64-ucrt-x86_64-qt6-base
 ```
 
-If `pacman -Syu` asks you to close and reopen the shell, do that first, then
-run the package install command again.
+إذا طلب `pacman -Syu` إغلاق shell وإعادة فتحها، افعل ذلك أولا ثم شغل أمر تثبيت الحزم مرة أخرى.
 
-The build scripts default to these tool paths:
+تفترض سكربتات البناء هذه المسارات افتراضيا:
 
 ```text
 C:\msys64\usr\bin\bash.exe
 C:\msys64\ucrt64\bin
 ```
 
-If MSYS2 is installed somewhere else, pass the Bash path:
+إذا كان MSYS2 مثبتا في مكان آخر، مرر مسار Bash:
 
 ```powershell
 .\scripts\build.ps1 -BashPath "D:\msys64\usr\bin\bash.exe"
 ```
 
-## Build
+## البناء
 
-From the repository root:
+من جذر المستودع:
 
 ```powershell
 git submodule update --init --recursive
 .\scripts\build.ps1
 ```
 
-The app binary is:
+ملف التطبيق الناتج:
 
 ```text
 build\LisanStudio.exe
 ```
 
-## Test
+## الاختبار
 
-Run the normal project validation gate:
+شغل بوابة التحقق المعتادة:
 
 ```powershell
 .\scripts\validate.ps1
 ```
 
-This builds the app and runs the CTest suite in Qt offscreen mode.
+يبني هذا الأمر التطبيق ويشغل حزمة CTest في وضع Qt offscreen.
 
-## Packaging Prerequisites
+## متطلبات التغليف
 
-Packaging adds these requirements beyond the normal build:
+يحتاج التغليف إلى المتطلبات التالية فوق متطلبات البناء العادية:
 
-- WiX Toolset v7 with `wix.exe`
-- A Python 3.13 runtime directory to bundle
-- A local `lughat-althuban` source checkout with generated package metadata
-- Qt license payloads from the MSYS2 Qt package
+- WiX Toolset v7 مع `wix.exe`
+- مجلد Python 3.13 Runtime ليتم تضمينه
+- نسخة مصدر محلية من `lughat-althuban` مع package metadata مولدة
+- ملفات تراخيص Qt من حزمة MSYS2 Qt
 
-The packaging script accepts explicit paths:
+يقبل سكربت التغليف مسارات صريحة:
 
 ```powershell
 .\scripts\package.ps1 `
@@ -144,52 +133,47 @@ The packaging script accepts explicit paths:
   -WixPath "<path-to-wix.exe>"
 ```
 
-Or use environment variables:
+أو استخدم متغيرات البيئة:
 
 ```powershell
 $env:LISAN_APYTHON_ROOT = "<path-to-lughat-althuban>"
 $env:LISAN_PYTHON_ROOT = "<path-to-python-3.13-runtime>"
 ```
 
-Output:
+المخرجات:
 
 ```text
 artifacts\LisanStudio-<version>-beta.msi
 stage\LisanStudio
 ```
 
-To stage the application without creating the MSI:
+لتهيئة مجلد التطبيق دون إنشاء MSI:
 
 ```powershell
 .\scripts\package.ps1 -SkipMsi
 ```
 
-## Installed Smoke
+## فحص التطبيق المثبت
 
-After installing the MSI in an isolated Windows QA environment, validate the
-installed application:
+بعد تثبيت MSI في بيئة Windows QA معزولة، تحقق من التطبيق المثبت:
 
 ```powershell
 .\scripts\installed-smoke.ps1
 ```
 
-This checks the installed executable, bundled Python runtime, Arabic `.apy`
-execution, UTF-8 output capture, command-line project/file launch, and runtime
-packaging shape.
+يتحقق السكربت من وجود الملف التنفيذي، و Python runtime المدمج، وتشغيل ملفات `.apy` العربية، والتقاط مخرجات UTF-8، وتشغيل التطبيق بمسار مشروع أو ملف، وشكل حزمة runtime.
 
-## MSI Smoke
+## فحص MSI
 
-MSI install, uninstall, and upgrade validation mutates the machine. Do not run
-it on an active work desktop unless you explicitly intend to install or remove
-the app there.
+فحص تثبيت MSI وإلغاء تثبيته وترقيته يغير الجهاز. لا تشغله على جهاز عمل نشط إلا إذا كنت تقصد تثبيت التطبيق أو إزالته هناك.
 
-Install/uninstall smoke:
+فحص التثبيت/الإلغاء:
 
 ```powershell
 .\scripts\msi-smoke.ps1
 ```
 
-Upgrade smoke:
+فحص الترقية:
 
 ```powershell
 .\scripts\msi-upgrade-smoke.ps1 `
@@ -201,7 +185,7 @@ Upgrade smoke:
   -IUnderstandThisRunsMsiUpgrade
 ```
 
-GitHub Actions workflow:
+Workflow على GitHub Actions:
 
 ```powershell
 gh workflow run msi-tests.yml -f scenario=install
@@ -209,12 +193,11 @@ gh workflow run msi-tests.yml -f scenario=upgrade
 gh workflow run msi-tests.yml -f scenario=full
 ```
 
-The workflow lives at `.github\workflows\msi-tests.yml` and expects a
-self-hosted Windows runner with the Qt, WiX, Python, and packaging toolchain.
+يوجد workflow في `.github\workflows\msi-tests.yml`، ويتوقع runner ذاتي الاستضافة على Windows يحتوي على Qt و WiX و Python وأدوات التغليف.
 
-## Release Evidence
+## أدلة الإصدار
 
-Generate a release evidence bundle in an isolated Windows QA environment:
+أنشئ حزمة أدلة الإصدار في بيئة Windows QA معزولة:
 
 ```powershell
 .\scripts\release-evidence.ps1 `
@@ -224,7 +207,7 @@ Generate a release evidence bundle in an isolated Windows QA environment:
   -PythonRoot "<path-to-python-3.13-runtime>"
 ```
 
-Expected evidence:
+الأدلة المتوقعة:
 
 ```text
 artifacts\release\<release-label>\VALIDATION_LOG.md
@@ -233,15 +216,15 @@ artifacts\release\<release-label>\KNOWN_ISSUES.md
 artifacts\release\<release-label>\screenshots\main-window.png
 ```
 
-## Manual QA Packet
+## حزمة QA اليدوية
 
-Generate a manual QA packet from existing evidence:
+أنشئ حزمة QA يدوية من أدلة موجودة:
 
 ```powershell
 .\scripts\beta-manual-check.ps1 -ReleaseLabel "1.0.0-beta"
 ```
 
-The script writes:
+ينتج السكربت:
 
 ```text
 artifacts\beta-manual-check\<run-id>\manual-beta-qa.docx
@@ -249,56 +232,56 @@ artifacts\beta-manual-check\<run-id>\manual-beta-qa.md
 artifacts\beta-manual-check\<run-id>\manual-beta-qa.json
 ```
 
-The Word document is the reviewer-facing checklist. The Markdown and JSON files
-are traceability artifacts.
+ملف Word هو قائمة الفحص الموجهة للمراجع. ملفات Markdown و JSON هي أدلة تتبع.
 
-## Troubleshooting
+## حل المشكلات
 
-### `C:\msys64\usr\bin\bash.exe` not found
+### `C:\msys64\usr\bin\bash.exe` غير موجود
 
-Install MSYS2 or pass the correct Bash path:
+ثبت MSYS2 أو مرر مسار Bash الصحيح:
 
 ```powershell
 .\scripts\build.ps1 -BashPath "D:\msys64\usr\bin\bash.exe"
 ```
 
-### CMake cannot find Qt 6
+### CMake لا يجد Qt 6
 
-Confirm the UCRT64 Qt package is installed and that the build script is using
-the UCRT64 path first:
+تأكد أن حزمة UCRT64 Qt مثبتة وأن سكربت البناء يستخدم مسار UCRT64 أولا:
 
 ```text
 /ucrt64/bin
 ```
 
-### `windeployqt6.exe` not found
+### `windeployqt6.exe` غير موجود
 
-Confirm Qt tools exist at:
+تأكد أن أدوات Qt موجودة في:
 
 ```text
 C:\msys64\ucrt64\bin\windeployqt6.exe
 ```
 
-Or pass:
+أو مرر:
 
 ```powershell
 .\scripts\package.ps1 -WindeployQtPath "D:\msys64\ucrt64\bin\windeployqt6.exe"
 ```
 
-### `wix.exe` not found
+### `wix.exe` غير موجود
 
-Install WiX Toolset v7 or pass the path:
+ثبت WiX Toolset v7 أو مرر المسار:
 
 ```powershell
 .\scripts\package.ps1 -WixPath "C:\Program Files\WiX Toolset v7.0\bin\wix.exe"
 ```
 
-### Installed app asks for system Python
+### التطبيق المثبت يطلب Python من النظام
 
-Treat this as a packaging failure. The MSI should use the bundled runtime under
-`%LOCALAPPDATA%\LisanStudio\runtime\python`.
+عامل هذا كفشل تغليف. يجب أن يستخدم MSI runtime المدمج داخل:
 
-### Arabic output is mojibake
+```text
+%LOCALAPPDATA%\LisanStudio\runtime\python
+```
 
-Treat this as a release blocker. `scripts\installed-smoke.ps1` should capture
-and decode Arabic output as UTF-8.
+### مخرجات العربية تظهر بحروف تالفة
+
+عامل هذا كمانع إصدار. يجب أن يلتقط `scripts\installed-smoke.ps1` المخرجات العربية ويفك ترميزها ك UTF-8.

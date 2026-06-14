@@ -1,88 +1,88 @@
-# Lisan Studio V3 Roadmap
+# خارطة طريق Lisan Studio V3
 
-> Status: planning, composed 2026-06-05 against HEAD `7185cd1` (v0.5.0-beta, V2 milestone closed).
-> V2 archived at [docs/ROADMAP-V2.md](ROADMAP-V2.md).
-> Vault implementation plan: `plans/lisan-studio/v3/00-lisan-studio-V3-MOC.md`.
-> Release cadence: per-phase. Each phase's final slice cuts a new release. V3 closes at `v1.0.0-rc1`.
+> الحالة: اكتملت عند `v1.0.0-rc1`.
+> بنيت الخطة الأصلية في 2026-06-05 على HEAD `7185cd1` بعد إغلاق V2 عند `v0.5.0-beta`.
+> أرشيف V2 موجود في [docs/ROADMAP-V2.md](ROADMAP-V2.md).
+> إيقاع الإصدار: لكل phase إصدار. أغلقت V3 عند `v1.0.0-rc1`.
 
-## Mission
+## المهمة
 
-V3 adds Git source-control UI and multi-root workspace support. Lisan Studio
-becomes a self-contained Arabic-first IDE — no external Git client required.
+تضيف V3 واجهة Git مدمجة ودعم مساحات العمل متعددة الجذور. يصبح Lisan Studio بيئة تطوير عربية أولا ومكتفية بذاتها في المهام اليومية، دون الحاجة إلى Git client خارجي.
 
-## Scope
+## النطاق
 
-**V3 IS:**
-- Git status panel, diff viewer, stage/unstage hunks
-- Commit workflow: message, commit, push, pull, fetch
-- Branch management: create, switch, merge, delete
-- History log panel + blame gutter in EditorSurface
-- Multi-root workspaces (monorepo / multi-module support)
+**V3 تشمل:**
 
-**V3 IS NOT:**
-- Interactive 3-way merge editor (V4)
-- GitHub / GitLab PR review UI (V4)
-- Git LFS support (V4)
-- Extension / plugin system (V4)
-- Cross-platform port (not planned)
-- ARM64 Windows (not planned)
+- لوحة حالة Git، وعارض diff، و stage/unstage للملفات أو hunks.
+- تدفق commit: رسالة، commit، push، pull، fetch.
+- إدارة الفروع: إنشاء، تبديل، دمج، حذف.
+- لوحة سجل history و blame gutter داخل EditorSurface.
+- مساحات عمل متعددة الجذور للمونوريبو أو المشاريع متعددة الوحدات.
 
-## Architecture decision
+**V3 لا تشمل:**
 
-**ADR-0016** (docs/adr/0016-git-backend.md): libgit2 via CMake FetchContent.
-Fallback: git plumbing subprocess. Porcelain is never the fallback.
+- محرر دمج ثلاثي تفاعلي (V4).
+- واجهة مراجعة PR من GitHub/GitLab (V4).
+- دعم Git LFS (V4).
+- نظام extensions/plugins (V4).
+- نقل التطبيق لمنصات أخرى (غير مخطط).
+- ARM64 Windows (غير مخطط).
 
-## Phase structure
+## قرار البنية
 
-```
+**ADR-0016** (`docs/adr/0016-git-backend.md`): استخدام libgit2 عبر CMake FetchContent. fallback هو git plumbing subprocess. أوامر porcelain ليست fallback.
+
+## بنية المراحل
+
+```text
 G1 ADR-0016 (docs-only, gates G2+)
    └──> G2 Repository state model (GitRepository class, decorations, status bar)
-           ├──> G3 Status panel + diff viewer ──> v0.6.0-beta
-           │       └──> G4 Commit workflow (stage, message, push/pull) ──> v0.7.0-beta
-           │               └──> G6 History + blame gutter ──> v0.8.0-beta ──> v1.0.0-rc1
-           └──> G5 Branch management ──> v0.7.0-beta (parallel with G3→G4)
-MR Multi-root workspaces (independent) ──> v0.9.0-beta ──> v1.0.0-rc1
+           ├──> G3 Status panel + diff viewer --> v0.6.0-beta
+           │       └──> G4 Commit workflow (stage, message, push/pull) --> v0.7.0-beta
+           │               └──> G6 History + blame gutter --> v0.8.0-beta --> v1.0.0-rc1
+           └──> G5 Branch management --> v0.7.0-beta (parallel with G3 to G4)
+MR Multi-root workspaces (independent) --> v0.9.0-beta --> v1.0.0-rc1
 ```
 
-## Slice list
+## قائمة الشرائح
 
-| Slice | Title | Depends | Target |
+| الشريحة | العنوان | تعتمد على | الهدف |
 |---|---|---|---|
-| G1 | ADR-0016 Git backend | none | docs-only |
-| G2-a | GitRepository state model | G1 | — |
-| G2-b | Project-tree dirty decorations | G2-a | — |
-| G2-c | Status-bar branch + dirty indicator | G2-a | — |
-| G3-a | Git status panel | G2-a | — |
-| G3-b | Inline diff viewer | G3-a | — |
-| G3-c | v0.6.0-beta release cut | G3-b | v0.6.0-beta |
-| G4-a | Stage / unstage hunks | G3-b | — |
-| G4-b | Commit panel + commit action | G4-a | — |
-| G4-c | Push / Pull / Fetch | G4-b | — |
-| G4-d | v0.7.0-beta release cut | G4-c + G5-b | v0.7.0-beta |
-| G5-a | Branch picker (switch + create) | G2-a | — |
-| G5-b | Merge + delete branch | G5-a | — |
-| G6-a | History log panel | G4-b | — |
-| G6-b | Blame gutter in EditorSurface | G2-a | — |
-| G6-c | Diff at historical commit | G6-a + G6-b | — |
-| G6-d | v0.8.0-beta release cut | G6-c | v0.8.0-beta |
-| MR-a | Multi-root workspace model | none | — |
-| MR-b | UI: open/remove additional root | MR-a | — |
-| MR-c | v0.9.0-beta release cut | MR-b | v0.9.0-beta |
-| RC | v1.0.0-rc1 milestone close | G6-d + MR-c | v1.0.0-rc1 |
+| G1 | ADR-0016 Git backend | لا شيء | docs-only |
+| G2-a | نموذج حالة GitRepository | G1 | - |
+| G2-b | زخارف dirty في شجرة المشروع | G2-a | - |
+| G2-c | مؤشر الفرع و dirty في شريط الحالة | G2-a | - |
+| G3-a | لوحة حالة Git | G2-a | - |
+| G3-b | عارض diff مدمج | G3-a | - |
+| G3-c | قطع إصدار v0.6.0-beta | G3-b | v0.6.0-beta |
+| G4-a | stage / unstage hunks | G3-b | - |
+| G4-b | لوحة commit وفعل commit | G4-a | - |
+| G4-c | Push / Pull / Fetch | G4-b | - |
+| G4-d | قطع إصدار v0.7.0-beta | G4-c + G5-b | v0.7.0-beta |
+| G5-a | منتقي الفروع: switch + create | G2-a | - |
+| G5-b | merge + delete branch | G5-a | - |
+| G6-a | لوحة history log | G4-b | - |
+| G6-b | blame gutter داخل EditorSurface | G2-a | - |
+| G6-c | diff عند commit تاريخي | G6-a + G6-b | - |
+| G6-d | قطع إصدار v0.8.0-beta | G6-c | v0.8.0-beta |
+| MR-a | نموذج مساحة عمل متعددة الجذور | لا شيء | - |
+| MR-b | واجهة فتح/إزالة root إضافي | MR-a | - |
+| MR-c | قطع إصدار v0.9.0-beta | MR-b | v0.9.0-beta |
+| RC | إغلاق مرحلة v1.0.0-rc1 | G6-d + MR-c | v1.0.0-rc1 |
 
-## Risk register
+## سجل المخاطر
 
-| Risk | Mitigation |
+| الخطر | التخفيف |
 |---|---|
-| libgit2 CMake bundling too heavy | Fall back to git-plumbing subprocess (ADR-0016 fallback path) |
-| Arabic filenames corrupt in git ops | Test `core.quotePath=false` + UTF-8 locale; plumbing more reliable than porcelain |
-| Conflict resolution UI scope creep | V3 shows conflict markers read-only; interactive 3-way merge is V4 |
-| Multi-root project-tree performance | Lazy-load status per root; 5-second TTL cache |
+| ربط libgit2 عبر CMake ثقيل جدا | fallback إلى git-plumbing subprocess وفق ADR-0016 |
+| تلف أسماء الملفات العربية في عمليات Git | اختبار `core.quotePath=false` و UTF-8 locale؛ plumbing أكثر موثوقية من porcelain |
+| اتساع نطاق واجهة حل التعارضات | تعرض V3 markers فقط؛ الدمج الثلاثي التفاعلي في V4 |
+| أداء شجرة المشروع متعددة الجذور | تحميل حالة كل root بتكاسل مع cache TTL لمدة 5 ثوان |
 
-## V3 completion criteria
+## معايير اكتمال V3
 
-V3 closes when all slices G1–RC and MR-a–MR-c are done OR explicitly
-deferred. Milestone close cuts `v1.0.0-rc1`.
+تغلق V3 عندما تكتمل كل الشرائح G1-RC و MR-a-MR-c أو تؤجل صراحة. إغلاق المرحلة يقطع `v1.0.0-rc1`.
 
 ---
-*Composed 2026-06-05. Vault implementation plan at `plans/lisan-studio/v3/`.*
+
+*أنشئت الخطة الأصلية في 2026-06-05.*

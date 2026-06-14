@@ -1,23 +1,20 @@
-# Lisan Studio Validation
+# التحقق من Lisan Studio
 
-This file describes the validation gates for installed Windows builds. It is
-packaged into release artifacts so users and reviewers can see what a release is
-expected to prove.
+يشرح هذا الملف بوابات التحقق لبناءات Windows المثبتة. يرفق مع حزم الإصدار حتى يرى المستخدمون والمراجعون ما يفترض أن يثبته كل إصدار.
 
-## Local Source Gate
+## بوابة المصدر المحلي
 
-Run from the repository root:
+شغل من جذر المستودع:
 
 ```powershell
 .\scripts\validate.ps1
 ```
 
-This configures the Release build, builds the app and tests, and runs CTest with
-Qt in offscreen mode.
+يهيئ هذا الأمر بناء Release، ويبني التطبيق والاختبارات، ثم يشغل CTest مع Qt في وضع offscreen.
 
-## Package Gate
+## بوابة التغليف
 
-Build a release candidate MSI:
+ابن MSI مرشحا للإصدار:
 
 ```powershell
 .\scripts\package.ps1 `
@@ -26,56 +23,54 @@ Build a release candidate MSI:
   -PythonRoot "<path-to-python-3.13-runtime>"
 ```
 
-The packaging gate verifies:
+تتحقق بوابة التغليف من:
 
-- `LisanStudio.exe` is staged.
-- Qt runtime files are deployed.
-- Python runtime is bundled under `runtime\python`.
-- `lughat-althuban` and `debugpy` are copied into the staged runtime.
-- Editable/local runtime markers are absent.
-- License payloads are present.
-- The MSI and signing-status evidence are written under `artifacts\`.
+- وجود `LisanStudio.exe` داخل stage.
+- نشر ملفات Qt runtime.
+- تضمين Python runtime داخل `runtime\python`.
+- نسخ `lughat-althuban` و `debugpy` إلى runtime المجهز.
+- غياب مؤشرات runtime محلية/قابلة للتحرير.
+- وجود ملفات التراخيص.
+- كتابة MSI ودليل حالة التوقيع داخل `artifacts\`.
 
-## Installed-App Gate
+## بوابة التطبيق المثبت
 
-Run only in an isolated Windows QA environment or on a machine where installing
-and uninstalling Lisan Studio is intended:
+شغلها فقط في بيئة Windows QA معزولة أو على جهاز تقصد تثبيت Lisan Studio وإزالته منه:
 
 ```powershell
 .\scripts\installed-smoke.ps1
 ```
 
-The installed smoke script verifies:
+يتحقق سكربت installed smoke من:
 
-- the installed executable exists
-- the installed executable is `LisanStudio.exe` under `%LOCALAPPDATA%\LisanStudio`
-- the bundled Python runtime exists
-- `lughat-althuban` runs a mixed Arabic/English `.apy` file
-- Arabic output is decoded as UTF-8
-- the app can launch with a project path
-- the app can launch with a file path
-- the bundled runtime has no editable local source markers
+- وجود الملف التنفيذي المثبت
+- أن الملف التنفيذي هو `LisanStudio.exe` داخل `%LOCALAPPDATA%\LisanStudio`
+- وجود Python runtime المدمج
+- قدرة `lughat-althuban` على تشغيل ملف `.apy` مختلط عربي/إنجليزي
+- فك ترميز المخرجات العربية ك UTF-8
+- قدرة التطبيق على الانطلاق مع مسار مشروع
+- قدرة التطبيق على الانطلاق مع مسار ملف
+- عدم وجود مؤشرات مصدر محلي قابل للتحرير داخل runtime المدمج
 
-## MSI Gate
+## بوابة MSI
 
-Run only in an isolated Windows QA environment or on a machine where MSI
-mutation is intended:
+شغلها فقط في بيئة Windows QA معزولة أو على جهاز تقصد أن يحدث عليه تغيير MSI:
 
 ```powershell
 .\scripts\msi-smoke.ps1
 ```
 
-The MSI smoke script verifies:
+يتحقق سكربت MSI smoke من:
 
-- silent MSI install
-- installed payload under `%LOCALAPPDATA%\LisanStudio`
-- Start Menu and Desktop shortcuts
-- packaged README, release notes, validation notes, and license files
-- Qt, Python, and `lughat-althuban` license payloads
-- installed runtime smoke through `scripts\installed-smoke.ps1`
-- silent MSI uninstall removes the app executable and shortcuts
+- تثبيت MSI صامت
+- وجود الحمولة المثبتة داخل `%LOCALAPPDATA%\LisanStudio`
+- اختصارات Start Menu و Desktop
+- تضمين README، وملاحظات الإصدار، وملاحظات التحقق، وملفات التراخيص
+- ملفات تراخيص Qt و Python و `lughat-althuban`
+- فحص runtime المثبت عبر `scripts\installed-smoke.ps1`
+- إلغاء تثبيت MSI صامت يزيل الملف التنفيذي والاختصارات
 
-Upgrade validation:
+فحص الترقية:
 
 ```powershell
 .\scripts\msi-upgrade-smoke.ps1 `
@@ -87,53 +82,49 @@ Upgrade validation:
   -IUnderstandThisRunsMsiUpgrade
 ```
 
-## GitHub Actions Gate
+## بوابة GitHub Actions
 
-Maintainers can run the full MSI gate through a self-hosted Windows runner:
+يستطيع المشرفون تشغيل بوابة MSI الكاملة عبر Windows runner ذاتي الاستضافة:
 
 ```powershell
 gh workflow run msi-tests.yml -f scenario=full
 ```
 
-The workflow lives at `.github\workflows\msi-tests.yml` and uploads MSI,
-install, and upgrade evidence artifacts.
+يوجد workflow في `.github\workflows\msi-tests.yml`، ويرفع أدلة MSI والتثبيت والترقية ك artifacts.
 
-## Manual QA Gate
+## بوابة QA اليدوية
 
-Use the installed app for these checks:
+استخدم التطبيق المثبت لهذه الفحوصات:
 
-- launch from the Start Menu
-- launch from the Desktop shortcut
-- open `samples\torture-project`
-- verify the shell, project sidebar, editor tabs, bottom panel, and status bar are RTL
-- open, edit, save, close, and reopen a mixed Arabic/English file
-- verify cursor movement across Arabic identifiers, English names, numbers,
-  operators, and Windows paths
-- verify selection, copy, paste, undo, redo, backspace, and delete near Arabic text
-- search the project and open a result from the search-results tab
-- insert a hidden BiDi control into a scratch file and confirm the Problems panel reports it
-- run the current `.apy` file and confirm stdout/stderr, exit code, elapsed time,
-  and cancel behavior are readable
-- open Settings, verify runtime diagnostics, change the editor font setting, and reopen the app
-- uninstall and confirm app payload files and shortcuts are removed
-- reinstall without manual PATH or Python setup
+- التشغيل من Start Menu
+- التشغيل من اختصار Desktop
+- فتح `samples\torture-project`
+- التحقق أن shell، وشريط المشروع الجانبي، وتبويبات المحرر، واللوحة السفلية، وشريط الحالة تعمل RTL
+- فتح ملف عربي/إنجليزي مختلط، وتعديله، وحفظه، وإغلاقه، وإعادة فتحه
+- التحقق من حركة المؤشر عبر معرفات عربية، وأسماء إنجليزية، وأرقام، وعوامل، ومسارات Windows
+- التحقق من التحديد، والنسخ، واللصق، والتراجع، والإعادة، و Backspace، و Delete قرب النص العربي
+- البحث في المشروع وفتح نتيجة من تبويب نتائج البحث
+- إدخال محرف BiDi مخفي في ملف مؤقت والتأكد أن لوحة Problems تبلغ عنه
+- تشغيل ملف `.apy` الحالي والتأكد أن stdout/stderr، ورمز الخروج، والوقت المنقضي، وسلوك الإلغاء مقروءة
+- فتح Settings، والتحقق من تشخيصات runtime، وتغيير خط المحرر، وإعادة فتح التطبيق
+- إلغاء التثبيت والتأكد أن ملفات التطبيق والاختصارات أزيلت
+- إعادة التثبيت دون إعداد PATH أو Python يدويا
 
-Generate a manual QA packet from existing evidence:
+أنشئ حزمة QA يدوية من أدلة موجودة:
 
 ```powershell
 .\scripts\beta-manual-check.ps1 -ReleaseLabel "1.0.0-beta"
 ```
 
-## Release Blockers
+## موانع الإصدار
 
-- cursor or selection corruption
-- Arabic output mojibake
-- save/open data loss
-- installer requiring PATH or system Python setup
-- MSI install/uninstall smoke failure
-- missing Qt, Python, or `lughat-althuban` license payloads
-- hidden BiDi controls inserted by the editor
-- visible placeholder UI
-- left-to-right shell regression in the top command bar, project/sidebar, tabs,
-  status bar, or bottom panel
-- crash on open, save, run, launch, or close
+- تلف المؤشر أو التحديد
+- ظهور المخرجات العربية بحروف تالفة
+- فقدان بيانات عند الحفظ أو الفتح
+- احتياج المثبت إلى PATH أو إعداد Python من النظام
+- فشل فحص تثبيت/إلغاء MSI
+- غياب ملفات تراخيص Qt أو Python أو `lughat-althuban`
+- إدخال المحرر لمحارف BiDi مخفية
+- ظهور واجهة placeholder
+- تراجع RTL في شريط الأوامر العلوي، أو المشروع/الشريط الجانبي، أو التبويبات، أو شريط الحالة، أو اللوحة السفلية
+- انهيار التطبيق عند الفتح أو الحفظ أو التشغيل أو الانطلاق أو الإغلاق

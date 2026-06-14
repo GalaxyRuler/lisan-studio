@@ -1,44 +1,37 @@
-# Security Policy
+# سياسة الأمان
 
-## Supported Versions
+## الإصدارات المدعومة
 
-Security reports should target the current `main` branch and the latest GitHub
-Release.
+يجب أن تستهدف بلاغات الأمان فرع `main` الحالي وآخر إصدار منشور على GitHub Releases.
 
-## Reporting A Vulnerability
+## الإبلاغ عن ثغرة
 
-Open a private GitHub security advisory if available for this repository, or
-contact the maintainer through the account listed on the GitHub project.
+افتح GitHub Security Advisory خاصا إذا كان متاحا لهذا المستودع، أو تواصل مع المشرف من خلال الحساب الظاهر في مشروع GitHub.
 
-Please include:
+يرجى تضمين:
 
-- affected version or commit
-- operating system and installation method
-- reproduction steps
-- expected and actual behavior
-- impact assessment
-- logs or screenshots with secrets removed
+- الإصدار أو commit المتأثر
+- نظام التشغيل وطريقة التثبيت
+- خطوات إعادة الإنتاج
+- السلوك المتوقع والسلوك الفعلي
+- تقييم الأثر
+- سجلات أو صور شاشة بعد إزالة أي أسرار
 
-Do not include private keys, tokens, certificates, production credentials, or
-personal data in a public issue.
+لا تضع مفاتيح خاصة أو tokens أو شهادات أو بيانات اعتماد إنتاجية أو بيانات شخصية داخل issue عام.
 
-## Secret Handling
+## التعامل مع الأسرار
 
-The repository must not contain:
+يجب ألا يحتوي المستودع على:
 
-- `.env*` files
-- private keys
-- certificates or signing material
+- ملفات `.env*`
+- مفاتيح خاصة
+- شهادات أو مواد توقيع
 - API tokens
-- credential stores
-- private runtime configuration
+- مخازن بيانات اعتماد
+- إعدادات runtime خاصة
 
-If secret material is committed, treat it as exposed. Revoke or rotate the
-credential before relying on a scrubbed commit.
+إذا رفعت مادة سرية إلى Git، عاملها كأنها انكشفت. ألغ أو دور بيانات الاعتماد قبل الاعتماد على commit تم تنظيفه لاحقا.
 
-## Installer Trust
+## الثقة بالمثبت
 
-Lisan Studio installers are unsigned unless the release explicitly says
-otherwise. Unsigned installers can trigger Windows SmartScreen warnings and may
-be blocked by managed enterprise policies. See
-[docs/adr/0010-msi-code-signing.md](docs/adr/0010-msi-code-signing.md).
+مثبتات Lisan Studio غير موقعة إلا إذا قال الإصدار صراحة عكس ذلك. المثبتات غير الموقعة قد تعرض تحذيرات Windows SmartScreen، وقد تمنعها سياسات المؤسسات المدارة. راجع [docs/adr/0010-msi-code-signing.md](docs/adr/0010-msi-code-signing.md).

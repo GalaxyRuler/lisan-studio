@@ -1,36 +1,8 @@
-# Known Issues
+# المشكلات المعروفة
 
-- Search/replace project scan covers up to 5000 files (raised from 500 in v0.1.2-beta). The per-file 1 MB ceiling is unchanged. Repos with more than 5000 indexable files still see truncation; streaming search is deferred to V2.
-- Untitled buffer contents are incrementally persisted to the workbench
-  session while a dirty untitled draft remains open. The autosave timer
-  runs every five seconds while drafts are dirty, and a relaunch after a
-  non-graceful exit prompts to recover or discard the saved drafts.
-  Saved files (named, on-disk) are unaffected and still follow the
-  filesystem's durability guarantees on explicit save.
-- Unsigned MSI (see ADR-0010 for the deferred-code-signing decision):
-  on first launch of a fresh install, Windows shows a SmartScreen
-  dialog reading "Microsoft Defender SmartScreen prevented an
-  unrecognized app from starting." Click **More info** and then
-  **Run anyway** to proceed. The dialog appears only on first launch
-  per install; subsequent launches are silent. Enterprise machines
-  with SmartScreen Block enforcement may refuse to launch the
-  application outright — if you encounter that, file a beta-tester
-  report so we can revisit ADR-0010.
-- Multi-cursor + IME limitation: committed IME text now inserts at the
-  primary cursor and every secondary cursor in one undoable edit.
-  Preedit/live composition text is accepted but is not yet painted as a
-  separate live preview at every secondary caret. If a Windows IME shows
-  confusing preedit UI with many cursors, commit the composition or press
-  Esc to collapse to one cursor before composing.
-- Multi-cursor + column selection: Alt+drag column / rectangle
-  selection ships in v0.2.0-beta. Two limitations carried into V2:
-  the drag has no live preview rectangle (cursors appear on release,
-  not during the drag), and the selection operates on logical lines
-  only — soft-wrapped visual rows are not yet treated as separate
-  rectangle rows.
-- Multi-cursor + complex editor commands: Ctrl+Z (undo), Ctrl+Y (redo),
-  Tab (indent), and Shift+Tab (dedent) now apply across all active
-  cursors in one undoable edit. Other non-trivial editor commands may
-  still apply only to the primary cursor when secondaries are present.
-  Multi-cursor typing, Backspace, Delete, arrow movement, Return, and
-  committed IME text are multi-cursor-aware.
+- بحث/استبدال المشروع يفحص حتى 5000 ملف (زادت من 500 في v0.1.2-beta). سقف حجم الملف الواحد ما زال 1 MB. المستودعات التي تحتوي على أكثر من 5000 ملف قابل للفهرسة ستظل ترى نتائج مقتطعة؛ البحث المتدفق مؤجل إلى V2.
+- محتوى المسودات غير المسماة يحفظ تدريجيا في جلسة واجهة العمل عندما تبقى مسودة غير محفوظة مفتوحة. مؤقت الحفظ التلقائي يعمل كل خمس ثوان أثناء وجود مسودات معدلة، وعند إعادة التشغيل بعد خروج غير نظيف يظهر طلب استعادة أو تجاهل المسودات المحفوظة. الملفات المحفوظة باسم على القرص لا تتأثر، وتظل تعتمد على ضمانات نظام الملفات عند الحفظ الصريح.
+- MSI غير موقع (راجع ADR-0010 لقرار تأجيل توقيع الكود): عند التشغيل الأول لتثبيت جديد، قد يعرض Windows مربع SmartScreen بالنص "Microsoft Defender SmartScreen prevented an unrecognized app from starting." للمتابعة اضغط **More info** ثم **Run anyway**. يظهر هذا المربع عادة في التشغيل الأول فقط لكل تثبيت؛ التشغيلات اللاحقة تكون صامتة. أجهزة المؤسسات التي تفرض SmartScreen Block قد ترفض تشغيل التطبيق بالكامل. إذا واجهت ذلك، افتح تقرير beta tester حتى نعيد تقييم ADR-0010.
+- محدودية المؤشرات المتعددة مع IME: النص النهائي المرسل من IME يدخل الآن في المؤشر الأساسي وكل المؤشرات الثانوية ضمن تعديل واحد قابل للتراجع. نص preedit/live composition مقبول، لكنه لا يرسم بعد كمعاينة حية منفصلة عند كل مؤشر ثانوي. إذا عرض Windows IME واجهة preedit مربكة مع عدة مؤشرات، أكمل composition أو اضغط Esc للعودة إلى مؤشر واحد قبل الكتابة بالIME.
+- المؤشرات المتعددة والتحديد العمودي: تحديد Alt+drag العمودي/المستطيل موجود في v0.2.0-beta. بقي حدان إلى V2: لا توجد معاينة مستطيل حية أثناء السحب (تظهر المؤشرات عند الإفلات)، والتحديد يعمل على الأسطر المنطقية فقط، ولا يتعامل بعد مع صفوف الالتفاف البصري soft-wrap كصفوف مستطيلة منفصلة.
+- المؤشرات المتعددة وأوامر التحرير المعقدة: Ctrl+Z للتراجع، و Ctrl+Y للإعادة، و Tab للمسافة البادئة، و Shift+Tab لإزالة المسافة البادئة تعمل الآن على كل المؤشرات النشطة ضمن تعديل واحد قابل للتراجع. بعض أوامر التحرير غير البسيطة الأخرى قد تعمل فقط على المؤشر الأساسي عند وجود مؤشرات ثانوية. الكتابة، و Backspace، و Delete، وحركة الأسهم، و Return، والنص النهائي من IME واعية بالمؤشرات المتعددة.
