@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "projectName": "Lisan Studio",
+  "homelabRootEnv": "CODEX_HOMELAB_ROOT",
+  "homelabRootFallback": "C:\\Users\\Admin\\Documents\\Codex\\Homelab\\codex-isolated-test-runners",
+  "allowedClasses": [
+    "windows-gui",
+    "desktop-msi"
+  ],
+  "preferredRoutes": {
+    "windows-gui": "agent-dev-01",
+    "desktop-msi": "agent-dev-01"
+  },
+  "profiles": {},
+  "secretRefs": {},
+  "forbidden": [
+    "Do not run GUI smoke tests or MSI install/uninstall on active WHITEDRAGON",
+    "Route physical GPU, audio, mic, camera, and USB work only to WhiteKnight after readiness passes",
+    "Do not store raw credentials"
+  ]
+}
